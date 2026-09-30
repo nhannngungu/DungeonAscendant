@@ -1,4 +1,6 @@
-using System;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
+using PlayerCharacter = DungeonAscendant.Player.Player;
 
 namespace DungeonAscendant.Core;
 
@@ -7,8 +9,15 @@ namespace DungeonAscendant.Core;
 /// </summary>
 public sealed class GameSession
 {
-    public void Update(TimeSpan elapsedTime)
+    public PlayerCharacter Player { get; }
+
+    public GameSession(Vector2 playerSpawnPosition)
     {
-        // Game systems will be updated here as they are introduced.
+        Player = new PlayerCharacter(playerSpawnPosition);
+    }
+
+    public void Update(GameTime gameTime, KeyboardState keyboardState)
+    {
+        Player.Update(gameTime, keyboardState);
     }
 }

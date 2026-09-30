@@ -21,7 +21,8 @@ public class Game1 : Game
 
     protected override void Initialize()
     {
-        _gameSession = new GameSession();
+        Viewport viewport = GraphicsDevice.Viewport;
+        _gameSession = new GameSession(new Vector2(viewport.Width / 2f, viewport.Height / 2f));
 
         base.Initialize();
     }
@@ -33,18 +34,26 @@ public class Game1 : Game
 
     protected override void Update(GameTime gameTime)
     {
-        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || Keyboard.GetState().IsKeyDown(Keys.Escape))
+        KeyboardState keyboardState = Keyboard.GetState();
+
+        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || keyboardState.IsKeyDown(Keys.Escape))
             Exit();
 
-        _gameSession.Update(gameTime.ElapsedGameTime);
+        _gameSession.Update(gameTime, keyboardState);
 
         base.Update(gameTime);
     }
 
     protected override void Draw(GameTime gameTime)
     {
-        _renderer.Draw();
+        _renderer.Draw(_gameSession);
 
         base.Draw(gameTime);
+    }
+
+    protected override void UnloadContent()
+    {
+        _renderer.Dispose();
+        base.UnloadContent();
     }
 }
