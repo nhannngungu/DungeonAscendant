@@ -36,16 +36,14 @@ public sealed class MeleeAttack
             _cooldownTimeRemaining - elapsedSeconds);
     }
 
-    public bool TryPerform(Vector2 attackerPosition, Vector2 targetPosition)
+    public bool TryStart()
     {
         if (!IsReady)
             return false;
 
         _feedbackTimeRemaining = FeedbackDurationSeconds;
         _cooldownTimeRemaining = CooldownSeconds;
-
-        return Vector2.DistanceSquared(attackerPosition, targetPosition) <=
-            Range * Range;
+        return true;
     }
 
     public void Cancel()

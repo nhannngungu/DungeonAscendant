@@ -31,11 +31,14 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawPlayer(gameSession.Player, gameSession.PlayerAttack.IsActive);
 
-        if (gameSession.Goblin.IsAlive)
-            DrawGoblin(gameSession.Goblin, gameSession.GoblinAttack.IsActive);
+        foreach (Goblin goblin in gameSession.Enemies.Goblins)
+        {
+            if (goblin.IsAlive)
+                DrawGoblin(goblin, goblin.Attack.IsActive);
+        }
 
         DrawPlayerHealth(gameSession.Player);
-        DrawPlayerProgression(gameSession.Player);
+        DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
 
         _spriteBatch.End();
     }
@@ -149,7 +152,7 @@ public sealed class GameRenderer : IDisposable
             _spriteBatch.Draw(_pixel, health, new Color(196, 48, 58));
     }
 
-    private void DrawPlayerProgression(PlayerCharacter player)
+    private void DrawPlayerProgression(PlayerCharacter player, int killCount)
     {
         const int barX = 20;
         const int barY = 44;
@@ -159,6 +162,9 @@ public sealed class GameRenderer : IDisposable
         const int levelIndicatorY = 62;
         const int levelIndicatorSize = 8;
         const int levelIndicatorSpacing = 4;
+        const int killIndicatorY = 76;
+        const int killIndicatorSize = 6;
+        const int killIndicatorSpacing = 3;
 
         float experienceRatio = player.CurrentExperience /
             (float)player.ExperienceToNextLevel;
@@ -192,6 +198,18 @@ public sealed class GameRenderer : IDisposable
                 levelIndicatorSize,
                 levelIndicatorSize);
             _spriteBatch.Draw(_pixel, indicator, new Color(235, 190, 62));
+        }
+
+        int visibleKills = Math.Min(killCount, 24);
+
+        for (int kill = 0; kill < visibleKills; kill++)
+        {
+            Rectangle indicator = new(
+                barX + kill * (killIndicatorSize + killIndicatorSpacing),
+                killIndicatorY,
+                killIndicatorSize,
+                killIndicatorSize);
+            _spriteBatch.Draw(_pixel, indicator, new Color(181, 72, 66));
         }
     }
 

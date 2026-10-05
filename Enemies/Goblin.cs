@@ -1,4 +1,5 @@
 using System;
+using DungeonAscendant.Combat;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.Enemies;
@@ -23,6 +24,7 @@ public sealed class Goblin
     public int Level { get; }
     public int AttackDamage { get; }
     public int ExperienceReward { get; }
+    public MeleeAttack Attack { get; }
 
     public Goblin(
         Vector2 position,
@@ -39,12 +41,14 @@ public sealed class Goblin
         CurrentHealth = MaxHealth;
         AttackDamage = BaseAttackDamage + (Level - 1) * DamageIncreasePerLevel;
         ExperienceReward = 50;
+        Attack = new MeleeAttack(range: 50f, cooldownSeconds: 1f);
     }
 
     public void Update(
         GameTime gameTime,
         Vector2 playerPosition,
-        float stoppingRange)
+        float stoppingRange,
+        Rectangle arenaBounds)
     {
         if (!IsAlive)
             return;
@@ -66,6 +70,15 @@ public sealed class Goblin
             distance - stoppingRange);
 
         Position += direction * movementDistance;
+        Position = new Vector2(
+            MathHelper.Clamp(
+                Position.X,
+                arenaBounds.Left + Size.X / 2f,
+                arenaBounds.Right - Size.X / 2f),
+            MathHelper.Clamp(
+                Position.Y,
+                arenaBounds.Top + Size.Y / 2f,
+                arenaBounds.Bottom - Size.Y / 2f));
     }
 
     public void ReceiveDamage(int damage)

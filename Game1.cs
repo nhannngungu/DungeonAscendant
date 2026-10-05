@@ -22,7 +22,10 @@ public class Game1 : Game
     protected override void Initialize()
     {
         Viewport viewport = GraphicsDevice.Viewport;
-        _gameSession = new GameSession(new Vector2(viewport.Width / 2f, viewport.Height / 2f));
+        var arenaBounds = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        _gameSession = new GameSession(
+            new Vector2(viewport.Width / 2f, viewport.Height / 2f),
+            arenaBounds);
 
         base.Initialize();
     }

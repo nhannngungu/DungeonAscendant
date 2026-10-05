@@ -42,7 +42,10 @@ public sealed class Player
         CurrentExperience = 0;
     }
 
-    public void Update(GameTime gameTime, KeyboardState keyboardState)
+    public void Update(
+        GameTime gameTime,
+        KeyboardState keyboardState,
+        Rectangle arenaBounds)
     {
         if (!IsAlive)
             return;
@@ -66,6 +69,15 @@ public sealed class Player
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         Position += movement * MovementSpeed * elapsedSeconds;
+        Position = new Vector2(
+            MathHelper.Clamp(
+                Position.X,
+                arenaBounds.Left + Size.X / 2f,
+                arenaBounds.Right - Size.X / 2f),
+            MathHelper.Clamp(
+                Position.Y,
+                arenaBounds.Top + Size.Y / 2f,
+                arenaBounds.Bottom - Size.Y / 2f));
     }
 
     public void ReceiveDamage(int damage)

@@ -11,79 +11,84 @@ namespace DungeonAscendant.Core;
 /// </summary>
 public sealed class GameSession
 {
+    private readonly Vector2 _playerSpawnPosition;
+    private readonly Rectangle _arenaBounds;
     private KeyboardState _previousKeyboardState;
-    private bool _goblinExperienceAwarded;
 
-    public PlayerCharacter Player { get; }
-    public Goblin Goblin { get; }
-    public MeleeAttack PlayerAttack { get; }
-    public MeleeAttack GoblinAttack { get; }
+    public PlayerCharacter Player { get; private set; }
+    public MeleeAttack PlayerAttack { get; private set; }
+    public EnemyManager Enemies { get; }
+    public int KillCount { get; private set; }
 
-    public GameSession(Vector2 playerSpawnPosition)
+    public GameSession(Vector2 playerSpawnPosition, Rectangle arenaBounds)
     {
-        Player = new PlayerCharacter(playerSpawnPosition);
-        Goblin = new Goblin(
-            playerSpawnPosition + new Vector2(280f, 0f),
-            Player.Level);
-        PlayerAttack = new MeleeAttack();
-        GoblinAttack = new MeleeAttack(
-            range: 50f,
-            cooldownSeconds: 1f);
+        _playerSpawnPosition = playerSpawnPosition;
+        _arenaBounds = arenaBounds;
+        Enemies = new EnemyManager(arenaBounds);
+        RestartRun();
     }
 
     public void Update(GameTime gameTime, KeyboardState keyboardState)
     {
-        Player.Update(gameTime, keyboardState);
+        bool restartPressed = keyboardState.IsKeyDown(Keys.R) &&
+            !_previousKeyboardState.IsKeyDown(Keys.R);
+
+        if (!Player.IsAlive)
+        {
+            if (restartPressed)
+                RestartRun();
+
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
+        Player.Update(gameTime, keyboardState, _arenaBounds);
         PlayerAttack.Update(gameTime);
-        GoblinAttack.Update(gameTime);
 
         bool attackPressed = keyboardState.IsKeyDown(Keys.Space) &&
             !_previousKeyboardState.IsKeyDown(Keys.Space);
 
-        if (Player.IsAlive &&
-            attackPressed &&
-            PlayerAttack.TryPerform(Player.Position, Goblin.Position) &&
-            Goblin.IsAlive)
+        if (attackPressed && PlayerAttack.TryStart())
         {
-            Goblin.ReceiveDamage(Player.MeleeDamage);
+            Goblin target = Enemies.FindNearestTarget(
+                Player.Position,
+                PlayerAttack.Range);
+
+            if (target != null)
+                target.ReceiveDamage(Player.MeleeDamage);
         }
 
-        AwardGoblinExperienceIfDefeated();
-
-        if (Goblin.IsAlive && Player.IsAlive)
-        {
-            float distanceSquared = Vector2.DistanceSquared(
-                Goblin.Position,
-                Player.Position);
-
-            if (distanceSquared <= GoblinAttack.Range * GoblinAttack.Range)
-            {
-                if (GoblinAttack.TryPerform(Goblin.Position, Player.Position))
-                {
-                    Player.ReceiveDamage(Goblin.AttackDamage);
-
-                    if (!Player.IsAlive)
-                        PlayerAttack.Cancel();
-                }
-            }
-            else
-            {
-                Goblin.Update(gameTime, Player.Position, GoblinAttack.Range);
-            }
-        }
+        ProcessDefeatedGoblins();
+        Enemies.UpdateCombatAndAi(gameTime, Player);
 
         if (!Player.IsAlive)
+        {
             PlayerAttack.Cancel();
+        }
+        else
+        {
+            Enemies.UpdateSpawning(gameTime, Player.Position, Player.Level);
+        }
 
         _previousKeyboardState = keyboardState;
     }
 
-    private void AwardGoblinExperienceIfDefeated()
+    private void ProcessDefeatedGoblins()
     {
-        if (Goblin.IsAlive || _goblinExperienceAwarded)
+        int defeatedCount = Enemies.RemoveDefeated(out int experienceReward);
+
+        if (defeatedCount == 0)
             return;
 
-        _goblinExperienceAwarded = true;
-        Player.GainExperience(Goblin.ExperienceReward);
+        Player.GainExperience(experienceReward);
+        KillCount += defeatedCount;
+    }
+
+    private void RestartRun()
+    {
+        Player = new PlayerCharacter(_playerSpawnPosition);
+        PlayerAttack = new MeleeAttack();
+        KillCount = 0;
+        Enemies.Reset(Player.Position, Player.Level);
     }
 }
