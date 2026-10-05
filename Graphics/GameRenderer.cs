@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Core;
+using DungeonAscendant.Enemies;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using PlayerCharacter = DungeonAscendant.Player.Player;
@@ -29,6 +30,7 @@ public sealed class GameRenderer : IDisposable
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawPlayer(gameSession.Player);
+        DrawGoblin(gameSession.Goblin);
         _spriteBatch.End();
     }
 
@@ -63,6 +65,46 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, body, new Color(48, 112, 168));
         _spriteBatch.Draw(_pixel, head, new Color(232, 185, 137));
         _spriteBatch.Draw(_pixel, eye, new Color(30, 25, 27));
+    }
+
+    private void DrawGoblin(Goblin goblin)
+    {
+        Vector2 topLeft = goblin.Position - goblin.Size / 2f;
+
+        Rectangle leftEar = new(
+            (int)topLeft.X,
+            (int)topLeft.Y + 7,
+            8,
+            10);
+        Rectangle rightEar = new(
+            (int)(topLeft.X + goblin.Size.X) - 8,
+            (int)topLeft.Y + 7,
+            8,
+            10);
+        Rectangle body = new(
+            (int)topLeft.X + 7,
+            (int)topLeft.Y + 20,
+            (int)goblin.Size.X - 14,
+            (int)goblin.Size.Y - 20);
+        Rectangle head = new(
+            (int)topLeft.X + 5,
+            (int)topLeft.Y + 3,
+            (int)goblin.Size.X - 10,
+            22);
+        Rectangle leftEye = new(head.X + 5, head.Y + 7, 4, 4);
+        Rectangle rightEye = new(head.Right - 9, head.Y + 7, 4, 4);
+        Rectangle clubHandle = new(body.Right + 1, body.Y + 3, 5, 25);
+        Rectangle clubHead = new(clubHandle.X - 3, clubHandle.Y - 3, 11, 10);
+
+        Color goblinGreen = new(91, 156, 75);
+        _spriteBatch.Draw(_pixel, leftEar, goblinGreen);
+        _spriteBatch.Draw(_pixel, rightEar, goblinGreen);
+        _spriteBatch.Draw(_pixel, clubHandle, new Color(103, 68, 42));
+        _spriteBatch.Draw(_pixel, clubHead, new Color(126, 85, 50));
+        _spriteBatch.Draw(_pixel, body, new Color(104, 69, 47));
+        _spriteBatch.Draw(_pixel, head, goblinGreen);
+        _spriteBatch.Draw(_pixel, leftEye, new Color(225, 50, 45));
+        _spriteBatch.Draw(_pixel, rightEye, new Color(225, 50, 45));
     }
 
     public void Dispose()
