@@ -51,10 +51,7 @@ public sealed class Player
         Facing = FacingDirection.Down;
     }
 
-    public void Update(
-        GameTime gameTime,
-        KeyboardState keyboardState,
-        Rectangle arenaBounds)
+    public void UpdateTimers(GameTime gameTime)
     {
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _invulnerabilityTimeRemaining = MathF.Max(
@@ -64,8 +61,14 @@ public sealed class Player
             0f,
             _hitFeedbackTimeRemaining - elapsedSeconds);
 
+    }
+
+    public Vector2 GetDesiredPosition(
+        GameTime gameTime,
+        KeyboardState keyboardState)
+    {
         if (!IsAlive)
-            return;
+            return Position;
 
         Vector2 movement = Vector2.Zero;
 
@@ -87,16 +90,13 @@ public sealed class Player
             movement.Normalize();
         }
 
-        Position += movement * MovementSpeed * elapsedSeconds;
-        Position = new Vector2(
-            MathHelper.Clamp(
-                Position.X,
-                arenaBounds.Left + Size.X / 2f,
-                arenaBounds.Right - Size.X / 2f),
-            MathHelper.Clamp(
-                Position.Y,
-                arenaBounds.Top + Size.Y / 2f,
-                arenaBounds.Bottom - Size.Y / 2f));
+        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        return Position + movement * MovementSpeed * elapsedSeconds;
+    }
+
+    public void MoveTo(Vector2 position)
+    {
+        Position = position;
     }
 
     public bool ReceiveDamage(int damage)

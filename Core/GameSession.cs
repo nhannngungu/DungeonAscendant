@@ -1,5 +1,7 @@
 using DungeonAscendant.Combat;
+using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
+using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using PlayerCharacter = DungeonAscendant.Player.Player;
@@ -7,30 +9,33 @@ using PlayerCharacter = DungeonAscendant.Player.Player;
 namespace DungeonAscendant.Core;
 
 /// <summary>
-/// Owns the platform-independent game state and update flow.
+/// Owns the platform-independent run state, dungeon, and gameplay update flow.
 /// </summary>
 public sealed class GameSession
 {
     private const float PlayerAttackThickness = 48f;
     private const float PlayerKnockbackDistance = 24f;
 
-    private readonly Vector2 _playerSpawnPosition;
-    private readonly Rectangle _arenaBounds;
+    private readonly DungeonGenerator _dungeonGenerator;
     private KeyboardState _previousKeyboardState;
 
     public PlayerCharacter Player { get; private set; }
     public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
+    public DungeonMap CurrentDungeon { get; private set; }
+    public Camera2D Camera { get; }
     public int KillCount { get; private set; }
     public Rectangle PlayerAttackArea { get; private set; }
     public GameState State { get; private set; }
 
-    public GameSession(Vector2 playerSpawnPosition, Rectangle arenaBounds)
+    public GameSession(Rectangle viewportBounds, int? randomSeed = null)
     {
-        _playerSpawnPosition = playerSpawnPosition;
-        _arenaBounds = arenaBounds;
-        Enemies = new EnemyManager(arenaBounds);
-        ResetRun();
+        _dungeonGenerator = new DungeonGenerator(randomSeed);
+        Enemies = new EnemyManager(randomSeed);
+        Camera = new Camera2D(viewportBounds.Width, viewportBounds.Height);
+        Player = new PlayerCharacter(viewportBounds.Center.ToVector2());
+        PlayerAttack = new MeleeAttack();
+        UpdatePlayerAttackArea();
         State = GameState.Start;
     }
 
@@ -46,7 +51,10 @@ public sealed class GameSession
         if (State == GameState.Start)
         {
             if (startPressed)
+            {
+                ResetRun();
                 State = GameState.Playing;
+            }
 
             _previousKeyboardState = keyboardState;
             return;
@@ -88,9 +96,18 @@ public sealed class GameSession
             return;
         }
 
-        Player.Update(gameTime, keyboardState, _arenaBounds);
+        Player.UpdateTimers(gameTime);
+        Vector2 desiredPosition = Player.GetDesiredPosition(
+            gameTime,
+            keyboardState);
+        Player.MoveTo(DungeonCollision.ResolveMovement(
+            Player.Position,
+            desiredPosition,
+            Player.Size,
+            CurrentDungeon));
+
         PlayerAttack.Update(gameTime);
-        Enemies.UpdateTimers(gameTime);
+        Enemies.UpdateTimers(gameTime, Player.Position, CurrentDungeon);
         UpdatePlayerAttackArea();
 
         bool attackPressed = keyboardState.IsKeyDown(Keys.Space) &&
@@ -100,34 +117,30 @@ public sealed class GameSession
         {
             foreach (Goblin goblin in Enemies.Goblins)
             {
-                if (!goblin.IsAlive || !PlayerAttackArea.Intersects(goblin.Bounds))
+                if (!goblin.IsAlive ||
+                    !PlayerAttackArea.Intersects(goblin.Bounds))
+                {
                     continue;
+                }
 
                 goblin.ReceiveDamage(Player.MeleeDamage);
                 goblin.ApplyKnockback(
                     Player.Position,
                     PlayerKnockbackDistance,
-                    _arenaBounds);
+                    CurrentDungeon);
             }
         }
 
         ProcessDefeatedGoblins();
-        Enemies.UpdateCombatAndAi(gameTime, Player);
+        Enemies.UpdateCombatAndAi(gameTime, Player, CurrentDungeon);
 
         if (!Player.IsAlive)
         {
             PlayerAttack.Cancel();
             State = GameState.GameOver;
         }
-        else
-        {
-            Enemies.UpdateSpawning(
-                gameTime,
-                Player.Position,
-                Player.Level,
-                KillCount);
-        }
 
+        Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
         _previousKeyboardState = keyboardState;
     }
 
@@ -144,11 +157,13 @@ public sealed class GameSession
 
     private void ResetRun()
     {
-        Player = new PlayerCharacter(_playerSpawnPosition);
+        CurrentDungeon = _dungeonGenerator.Generate();
+        Player = new PlayerCharacter(CurrentDungeon.StartRoom.Center);
         PlayerAttack = new MeleeAttack();
         KillCount = 0;
-        Enemies.Reset(Player.Position, Player.Level);
+        Enemies.Reset(CurrentDungeon, Player.Level);
         UpdatePlayerAttackArea();
+        Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
     }
 
     private void UpdatePlayerAttackArea()

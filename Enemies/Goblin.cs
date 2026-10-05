@@ -1,5 +1,7 @@
 using System;
 using DungeonAscendant.Combat;
+using DungeonAscendant.Dungeon;
+using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.Enemies;
@@ -30,6 +32,7 @@ public sealed class Goblin
     public int ExperienceReward { get; }
     public GoblinVariant Variant { get; }
     public bool IsElite { get; }
+    public int RoomId { get; private set; }
     public MeleeAttack Attack { get; }
     public Rectangle Bounds => new(
         (int)(Position.X - Size.X / 2f),
@@ -42,13 +45,15 @@ public sealed class Goblin
         int level = 1,
         GoblinVariant variant = GoblinVariant.Normal,
         bool isElite = false,
-        float detectionRange = 200f)
+        float detectionRange = 200f,
+        int roomId = -1)
     {
         Position = position;
         DetectionRange = detectionRange;
         Level = Math.Max(1, level);
         Variant = variant;
         IsElite = isElite;
+        RoomId = roomId;
 
         int scaledHealth = BaseMaxHealth + (Level - 1) * HealthIncreasePerLevel;
         int scaledDamage = BaseAttackDamage + (Level - 1) * DamageIncreasePerLevel;
@@ -104,7 +109,7 @@ public sealed class Goblin
         GameTime gameTime,
         Vector2 playerPosition,
         float stoppingRange,
-        Rectangle arenaBounds)
+        DungeonMap dungeon)
     {
         if (!IsAlive)
             return;
@@ -125,8 +130,13 @@ public sealed class Goblin
             MovementSpeed * elapsedSeconds,
             distance - stoppingRange);
 
-        Position += direction * movementDistance;
-        ClampToArena(arenaBounds);
+        Vector2 desiredPosition = Position + direction * movementDistance;
+        Position = DungeonCollision.ResolveMovement(
+            Position,
+            desiredPosition,
+            Size,
+            dungeon);
+        UpdateRoom(dungeon);
     }
 
     public void ReceiveDamage(int damage)
@@ -141,7 +151,7 @@ public sealed class Goblin
     public void ApplyKnockback(
         Vector2 sourcePosition,
         float distance,
-        Rectangle arenaBounds)
+        DungeonMap dungeon)
     {
         if (!IsAlive || distance <= 0f)
             return;
@@ -153,20 +163,20 @@ public sealed class Goblin
         else
             direction.Normalize();
 
-        Position += direction * distance;
-        ClampToArena(arenaBounds);
+        Vector2 desiredPosition = Position + direction * distance;
+        Position = DungeonCollision.ResolveMovement(
+            Position,
+            desiredPosition,
+            Size,
+            dungeon);
+        UpdateRoom(dungeon);
     }
 
-    private void ClampToArena(Rectangle arenaBounds)
+    private void UpdateRoom(DungeonMap dungeon)
     {
-        Position = new Vector2(
-            MathHelper.Clamp(
-                Position.X,
-                arenaBounds.Left + Size.X / 2f,
-                arenaBounds.Right - Size.X / 2f),
-            MathHelper.Clamp(
-                Position.Y,
-                arenaBounds.Top + Size.Y / 2f,
-                arenaBounds.Bottom - Size.Y / 2f));
+        DungeonRoom room = dungeon.FindRoomContaining(Position);
+
+        if (room != null)
+            RoomId = room.Id;
     }
 }

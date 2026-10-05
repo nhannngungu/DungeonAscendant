@@ -4,11 +4,11 @@ DungeonAscendant is a code-first 2D medieval fantasy progression action RPG buil
 
 ## Overview
 
-Fight through a continuously replenished arena of Goblins, earn experience, grow stronger, and survive increasingly dangerous enemy variants. The current prototype focuses on a compact, repeatable combat and progression loop built without external art assets.
+Explore a procedurally generated dungeon, fight room-based groups of Goblins, earn experience, and grow stronger. The current prototype combines the original combat and progression loop with connected rooms, corridors, collision, and a following camera, all without external art assets.
 
-## Current Version: v0.1.0 Core Gameplay
+## Current Version: v0.5.0 Dungeon & Progression
 
-Version 0.1.0 establishes the complete core gameplay foundation: movement, directional combat, enemies, progression, run states, death, and restart.
+The first v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon while preserving the v0.1.0 movement, combat, progression, and run-state foundations.
 
 ## Current Features
 
@@ -18,12 +18,15 @@ Version 0.1.0 establishes the complete core gameplay foundation: movement, direc
 - Multiple independently acting Goblins with attack cooldowns
 - Normal, Fast, and Brute Goblin variants
 - Elite Goblins with improved stats and rewards
-- Randomized bounded spawning and enemy replacement
+- Procedural generation of 7-10 non-overlapping rooms with connected corridors
+- Distinct Start, Normal, Enemy, and Exit rooms
+- Dungeon-wall collision and a world-space following camera
+- Room-based enemy placement and local enemy activation
 - Experience, leveling, stat growth, and kill tracking
 - Player-level enemy scaling
 - Start, Playing, Paused, and Game Over states
-- In-session run restart
-- Code-rendered arena, characters, effects, overlays, and HUD
+- In-session restart with a newly generated dungeon
+- Code-rendered dungeon, characters, effects, overlays, and HUD
 
 ## Controls
 
@@ -37,7 +40,7 @@ Version 0.1.0 establishes the complete core gameplay foundation: movement, direc
 
 ## Progression Loop
 
-Fight Goblins, earn experience from each kill, level up, increase maximum health and melee damage, and face newly spawned enemies scaled to the current Player level. Elite enemies periodically add a stronger challenge and grant increased experience.
+Fight Goblins, earn experience from each kill, level up, and increase maximum health and melee damage. Dungeon enemies are scaled when the run is created, and a distant Enemy room contains an Elite challenge with increased rewards.
 
 ## Enemy Types
 
@@ -55,7 +58,7 @@ Fight Goblins, earn experience from each kill, level up, increase maximum health
 
 ## Code-Only Graphics Approach
 
-All gameplay visuals are assembled at runtime from solid-color primitives. Characters, weapons, hit effects, the arena, HUD, and state overlays do not depend on sprite sheets, external images, or font assets. This keeps the prototype lightweight and supports the long-term portability goal.
+All gameplay visuals are assembled at runtime from solid-color primitives. Characters, weapons, hit effects, dungeon geometry, HUD, and state overlays do not depend on sprite sheets, external images, or font assets. This keeps the prototype lightweight and supports the long-term portability goal.
 
 ## Version Roadmap
 

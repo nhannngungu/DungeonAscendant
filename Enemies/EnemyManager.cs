@@ -1,63 +1,75 @@
 using System;
 using System.Collections.Generic;
+using DungeonAscendant.Dungeon;
 using Microsoft.Xna.Framework;
 using PlayerCharacter = DungeonAscendant.Player.Player;
 
 namespace DungeonAscendant.Enemies;
 
 /// <summary>
-/// Owns the active Goblin collection, enemy updates, and replacement spawning.
+/// Owns dungeon enemy placement, room activation, and enemy updates.
 /// </summary>
 public sealed class EnemyManager
 {
-    private const int TargetLivingCount = 3;
-    private const float RespawnDelaySeconds = 1.5f;
-    private const float MinimumPlayerSpawnDistance = 180f;
-    private const float MinimumEnemySpawnDistance = 72f;
-    private const float SpawnEdgeInset = 32f;
-    private const int SpawnAttempts = 24;
+    private const float ActivationDistance = 260f;
+    private const float SpawnMargin = 44f;
+    private const float MinimumEnemySpawnDistance = 64f;
+    private const int SpawnAttempts = 20;
 
-    private readonly Rectangle _arenaBounds;
     private readonly List<Goblin> _goblins = new();
     private readonly Random _random;
-    private float _respawnTimeRemaining = RespawnDelaySeconds;
-    private int _nextEliteKillCount;
-    private bool _elitePending;
 
     public IReadOnlyList<Goblin> Goblins => _goblins;
-    public int NextEliteKillCount => _nextEliteKillCount;
 
-    public EnemyManager(Rectangle arenaBounds, int? randomSeed = null)
+    public EnemyManager(int? randomSeed = null)
     {
-        _arenaBounds = arenaBounds;
         _random = randomSeed.HasValue
             ? new Random(randomSeed.Value)
             : new Random();
     }
 
-    public void Reset(Vector2 playerPosition, int playerLevel)
+    public void Reset(DungeonMap dungeon, int playerLevel)
     {
         _goblins.Clear();
-        _respawnTimeRemaining = RespawnDelaySeconds;
-        _elitePending = false;
-        _nextEliteKillCount = _random.Next(8, 13);
+        DungeonRoom eliteRoom = FindEliteRoom(dungeon);
 
-        while (_goblins.Count < TargetLivingCount)
-            SpawnGoblin(playerPosition, playerLevel, isElite: false);
+        foreach (DungeonRoom room in dungeon.Rooms)
+        {
+            int enemyCount = GetEnemyCount(room.Type);
+
+            for (int index = 0; index < enemyCount; index++)
+            {
+                bool isElite = room == eliteRoom && index == 0;
+                SpawnGoblin(room, playerLevel, isElite);
+            }
+        }
     }
 
-    public void UpdateTimers(GameTime gameTime)
-    {
-        foreach (Goblin goblin in _goblins)
-            goblin.UpdateTimers(gameTime);
-    }
-
-    public void UpdateCombatAndAi(GameTime gameTime, PlayerCharacter player)
+    public void UpdateTimers(
+        GameTime gameTime,
+        Vector2 playerPosition,
+        DungeonMap dungeon)
     {
         foreach (Goblin goblin in _goblins)
         {
-            if (!goblin.IsAlive || !player.IsAlive)
+            if (IsActive(goblin, playerPosition, dungeon))
+                goblin.UpdateTimers(gameTime);
+        }
+    }
+
+    public void UpdateCombatAndAi(
+        GameTime gameTime,
+        PlayerCharacter player,
+        DungeonMap dungeon)
+    {
+        foreach (Goblin goblin in _goblins)
+        {
+            if (!goblin.IsAlive ||
+                !player.IsAlive ||
+                !IsActive(goblin, player.Position, dungeon))
+            {
                 continue;
+            }
 
             float distanceSquared = Vector2.DistanceSquared(
                 goblin.Position,
@@ -74,7 +86,7 @@ public sealed class EnemyManager
                     gameTime,
                     player.Position,
                     goblin.Attack.Range,
-                    _arenaBounds);
+                    dungeon);
             }
         }
     }
@@ -99,67 +111,94 @@ public sealed class EnemyManager
         return defeatedCount;
     }
 
-    public void UpdateSpawning(
-        GameTime gameTime,
+    public bool IsActive(
+        Goblin goblin,
         Vector2 playerPosition,
-        int playerLevel,
-        int killCount)
+        DungeonMap dungeon)
     {
-        UpdateEliteSchedule(killCount);
+        DungeonRoom playerRoom = dungeon.FindRoomContaining(playerPosition);
 
-        if (_goblins.Count >= TargetLivingCount)
-        {
-            _respawnTimeRemaining = RespawnDelaySeconds;
-            return;
-        }
+        if (playerRoom != null && playerRoom.Id == goblin.RoomId)
+            return true;
 
-        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        _respawnTimeRemaining -= elapsedSeconds;
-
-        if (_respawnTimeRemaining > 0f)
-            return;
-
-        bool spawnElite = _elitePending && !HasLivingElite();
-        SpawnGoblin(playerPosition, playerLevel, spawnElite);
-
-        if (spawnElite)
-            _elitePending = false;
-
-        _respawnTimeRemaining = RespawnDelaySeconds;
+        DungeonRoom enemyRoom = FindRoomById(dungeon, goblin.RoomId);
+        return enemyRoom != null &&
+            DistanceSquaredToRectangle(playerPosition, enemyRoom.Bounds) <=
+            ActivationDistance * ActivationDistance;
     }
 
-    private void UpdateEliteSchedule(int killCount)
+    private int GetEnemyCount(RoomType roomType)
     {
-        while (killCount >= _nextEliteKillCount)
+        return roomType switch
         {
-            _elitePending = true;
-            _nextEliteKillCount += _random.Next(8, 13);
-        }
-    }
-
-    private bool HasLivingElite()
-    {
-        foreach (Goblin goblin in _goblins)
-        {
-            if (goblin.IsAlive && goblin.IsElite)
-                return true;
-        }
-
-        return false;
+            RoomType.Start => 0,
+            RoomType.Enemy => _random.Next(2, 5),
+            RoomType.Exit => _random.Next(1, 3),
+            _ => _random.Next(0, 3)
+        };
     }
 
     private void SpawnGoblin(
-        Vector2 playerPosition,
+        DungeonRoom room,
         int playerLevel,
         bool isElite)
     {
-        Vector2 spawnPosition = SelectSpawnPosition(playerPosition);
+        Vector2 spawnPosition = SelectSpawnPosition(room.Bounds);
         GoblinVariant variant = SelectVariant(playerLevel);
         _goblins.Add(new Goblin(
             spawnPosition,
             playerLevel,
             variant,
-            isElite));
+            isElite,
+            roomId: room.Id));
+    }
+
+    private Vector2 SelectSpawnPosition(Rectangle roomBounds)
+    {
+        Vector2 bestCandidate = roomBounds.Center.ToVector2();
+        float bestNearestDistanceSquared = -1f;
+
+        for (int attempt = 0; attempt < SpawnAttempts; attempt++)
+        {
+            Vector2 candidate = new(
+                MathHelper.Lerp(
+                    roomBounds.Left + SpawnMargin,
+                    roomBounds.Right - SpawnMargin,
+                    (float)_random.NextDouble()),
+                MathHelper.Lerp(
+                    roomBounds.Top + SpawnMargin,
+                    roomBounds.Bottom - SpawnMargin,
+                    (float)_random.NextDouble()));
+            float nearestDistanceSquared = GetNearestEnemyDistanceSquared(candidate);
+
+            if (nearestDistanceSquared > bestNearestDistanceSquared)
+            {
+                bestCandidate = candidate;
+                bestNearestDistanceSquared = nearestDistanceSquared;
+            }
+
+            if (nearestDistanceSquared >=
+                MinimumEnemySpawnDistance * MinimumEnemySpawnDistance)
+            {
+                return candidate;
+            }
+        }
+
+        return bestCandidate;
+    }
+
+    private float GetNearestEnemyDistanceSquared(Vector2 candidate)
+    {
+        float nearestDistanceSquared = float.MaxValue;
+
+        foreach (Goblin goblin in _goblins)
+        {
+            nearestDistanceSquared = MathF.Min(
+                nearestDistanceSquared,
+                Vector2.DistanceSquared(candidate, goblin.Position));
+        }
+
+        return nearestDistanceSquared;
     }
 
     private GoblinVariant SelectVariant(int playerLevel)
@@ -178,81 +217,52 @@ public sealed class EnemyManager
         return GoblinVariant.Normal;
     }
 
-    private Vector2 SelectSpawnPosition(Vector2 playerPosition)
+    private static DungeonRoom FindEliteRoom(DungeonMap dungeon)
     {
-        float minimumPlayerDistanceSquared =
-            MinimumPlayerSpawnDistance * MinimumPlayerSpawnDistance;
-        float minimumEnemyDistanceSquared =
-            MinimumEnemySpawnDistance * MinimumEnemySpawnDistance;
-        Vector2 bestCandidate = CreateRandomSpawnCandidate();
-        float bestScore = -1f;
+        DungeonRoom result = dungeon.ExitRoom;
+        float farthestDistanceSquared = -1f;
 
-        for (int attempt = 0; attempt < SpawnAttempts; attempt++)
+        foreach (DungeonRoom room in dungeon.Rooms)
         {
-            Vector2 candidate = CreateRandomSpawnCandidate();
-            float playerDistanceSquared = Vector2.DistanceSquared(
-                candidate,
-                playerPosition);
-            float nearestEnemyDistanceSquared = GetNearestEnemyDistanceSquared(candidate);
-            float score = playerDistanceSquared + nearestEnemyDistanceSquared * 0.5f;
+            if (room.Type != RoomType.Enemy)
+                continue;
 
-            if (score > bestScore)
-            {
-                bestCandidate = candidate;
-                bestScore = score;
-            }
-
-            if (playerDistanceSquared >= minimumPlayerDistanceSquared &&
-                nearestEnemyDistanceSquared >= minimumEnemyDistanceSquared)
-            {
-                return candidate;
-            }
-        }
-
-        return bestCandidate;
-    }
-
-    private float GetNearestEnemyDistanceSquared(Vector2 candidate)
-    {
-        if (_goblins.Count == 0)
-            return MinimumEnemySpawnDistance * MinimumEnemySpawnDistance;
-
-        float nearestDistanceSquared = float.MaxValue;
-
-        foreach (Goblin goblin in _goblins)
-        {
             float distanceSquared = Vector2.DistanceSquared(
-                candidate,
-                goblin.Position);
-            nearestDistanceSquared = MathF.Min(
-                nearestDistanceSquared,
-                distanceSquared);
+                room.Center,
+                dungeon.StartRoom.Center);
+
+            if (distanceSquared > farthestDistanceSquared)
+            {
+                result = room;
+                farthestDistanceSquared = distanceSquared;
+            }
         }
 
-        return nearestDistanceSquared;
+        return result;
     }
 
-    private Vector2 CreateRandomSpawnCandidate()
+    private static DungeonRoom FindRoomById(DungeonMap dungeon, int roomId)
     {
-        float left = _arenaBounds.Left + SpawnEdgeInset;
-        float right = _arenaBounds.Right - SpawnEdgeInset;
-        float top = _arenaBounds.Top + SpawnEdgeInset;
-        float bottom = _arenaBounds.Bottom - SpawnEdgeInset;
-        float horizontalPosition = MathHelper.Lerp(
-            left,
-            right,
-            (float)_random.NextDouble());
-        float verticalPosition = MathHelper.Lerp(
-            top,
-            bottom,
-            (float)_random.NextDouble());
-
-        return _random.Next(4) switch
+        foreach (DungeonRoom room in dungeon.Rooms)
         {
-            0 => new Vector2(horizontalPosition, top),
-            1 => new Vector2(right, verticalPosition),
-            2 => new Vector2(horizontalPosition, bottom),
-            _ => new Vector2(left, verticalPosition)
-        };
+            if (room.Id == roomId)
+                return room;
+        }
+
+        return null;
+    }
+
+    private static float DistanceSquaredToRectangle(
+        Vector2 point,
+        Rectangle rectangle)
+    {
+        float horizontalDistance = MathF.Max(
+            rectangle.Left - point.X,
+            MathF.Max(0f, point.X - rectangle.Right));
+        float verticalDistance = MathF.Max(
+            rectangle.Top - point.Y,
+            MathF.Max(0f, point.Y - rectangle.Bottom));
+        return horizontalDistance * horizontalDistance +
+            verticalDistance * verticalDistance;
     }
 }

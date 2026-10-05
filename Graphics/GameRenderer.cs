@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Core;
+using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Player;
 using Microsoft.Xna.Framework;
@@ -27,17 +28,21 @@ public sealed class GameRenderer : IDisposable
 
     public void Draw(GameSession gameSession)
     {
-        _graphicsDevice.Clear(new Color(18, 22, 29));
-
-        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        DrawArena();
+        _graphicsDevice.Clear(new Color(9, 11, 16));
 
         if (gameSession.State == GameState.Start)
         {
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            DrawArena();
             DrawStartScreen();
             _spriteBatch.End();
             return;
         }
+
+        _spriteBatch.Begin(
+            samplerState: SamplerState.PointClamp,
+            transformMatrix: gameSession.Camera.Transform);
+        DrawDungeon(gameSession.CurrentDungeon, gameSession.Camera.ViewBounds);
 
         if (gameSession.PlayerAttack.IsActive)
             DrawAttackArea(gameSession.PlayerAttackArea);
@@ -46,10 +51,16 @@ public sealed class GameRenderer : IDisposable
 
         foreach (Goblin goblin in gameSession.Enemies.Goblins)
         {
-            if (goblin.IsAlive)
+            if (goblin.IsAlive &&
+                goblin.Bounds.Intersects(gameSession.Camera.ViewBounds))
+            {
                 DrawGoblin(goblin);
+            }
         }
 
+        _spriteBatch.End();
+
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawHudPanel();
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
@@ -60,6 +71,106 @@ public sealed class GameRenderer : IDisposable
             DrawGameOverOverlay();
 
         _spriteBatch.End();
+    }
+
+    private void DrawDungeon(DungeonMap dungeon, Rectangle cameraBounds)
+    {
+        Rectangle visibleBounds = cameraBounds;
+        visibleBounds.Inflate(80, 80);
+        Color wallColor = new(48, 43, 46);
+        Color corridorFloor = new(45, 50, 52);
+
+        foreach (Rectangle corridor in dungeon.Corridors)
+        {
+            if (!corridor.Intersects(visibleBounds))
+                continue;
+
+            Rectangle wall = corridor;
+            wall.Inflate(8, 8);
+            _spriteBatch.Draw(_pixel, wall, wallColor);
+        }
+
+        foreach (DungeonRoom room in dungeon.Rooms)
+        {
+            if (!room.Bounds.Intersects(visibleBounds))
+                continue;
+
+            Rectangle wall = room.Bounds;
+            wall.Inflate(10, 10);
+            _spriteBatch.Draw(_pixel, wall, wallColor);
+            DrawRectangleOutline(wall, 3, new Color(82, 71, 71));
+        }
+
+        foreach (Rectangle corridor in dungeon.Corridors)
+        {
+            if (!corridor.Intersects(visibleBounds))
+                continue;
+
+            _spriteBatch.Draw(_pixel, corridor, corridorFloor);
+            DrawFloorGrid(corridor, visibleBounds, new Color(72, 77, 78, 75));
+        }
+
+        foreach (DungeonRoom room in dungeon.Rooms)
+        {
+            if (!room.Bounds.Intersects(visibleBounds))
+                continue;
+
+            Color floorColor = room.Type switch
+            {
+                RoomType.Start => new Color(43, 55, 53),
+                RoomType.Enemy => new Color(51, 45, 46),
+                RoomType.Exit => new Color(54, 49, 42),
+                _ => new Color(47, 51, 52)
+            };
+
+            _spriteBatch.Draw(_pixel, room.Bounds, floorColor);
+            DrawFloorGrid(room.Bounds, visibleBounds, new Color(76, 82, 82, 80));
+
+            if (room.Type == RoomType.Start)
+                DrawStartMarker(room.Center);
+            else if (room.Type == RoomType.Exit)
+                DrawExitMarker(room.Center);
+        }
+    }
+
+    private void DrawFloorGrid(
+        Rectangle area,
+        Rectangle visibleBounds,
+        Color color)
+    {
+        const int tileSize = 48;
+        int firstX = Math.Max(area.Left, visibleBounds.Left);
+        int firstY = Math.Max(area.Top, visibleBounds.Top);
+        firstX = area.Left + ((firstX - area.Left) / tileSize) * tileSize;
+        firstY = area.Top + ((firstY - area.Top) / tileSize) * tileSize;
+        int right = Math.Min(area.Right, visibleBounds.Right);
+        int bottom = Math.Min(area.Bottom, visibleBounds.Bottom);
+
+        for (int x = firstX; x < right; x += tileSize)
+            _spriteBatch.Draw(_pixel, new Rectangle(x, area.Top, 1, area.Height), color);
+
+        for (int y = firstY; y < bottom; y += tileSize)
+            _spriteBatch.Draw(_pixel, new Rectangle(area.Left, y, area.Width, 1), color);
+    }
+
+    private void DrawStartMarker(Vector2 center)
+    {
+        var outer = new Rectangle((int)center.X - 25, (int)center.Y - 25, 50, 50);
+        var inner = new Rectangle((int)center.X - 17, (int)center.Y - 17, 34, 34);
+        DrawRectangleOutline(outer, 3, new Color(76, 169, 126, 190));
+        DrawRectangleOutline(inner, 2, new Color(111, 205, 157, 150));
+        _spriteBatch.Draw(_pixel, new Rectangle((int)center.X - 3, (int)center.Y - 13, 6, 26), new Color(128, 218, 169, 165));
+        _spriteBatch.Draw(_pixel, new Rectangle((int)center.X - 13, (int)center.Y - 3, 26, 6), new Color(128, 218, 169, 165));
+    }
+
+    private void DrawExitMarker(Vector2 center)
+    {
+        var frame = new Rectangle((int)center.X - 28, (int)center.Y - 34, 56, 68);
+        var doorway = new Rectangle(frame.X + 9, frame.Y + 10, frame.Width - 18, frame.Height - 10);
+        _spriteBatch.Draw(_pixel, frame, new Color(136, 104, 48, 205));
+        _spriteBatch.Draw(_pixel, doorway, new Color(30, 21, 43));
+        DrawRectangleOutline(frame, 3, new Color(226, 190, 85));
+        _spriteBatch.Draw(_pixel, new Rectangle(doorway.Center.X - 3, doorway.Center.Y - 3, 6, 6), new Color(224, 185, 72));
     }
 
     private void DrawArena()
