@@ -32,7 +32,9 @@ public sealed class GameRenderer : IDisposable
         DrawPlayer(gameSession.Player, gameSession.PlayerAttack.IsActive);
 
         if (gameSession.Goblin.IsAlive)
-            DrawGoblin(gameSession.Goblin);
+            DrawGoblin(gameSession.Goblin, gameSession.GoblinAttack.IsActive);
+
+        DrawPlayerHealth(gameSession.Player);
 
         _spriteBatch.End();
     }
@@ -71,9 +73,10 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, eye, new Color(30, 25, 27));
     }
 
-    private void DrawGoblin(Goblin goblin)
+    private void DrawGoblin(Goblin goblin, bool isAttacking)
     {
         Vector2 topLeft = goblin.Position - goblin.Size / 2f;
+        int clubLength = isAttacking ? 39 : 25;
 
         Rectangle leftEar = new(
             (int)topLeft.X,
@@ -97,8 +100,12 @@ public sealed class GameRenderer : IDisposable
             22);
         Rectangle leftEye = new(head.X + 5, head.Y + 7, 4, 4);
         Rectangle rightEye = new(head.Right - 9, head.Y + 7, 4, 4);
-        Rectangle clubHandle = new(body.Right + 1, body.Y + 3, 5, 25);
-        Rectangle clubHead = new(clubHandle.X - 3, clubHandle.Y - 3, 11, 10);
+        Rectangle clubHandle = new(body.Right + 1, body.Y + 3, 5, clubLength);
+        Rectangle clubHead = new(
+            clubHandle.X - 3,
+            clubHandle.Bottom - 8,
+            11,
+            10);
 
         Color goblinGreen = new(91, 156, 75);
         _spriteBatch.Draw(_pixel, leftEar, goblinGreen);
@@ -109,6 +116,36 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, head, goblinGreen);
         _spriteBatch.Draw(_pixel, leftEye, new Color(225, 50, 45));
         _spriteBatch.Draw(_pixel, rightEye, new Color(225, 50, 45));
+    }
+
+    private void DrawPlayerHealth(PlayerCharacter player)
+    {
+        const int barX = 20;
+        const int barY = 20;
+        const int barWidth = 220;
+        const int barHeight = 18;
+        const int borderWidth = 2;
+
+        float healthRatio = player.CurrentHealth / (float)player.MaxHealth;
+        int fillWidth = (int)((barWidth - borderWidth * 2) * healthRatio);
+
+        Rectangle border = new(barX, barY, barWidth, barHeight);
+        Rectangle background = new(
+            barX + borderWidth,
+            barY + borderWidth,
+            barWidth - borderWidth * 2,
+            barHeight - borderWidth * 2);
+        Rectangle health = new(
+            background.X,
+            background.Y,
+            fillWidth,
+            background.Height);
+
+        _spriteBatch.Draw(_pixel, border, new Color(225, 225, 225));
+        _spriteBatch.Draw(_pixel, background, new Color(62, 25, 30));
+
+        if (fillWidth > 0)
+            _spriteBatch.Draw(_pixel, health, new Color(196, 48, 58));
     }
 
     public void Dispose()

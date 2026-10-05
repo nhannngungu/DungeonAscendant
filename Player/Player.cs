@@ -1,3 +1,4 @@
+using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
@@ -11,16 +12,27 @@ public sealed class Player
     public Vector2 Position { get; private set; }
     public float MovementSpeed { get; }
     public Vector2 Size { get; }
+    public int MaxHealth { get; }
+    public int CurrentHealth { get; private set; }
+    public bool IsAlive => CurrentHealth > 0;
 
-    public Player(Vector2 position, float movementSpeed = 220f)
+    public Player(
+        Vector2 position,
+        float movementSpeed = 220f,
+        int maxHealth = 100)
     {
         Position = position;
         MovementSpeed = movementSpeed;
         Size = new Vector2(40f, 56f);
+        MaxHealth = maxHealth;
+        CurrentHealth = MaxHealth;
     }
 
     public void Update(GameTime gameTime, KeyboardState keyboardState)
     {
+        if (!IsAlive)
+            return;
+
         Vector2 movement = Vector2.Zero;
 
         if (keyboardState.IsKeyDown(Keys.W) || keyboardState.IsKeyDown(Keys.Up))
@@ -40,5 +52,13 @@ public sealed class Player
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         Position += movement * MovementSpeed * elapsedSeconds;
+    }
+
+    public void ReceiveDamage(int damage)
+    {
+        if (!IsAlive || damage <= 0)
+            return;
+
+        CurrentHealth = Math.Max(0, CurrentHealth - damage);
     }
 }

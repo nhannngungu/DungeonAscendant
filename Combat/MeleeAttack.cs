@@ -1,5 +1,4 @@
 using System;
-using DungeonAscendant.Enemies;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.Combat;
@@ -11,15 +10,22 @@ public sealed class MeleeAttack
 {
     private const float FeedbackDurationSeconds = 0.12f;
     private float _feedbackTimeRemaining;
+    private float _cooldownTimeRemaining;
 
     public int Damage { get; }
     public float Range { get; }
+    public float CooldownSeconds { get; }
     public bool IsActive => _feedbackTimeRemaining > 0f;
+    public bool IsReady => _cooldownTimeRemaining <= 0f;
 
-    public MeleeAttack(int damage = 25, float range = 75f)
+    public MeleeAttack(
+        int damage = 25,
+        float range = 75f,
+        float cooldownSeconds = 0f)
     {
         Damage = damage;
         Range = range;
+        CooldownSeconds = cooldownSeconds;
     }
 
     public void Update(GameTime gameTime)
@@ -28,19 +34,25 @@ public sealed class MeleeAttack
         _feedbackTimeRemaining = MathF.Max(
             0f,
             _feedbackTimeRemaining - elapsedSeconds);
+        _cooldownTimeRemaining = MathF.Max(
+            0f,
+            _cooldownTimeRemaining - elapsedSeconds);
     }
 
-    public bool TryHit(Vector2 attackerPosition, Goblin target)
+    public bool TryPerform(Vector2 attackerPosition, Vector2 targetPosition)
     {
-        _feedbackTimeRemaining = FeedbackDurationSeconds;
-
-        if (!target.IsAlive ||
-            Vector2.DistanceSquared(attackerPosition, target.Position) > Range * Range)
-        {
+        if (!IsReady)
             return false;
-        }
 
-        target.ReceiveDamage(Damage);
-        return true;
+        _feedbackTimeRemaining = FeedbackDurationSeconds;
+        _cooldownTimeRemaining = CooldownSeconds;
+
+        return Vector2.DistanceSquared(attackerPosition, targetPosition) <=
+            Range * Range;
+    }
+
+    public void Cancel()
+    {
+        _feedbackTimeRemaining = 0f;
     }
 }

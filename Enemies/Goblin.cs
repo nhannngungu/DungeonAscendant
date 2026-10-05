@@ -8,8 +8,6 @@ namespace DungeonAscendant.Enemies;
 /// </summary>
 public sealed class Goblin
 {
-    private const float StopDistance = 8f;
-
     public Vector2 Position { get; private set; }
     public Vector2 Size { get; }
     public float MovementSpeed { get; }
@@ -32,7 +30,10 @@ public sealed class Goblin
         CurrentHealth = MaxHealth;
     }
 
-    public void Update(GameTime gameTime, Vector2 playerPosition)
+    public void Update(
+        GameTime gameTime,
+        Vector2 playerPosition,
+        float stoppingRange)
     {
         if (!IsAlive)
             return;
@@ -41,7 +42,7 @@ public sealed class Goblin
         float distanceSquared = toPlayer.LengthSquared();
 
         if (distanceSquared > DetectionRange * DetectionRange ||
-            distanceSquared <= StopDistance * StopDistance)
+            distanceSquared <= stoppingRange * stoppingRange)
         {
             return;
         }
@@ -51,7 +52,7 @@ public sealed class Goblin
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         float movementDistance = MathF.Min(
             MovementSpeed * elapsedSeconds,
-            distance - StopDistance);
+            distance - stoppingRange);
 
         Position += direction * movementDistance;
     }
