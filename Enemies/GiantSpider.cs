@@ -57,7 +57,9 @@ public sealed class GiantSpider : Enemy
         GameTime gameTime,
         PlayerCharacter player,
         DungeonMap dungeon,
-        ProjectileManager projectiles)
+        ProjectileManager projectiles,
+        RootHazardManager rootHazards,
+        EnemyManager enemies)
     {
         if (!IsPlayerDetected(player.Position))
             return;
@@ -86,7 +88,7 @@ public sealed class GiantSpider : Enemy
         if (distance <= Attack.Range)
         {
             if (Attack.TryStart())
-                player.ReceiveDamage(AttackDamage);
+                player.ReceiveDamage(EffectiveAttackDamage);
 
             return;
         }

@@ -4,14 +4,20 @@ public sealed class RegionDefinition
 {
     public static RegionDefinition WildForest { get; } = new(
         RegionType.WildForest,
+        RegionBossType.AncientTreant,
         isImplemented: true);
 
     public RegionType Type { get; }
+    public RegionBossType BossType { get; }
     public bool IsImplemented { get; }
 
-    private RegionDefinition(RegionType type, bool isImplemented)
+    private RegionDefinition(
+        RegionType type,
+        RegionBossType bossType,
+        bool isImplemented)
     {
         Type = type;
+        BossType = bossType;
         IsImplemented = isImplemented;
     }
 
@@ -19,6 +25,9 @@ public sealed class RegionDefinition
     {
         return type == RegionType.WildForest
             ? WildForest
-            : new RegionDefinition(type, isImplemented: false);
+            : new RegionDefinition(
+                type,
+                RegionBossType.AncientTreant,
+                isImplemented: false);
     }
 }

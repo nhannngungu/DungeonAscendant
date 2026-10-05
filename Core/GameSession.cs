@@ -31,9 +31,10 @@ public sealed class GameSession
     public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
     public ProjectileManager Projectiles { get; }
+    public RootHazardManager RootHazards { get; }
     public LootManager Loot { get; }
     public TreasureChest Chest { get; private set; }
-    public GoblinWarlord Boss { get; private set; }
+    public AncientTreant Boss { get; private set; }
     public DungeonMap CurrentDungeon { get; private set; }
     public Camera2D Camera { get; }
     public int KillCount { get; private set; }
@@ -58,6 +59,7 @@ public sealed class GameSession
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         Enemies = new EnemyManager(randomSeed);
         Projectiles = new ProjectileManager();
+        RootHazards = new RootHazardManager();
         Loot = new LootManager(randomSeed);
         Camera = new Camera2D(viewportBounds.Width, viewportBounds.Height);
         Player = new PlayerCharacter(viewportBounds.Center.ToVector2());
@@ -142,6 +144,7 @@ public sealed class GameSession
         {
             PlayerAttack.Cancel();
             Projectiles.Clear();
+            RootHazards.Clear();
             Player.ClearTemporaryStatus();
             State = GameState.GameOver;
             _previousKeyboardState = keyboardState;
@@ -181,8 +184,8 @@ public sealed class GameSession
         {
             foreach (Enemy enemy in Enemies.Enemies)
             {
-                if (!enemy.IsAlive ||
-                    !PlayerAttackArea.Intersects(enemy.Bounds))
+                if (!enemy.CanBeTargeted ||
+                    !PlayerAttackArea.Intersects(enemy.MeleeTargetBounds))
                 {
                     continue;
                 }
@@ -210,18 +213,22 @@ public sealed class GameSession
             gameTime,
             Player,
             CurrentDungeon,
-            Projectiles);
+            Projectiles,
+            RootHazards);
         Projectiles.Update(gameTime, Player, CurrentDungeon);
+        RootHazards.Update(gameTime, Player);
         Boss.Update(
             gameTime,
             Player,
             CurrentDungeon,
-            CurrentDungeon.BossRoom);
+            CurrentDungeon.BossRoom,
+            RootHazards);
 
         if (!Player.IsAlive)
         {
             PlayerAttack.Cancel();
             Projectiles.Clear();
+            RootHazards.Clear();
             Player.ClearTemporaryStatus();
             IsInventoryOpen = false;
             State = GameState.GameOver;
@@ -244,12 +251,17 @@ public sealed class GameSession
 
         foreach (Enemy enemy in _defeatedEnemies)
         {
-            Loot.TryCreateDrop(
-                enemy,
-                Player.Level,
-                DungeonDepth,
-                WorldTier,
-                CurrentDungeon);
+            RootHazards.RemoveOwnedBy(enemy);
+
+            if (enemy.CanDropLoot)
+            {
+                Loot.TryCreateDrop(
+                    enemy,
+                    Player.Level,
+                    DungeonDepth,
+                    WorldTier,
+                    CurrentDungeon);
+            }
         }
 
         KillCount += defeatedCount;
@@ -293,6 +305,7 @@ public sealed class GameSession
         PlayerAttack = new MeleeAttack();
         Player.ClearTemporaryStatus();
         Projectiles.Clear();
+        RootHazards.Clear();
         Loot.Reset();
         int enemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level,
@@ -306,15 +319,23 @@ public sealed class GameSession
         Chest = new TreasureChest(
             CurrentDungeon.TreasureRoom.Center,
             CurrentDungeon.TreasureRoom.Id);
-        Boss = new GoblinWarlord(
+        Boss = CreateRegionBoss();
+        BossDefeated = false;
+        UpdatePlayerAttackArea();
+        Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
+    }
+
+    private AncientTreant CreateRegionBoss()
+    {
+        if (Region.BossType != RegionBossType.AncientTreant)
+            throw new System.NotSupportedException("Region Boss is not implemented.");
+
+        return new AncientTreant(
             CurrentDungeon.BossRoom.Center,
             CurrentDungeon.BossRoom.Id,
             Player.Level,
             DungeonDepth,
             WorldTier);
-        BossDefeated = false;
-        UpdatePlayerAttackArea();
-        Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
     }
 
     private bool HandleWorldInteraction()
@@ -354,6 +375,7 @@ public sealed class GameSession
             return;
 
         Player.GainExperience(Boss.ExperienceReward);
+        RootHazards.Clear();
         Loot.CreateBossDrop(
             Boss.Position,
             Boss.Level,

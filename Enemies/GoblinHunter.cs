@@ -41,7 +41,9 @@ public sealed class GoblinHunter : Enemy
         GameTime gameTime,
         PlayerCharacter player,
         DungeonMap dungeon,
-        ProjectileManager projectiles)
+        ProjectileManager projectiles,
+        RootHazardManager rootHazards,
+        EnemyManager enemies)
     {
         if (!IsPlayerDetected(player.Position))
             return;
@@ -68,7 +70,7 @@ public sealed class GoblinHunter : Enemy
             projectiles.SpawnArrow(
                 Position,
                 toPlayer,
-                AttackDamage,
+                EffectiveAttackDamage,
                 RoomId);
         }
     }

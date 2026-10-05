@@ -58,7 +58,9 @@ public sealed class DireWolf : Enemy
         GameTime gameTime,
         PlayerCharacter player,
         DungeonMap dungeon,
-        ProjectileManager projectiles)
+        ProjectileManager projectiles,
+        RootHazardManager rootHazards,
+        EnemyManager enemies)
     {
         if (IsRetreating)
         {
@@ -80,7 +82,7 @@ public sealed class DireWolf : Enemy
         if (distanceSquared <= Attack.Range * Attack.Range)
         {
             if (Attack.TryStart())
-                player.ReceiveDamage(AttackDamage);
+                player.ReceiveDamage(EffectiveAttackDamage);
 
             return;
         }

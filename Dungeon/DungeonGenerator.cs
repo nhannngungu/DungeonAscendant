@@ -14,7 +14,7 @@ public sealed class DungeonGenerator
     private const int CellHeight = 500;
     private const int WorldWidth = 2600;
     private const int WorldHeight = 1800;
-    private const int CorridorWidth = 64;
+    public const int CorridorWidth = 104;
     private const int GenerationAttempts = 3;
 
     private readonly Random _random;

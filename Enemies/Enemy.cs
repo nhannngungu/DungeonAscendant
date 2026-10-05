@@ -8,7 +8,7 @@ using PlayerCharacter = DungeonAscendant.Player.Player;
 namespace DungeonAscendant.Enemies;
 
 /// <summary>
-/// Shared combat and movement state for dungeon enemies.
+/// Shared combat, movement, reward, and temporary-effect state for enemies.
 /// Concrete enemies own their behavior and special mechanics.
 /// </summary>
 public abstract class Enemy
@@ -16,11 +16,16 @@ public abstract class Enemy
     private const float HitFeedbackDurationSeconds = 0.14f;
 
     private float _hitFeedbackTimeRemaining;
+    private float _buffTimeRemaining;
+    private int _damageBuffPercent;
+    private int _movementBuffPercent;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
     public Vector2 Size { get; protected set; }
     public float MovementSpeed { get; protected set; }
+    public float EffectiveMovementSpeed => MovementSpeed *
+        (100 + (IsBuffed ? _movementBuffPercent : 0)) / 100f;
     public float DetectionRange { get; }
     public int MaxHealth { get; protected set; }
     public int CurrentHealth { get; private set; }
@@ -29,8 +34,15 @@ public abstract class Enemy
     public int Level { get; }
     public int WorldTier { get; }
     public int AttackDamage { get; protected set; }
+    public int EffectiveAttackDamage => AttackDamage *
+        (100 + (IsBuffed ? _damageBuffPercent : 0)) / 100;
     public int ExperienceReward { get; protected set; }
     public bool IsElite { get; }
+    public bool IsBuffed => _buffTimeRemaining > 0f;
+    public virtual bool CanBeTargeted => IsAlive;
+    public virtual bool CountsForProgression => true;
+    public virtual bool CanDropLoot => true;
+    public virtual float LootChanceMultiplier => 1f;
     public int RoomId { get; protected set; }
     public MeleeAttack Attack { get; }
     public Rectangle Bounds => new(
@@ -38,6 +50,7 @@ public abstract class Enemy
         (int)(Position.Y - Size.Y / 2f),
         (int)MathF.Ceiling(Size.X),
         (int)MathF.Ceiling(Size.Y));
+    public virtual Rectangle MeleeTargetBounds => Bounds;
 
     protected Enemy(
         EnemyType type,
@@ -53,7 +66,8 @@ public abstract class Enemy
         bool isElite,
         int roomId,
         float attackRange,
-        float attackCooldownSeconds)
+        float attackCooldownSeconds,
+        bool applyEliteModifiers = true)
     {
         Type = type;
         Position = position;
@@ -68,7 +82,7 @@ public abstract class Enemy
         IsElite = isElite;
         RoomId = roomId;
 
-        if (IsElite)
+        if (IsElite && applyEliteModifiers)
         {
             MaxHealth = (MaxHealth * 7 + 3) / 4;
             AttackDamage = (AttackDamage * 3 + 1) / 2;
@@ -84,7 +98,9 @@ public abstract class Enemy
         GameTime gameTime,
         PlayerCharacter player,
         DungeonMap dungeon,
-        ProjectileManager projectiles)
+        ProjectileManager projectiles,
+        RootHazardManager rootHazards = null,
+        EnemyManager enemies = null)
     {
         if (!IsAlive)
             return;
@@ -92,17 +108,35 @@ public abstract class Enemy
         UpdateTimers(gameTime);
 
         if (player.IsAlive)
-            UpdateBehavior(gameTime, player, dungeon, projectiles);
+        {
+            UpdateBehavior(
+                gameTime,
+                player,
+                dungeon,
+                projectiles,
+                rootHazards,
+                enemies);
+        }
     }
 
     internal void UpdateBehaviorOnly(
         GameTime gameTime,
         PlayerCharacter player,
         DungeonMap dungeon,
-        ProjectileManager projectiles)
+        ProjectileManager projectiles,
+        RootHazardManager rootHazards = null,
+        EnemyManager enemies = null)
     {
         if (IsAlive && player.IsAlive)
-            UpdateBehavior(gameTime, player, dungeon, projectiles);
+        {
+            UpdateBehavior(
+                gameTime,
+                player,
+                dungeon,
+                projectiles,
+                rootHazards,
+                enemies);
+        }
     }
 
     public virtual void UpdateTimers(GameTime gameTime)
@@ -112,17 +146,28 @@ public abstract class Enemy
         _hitFeedbackTimeRemaining = MathF.Max(
             0f,
             _hitFeedbackTimeRemaining - elapsedSeconds);
+        _buffTimeRemaining = MathF.Max(
+            0f,
+            _buffTimeRemaining - elapsedSeconds);
+
+        if (_buffTimeRemaining <= 0f)
+        {
+            _damageBuffPercent = 0;
+            _movementBuffPercent = 0;
+        }
     }
 
     protected abstract void UpdateBehavior(
         GameTime gameTime,
         PlayerCharacter player,
         DungeonMap dungeon,
-        ProjectileManager projectiles);
+        ProjectileManager projectiles,
+        RootHazardManager rootHazards,
+        EnemyManager enemies);
 
-    public void ReceiveDamage(int damage)
+    public virtual void ReceiveDamage(int damage)
     {
-        if (!IsAlive || damage <= 0)
+        if (!CanBeTargeted || damage <= 0)
             return;
 
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
@@ -135,7 +180,7 @@ public abstract class Enemy
         float distance,
         DungeonMap dungeon)
     {
-        if (!IsAlive || distance <= 0f)
+        if (!CanBeTargeted || distance <= 0f)
             return;
 
         Vector2 direction = Position - sourcePosition;
@@ -146,6 +191,32 @@ public abstract class Enemy
             direction.Normalize();
 
         MoveBy(direction * distance, dungeon);
+    }
+
+    public void ApplyTemporaryBuff(
+        int damagePercent,
+        int movementPercent,
+        float durationSeconds)
+    {
+        if (!IsAlive || durationSeconds <= 0f)
+            return;
+
+        _damageBuffPercent = Math.Max(
+            _damageBuffPercent,
+            Math.Clamp(damagePercent, 0, 100));
+        _movementBuffPercent = Math.Max(
+            _movementBuffPercent,
+            Math.Clamp(movementPercent, 0, 100));
+        _buffTimeRemaining = MathF.Max(
+            _buffTimeRemaining,
+            durationSeconds);
+    }
+
+    public void ClearTemporaryBuff()
+    {
+        _buffTimeRemaining = 0f;
+        _damageBuffPercent = 0;
+        _movementBuffPercent = 0;
     }
 
     protected virtual void OnDamaged()
@@ -162,7 +233,8 @@ public abstract class Enemy
         GameTime gameTime,
         Vector2 target,
         float stoppingRange,
-        DungeonMap dungeon)
+        DungeonMap dungeon,
+        float speedMultiplier = 1f)
     {
         Vector2 offset = target - Position;
         float distanceSquared = offset.LengthSquared();
@@ -176,7 +248,7 @@ public abstract class Enemy
         float distance = MathF.Sqrt(distanceSquared);
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         float movementDistance = MathF.Min(
-            MovementSpeed * elapsedSeconds,
+            EffectiveMovementSpeed * speedMultiplier * elapsedSeconds,
             distance - stoppingRange);
         MoveBy(offset / distance * movementDistance, dungeon);
     }
@@ -196,8 +268,26 @@ public abstract class Enemy
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         MoveBy(
-            direction * MovementSpeed * speedMultiplier * elapsedSeconds,
+            direction * EffectiveMovementSpeed * speedMultiplier * elapsedSeconds,
             dungeon);
+    }
+
+    protected void MoveWithinRoom(Vector2 movement, DungeonMap dungeon)
+    {
+        DungeonRoom room = FindRoomById(dungeon, RoomId);
+        Rectangle area = room?.Bounds ?? dungeon.WorldBounds;
+        float halfWidth = Size.X / 2f;
+        float halfHeight = Size.Y / 2f;
+        Vector2 desired = Position + movement;
+        Position = new Vector2(
+            MathHelper.Clamp(
+                desired.X,
+                area.Left + halfWidth,
+                area.Right - halfWidth),
+            MathHelper.Clamp(
+                desired.Y,
+                area.Top + halfHeight,
+                area.Bottom - halfHeight));
     }
 
     protected void MoveBy(Vector2 movement, DungeonMap dungeon)
@@ -211,5 +301,16 @@ public abstract class Enemy
 
         if (room != null)
             RoomId = room.Id;
+    }
+
+    private static DungeonRoom FindRoomById(DungeonMap dungeon, int roomId)
+    {
+        foreach (DungeonRoom room in dungeon.Rooms)
+        {
+            if (room.Id == roomId)
+                return room;
+        }
+
+        return null;
     }
 }

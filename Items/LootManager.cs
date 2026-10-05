@@ -51,10 +51,12 @@ public sealed class LootManager
         int worldTier,
         DungeonMap dungeon)
     {
-        if (enemy == null || dungeon == null)
+        if (enemy == null || dungeon == null || !enemy.CanDropLoot)
             return false;
 
-        if (!enemy.IsElite && _random.NextDouble() >= NormalDropChance)
+        float dropChance = NormalDropChance * enemy.LootChanceMultiplier;
+
+        if (!enemy.IsElite && _random.NextDouble() >= dropChance)
             return false;
 
         EquipmentItem item = _itemGenerator.Generate(

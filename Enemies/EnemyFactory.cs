@@ -34,6 +34,34 @@ public static class EnemyFactory
                 context.Level,
                 context.IsElite,
                 context.RoomId,
+                context.WorldTier),
+            [EnemyType.ThornCrawler] = context => new ThornCrawler(
+                context.Position,
+                context.Level,
+                context.IsElite,
+                context.RoomId,
+                context.WorldTier),
+            [EnemyType.CorruptedTreant] = context => new CorruptedTreant(
+                context.Position,
+                context.Level,
+                context.IsElite,
+                context.RoomId,
+                context.WorldTier),
+            [EnemyType.BloodBat] = context => new BloodBat(
+                context.Position,
+                context.Level,
+                context.IsElite,
+                context.RoomId,
+                context.WorldTier),
+            [EnemyType.GoblinChief] = context => new GoblinChief(
+                context.Position,
+                context.Level,
+                context.RoomId,
+                context.WorldTier),
+            [EnemyType.MotherSpider] = context => new MotherSpider(
+                context.Position,
+                context.Level,
+                context.RoomId,
                 context.WorldTier)
         };
 
