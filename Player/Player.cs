@@ -1,4 +1,5 @@
 using System;
+using DungeonAscendant.Items;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
@@ -18,14 +19,20 @@ public sealed class Player
 
     private float _invulnerabilityTimeRemaining;
     private float _hitFeedbackTimeRemaining;
+    private int _baseMaxHealth;
+    private int _baseMeleeDamage;
 
     public Vector2 Position { get; private set; }
     public float MovementSpeed { get; }
     public Vector2 Size { get; }
-    public int MaxHealth { get; private set; }
+    public int BaseMaxHealth => _baseMaxHealth;
+    public int BaseMeleeDamage => _baseMeleeDamage;
+    public int MaxHealth => _baseMaxHealth +
+        (EquippedItems.Armor?.HealthBonus ?? 0);
     public int CurrentHealth { get; private set; }
     public bool IsAlive => CurrentHealth > 0;
-    public int MeleeDamage { get; private set; }
+    public int MeleeDamage => _baseMeleeDamage +
+        (EquippedItems.Weapon?.DamageBonus ?? 0);
     public int Level { get; private set; }
     public int CurrentExperience { get; private set; }
     public int ExperienceToNextLevel =>
@@ -33,6 +40,8 @@ public sealed class Player
     public FacingDirection Facing { get; private set; }
     public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
+    public Inventory Inventory { get; }
+    public Equipment EquippedItems { get; }
 
     public Player(
         Vector2 position,
@@ -43,9 +52,11 @@ public sealed class Player
         Position = position;
         MovementSpeed = movementSpeed;
         Size = new Vector2(40f, 56f);
-        MaxHealth = maxHealth;
+        _baseMaxHealth = maxHealth;
+        _baseMeleeDamage = meleeDamage;
+        Inventory = new Inventory();
+        EquippedItems = new Equipment();
         CurrentHealth = MaxHealth;
-        MeleeDamage = meleeDamage;
         Level = 1;
         CurrentExperience = 0;
         Facing = FacingDirection.Down;
@@ -60,7 +71,6 @@ public sealed class Player
         _hitFeedbackTimeRemaining = MathF.Max(
             0f,
             _hitFeedbackTimeRemaining - elapsedSeconds);
-
     }
 
     public Vector2 GetDesiredPosition(
@@ -99,6 +109,15 @@ public sealed class Player
         Position = position;
     }
 
+    public bool EquipItem(EquipmentItem item)
+    {
+        if (!EquippedItems.TryEquip(item, Inventory))
+            return false;
+
+        CurrentHealth = Math.Min(CurrentHealth, MaxHealth);
+        return true;
+    }
+
     public bool ReceiveDamage(int damage)
     {
         if (!IsAlive || IsInvulnerable || damage <= 0)
@@ -121,8 +140,8 @@ public sealed class Player
         {
             CurrentExperience -= ExperienceToNextLevel;
             Level++;
-            MaxHealth += HealthIncreasePerLevel;
-            MeleeDamage += DamageIncreasePerLevel;
+            _baseMaxHealth += HealthIncreasePerLevel;
+            _baseMeleeDamage += DamageIncreasePerLevel;
             CurrentHealth = MaxHealth;
         }
     }

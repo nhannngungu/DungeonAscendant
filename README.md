@@ -22,6 +22,10 @@ The first v0.5.0 milestone replaces the fixed arena with a playable procedural d
 - Distinct Start, Normal, Enemy, and Exit rooms
 - Dungeon-wall collision and a world-space following camera
 - Room-based enemy placement and local enemy activation
+- Procedural Weapon and Armor drops with five rarity tiers
+- Manual nearby loot pickup and a 12-slot run inventory
+- Equipment swapping with derived damage and maximum-health bonuses
+- Code-rendered inventory, equipment, comparison, and loot visuals
 - Experience, leveling, stat growth, and kill tracking
 - Player-level enemy scaling
 - Start, Playing, Paused, and Game Over states
@@ -35,12 +39,25 @@ The first v0.5.0 milestone replaces the fixed arena with a playable procedural d
 | Enter | Start from the start screen |
 | W/A/S/D or Arrow Keys | Move and change facing direction |
 | Space | Directional melee attack |
+| E | Pick up the nearest nearby item |
+| I | Open or close inventory |
+| W/S or Up/Down | Change inventory selection |
+| Enter | Equip the selected inventory item |
 | Escape | Pause or resume during gameplay |
 | R | Restart after Game Over |
 
 ## Progression Loop
 
-Fight Goblins, earn experience from each kill, level up, and increase maximum health and melee damage. Dungeon enemies are scaled when the run is created, and a distant Enemy room contains an Elite challenge with increased rewards.
+Fight Goblins, earn experience and equipment drops, then choose stronger gear from the inventory. Weapons add melee damage, Armor adds maximum health, and level progression continues to improve the underlying base stats. Dungeon enemies are scaled when the run is created, and a distant Enemy room contains an Elite challenge with increased experience and guaranteed improved loot odds.
+
+## Item Progression
+
+- Normal Goblins have a 35% equipment drop chance; Elite Goblins always drop equipment.
+- Normal rarity weights are Common 55%, Uncommon 25%, Rare 13%, Epic 6%, and Legendary 1%.
+- Elite rarity weights are Common 25%, Uncommon 30%, Rare 25%, Epic 15%, and Legendary 5%.
+- Weapon base bonus is `4 + ItemLevel * 2`.
+- Armor base health bonus is `10 + ItemLevel * 5`.
+- Rarity multipliers are 100%, 125%, 150%, 190%, and 250% respectively.
 
 ## Enemy Types
 

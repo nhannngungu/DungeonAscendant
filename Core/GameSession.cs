@@ -1,6 +1,8 @@
+using System.Collections.Generic;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
+using DungeonAscendant.Items;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -17,21 +19,28 @@ public sealed class GameSession
     private const float PlayerKnockbackDistance = 24f;
 
     private readonly DungeonGenerator _dungeonGenerator;
+    private readonly List<Goblin> _defeatedGoblins = new();
     private KeyboardState _previousKeyboardState;
 
     public PlayerCharacter Player { get; private set; }
     public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
+    public LootManager Loot { get; }
     public DungeonMap CurrentDungeon { get; private set; }
     public Camera2D Camera { get; }
     public int KillCount { get; private set; }
     public Rectangle PlayerAttackArea { get; private set; }
     public GameState State { get; private set; }
+    public bool IsInventoryOpen { get; private set; }
+    public int SelectedInventoryIndex { get; private set; }
+    public EquipmentItem SelectedInventoryItem =>
+        Player.Inventory.GetItem(SelectedInventoryIndex);
 
     public GameSession(Rectangle viewportBounds, int? randomSeed = null)
     {
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         Enemies = new EnemyManager(randomSeed);
+        Loot = new LootManager(randomSeed);
         Camera = new Camera2D(viewportBounds.Width, viewportBounds.Height);
         Player = new PlayerCharacter(viewportBounds.Center.ToVector2());
         PlayerAttack = new MeleeAttack();
@@ -47,6 +56,8 @@ public sealed class GameSession
             !_previousKeyboardState.IsKeyDown(Keys.Escape);
         bool restartPressed = keyboardState.IsKeyDown(Keys.R) &&
             !_previousKeyboardState.IsKeyDown(Keys.R);
+        bool inventoryPressed = keyboardState.IsKeyDown(Keys.I) &&
+            !_previousKeyboardState.IsKeyDown(Keys.I);
 
         if (State == GameState.Start)
         {
@@ -81,6 +92,26 @@ public sealed class GameSession
             return;
         }
 
+        if (IsInventoryOpen)
+        {
+            if (inventoryPressed)
+                IsInventoryOpen = false;
+            else
+                UpdateInventoryInput(keyboardState, startPressed);
+
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
+        if (inventoryPressed)
+        {
+            IsInventoryOpen = true;
+            PlayerAttack.Cancel();
+            ClampInventorySelection();
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
         if (pausePressed)
         {
             State = GameState.Paused;
@@ -105,6 +136,12 @@ public sealed class GameSession
             desiredPosition,
             Player.Size,
             CurrentDungeon));
+
+        bool pickupPressed = keyboardState.IsKeyDown(Keys.E) &&
+            !_previousKeyboardState.IsKeyDown(Keys.E);
+
+        if (pickupPressed)
+            Loot.TryCollectNearest(Player.Position, Player.Inventory);
 
         PlayerAttack.Update(gameTime);
         Enemies.UpdateTimers(gameTime, Player.Position, CurrentDungeon);
@@ -137,6 +174,7 @@ public sealed class GameSession
         if (!Player.IsAlive)
         {
             PlayerAttack.Cancel();
+            IsInventoryOpen = false;
             State = GameState.GameOver;
         }
 
@@ -146,12 +184,23 @@ public sealed class GameSession
 
     private void ProcessDefeatedGoblins()
     {
-        int defeatedCount = Enemies.RemoveDefeated(out int experienceReward);
+        int defeatedCount = Enemies.RemoveDefeated(
+            _defeatedGoblins,
+            out int experienceReward);
 
         if (defeatedCount == 0)
             return;
 
         Player.GainExperience(experienceReward);
+
+        foreach (Goblin goblin in _defeatedGoblins)
+        {
+            Loot.TryCreateDrop(
+                goblin,
+                Player.Level,
+                CurrentDungeon);
+        }
+
         KillCount += defeatedCount;
     }
 
@@ -161,6 +210,9 @@ public sealed class GameSession
         Player = new PlayerCharacter(CurrentDungeon.StartRoom.Center);
         PlayerAttack = new MeleeAttack();
         KillCount = 0;
+        IsInventoryOpen = false;
+        SelectedInventoryIndex = 0;
+        Loot.Reset();
         Enemies.Reset(CurrentDungeon, Player.Level);
         UpdatePlayerAttackArea();
         Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
@@ -174,5 +226,57 @@ public sealed class GameSession
             Player.Facing,
             PlayerAttack.Range,
             PlayerAttackThickness);
+    }
+
+    private void UpdateInventoryInput(
+        KeyboardState keyboardState,
+        bool equipPressed)
+    {
+        bool previousPressed =
+            (keyboardState.IsKeyDown(Keys.Up) ||
+             keyboardState.IsKeyDown(Keys.W)) &&
+            !(_previousKeyboardState.IsKeyDown(Keys.Up) ||
+              _previousKeyboardState.IsKeyDown(Keys.W));
+        bool nextPressed =
+            (keyboardState.IsKeyDown(Keys.Down) ||
+             keyboardState.IsKeyDown(Keys.S)) &&
+            !(_previousKeyboardState.IsKeyDown(Keys.Down) ||
+              _previousKeyboardState.IsKeyDown(Keys.S));
+        int itemCount = Player.Inventory.Count;
+
+        if (itemCount == 0)
+        {
+            SelectedInventoryIndex = 0;
+            return;
+        }
+
+        if (previousPressed)
+        {
+            SelectedInventoryIndex =
+                (SelectedInventoryIndex - 1 + itemCount) % itemCount;
+        }
+        else if (nextPressed)
+        {
+            SelectedInventoryIndex =
+                (SelectedInventoryIndex + 1) % itemCount;
+        }
+
+        if (equipPressed)
+        {
+            EquipmentItem selectedItem = SelectedInventoryItem;
+
+            if (selectedItem != null)
+                Player.EquipItem(selectedItem);
+
+            ClampInventorySelection();
+        }
+    }
+
+    private void ClampInventorySelection()
+    {
+        int maximumIndex = Player.Inventory.Count - 1;
+        SelectedInventoryIndex = maximumIndex < 0
+            ? 0
+            : System.Math.Min(SelectedInventoryIndex, maximumIndex);
     }
 }

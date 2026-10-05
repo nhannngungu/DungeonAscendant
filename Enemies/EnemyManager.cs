@@ -91,8 +91,11 @@ public sealed class EnemyManager
         }
     }
 
-    public int RemoveDefeated(out int experienceReward)
+    public int RemoveDefeated(
+        List<Goblin> defeatedGoblins,
+        out int experienceReward)
     {
+        defeatedGoblins.Clear();
         int defeatedCount = 0;
         experienceReward = 0;
 
@@ -105,6 +108,7 @@ public sealed class EnemyManager
 
             defeatedCount++;
             experienceReward += goblin.ExperienceReward;
+            defeatedGoblins.Add(goblin);
             _goblins.RemoveAt(index);
         }
 

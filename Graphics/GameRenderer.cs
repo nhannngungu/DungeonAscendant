@@ -2,6 +2,7 @@ using System;
 using DungeonAscendant.Core;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
+using DungeonAscendant.Items;
 using DungeonAscendant.Player;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -44,6 +45,12 @@ public sealed class GameRenderer : IDisposable
             transformMatrix: gameSession.Camera.Transform);
         DrawDungeon(gameSession.CurrentDungeon, gameSession.Camera.ViewBounds);
 
+        foreach (WorldLoot loot in gameSession.Loot.Drops)
+        {
+            if (loot.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                DrawWorldLoot(loot);
+        }
+
         if (gameSession.PlayerAttack.IsActive)
             DrawAttackArea(gameSession.PlayerAttackArea);
 
@@ -65,7 +72,9 @@ public sealed class GameRenderer : IDisposable
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
 
-        if (gameSession.State == GameState.Paused)
+        if (gameSession.IsInventoryOpen)
+            DrawInventoryOverlay(gameSession);
+        else if (gameSession.State == GameState.Paused)
             DrawPauseOverlay();
         else if (gameSession.State == GameState.GameOver)
             DrawGameOverOverlay();
@@ -515,6 +524,306 @@ public sealed class GameRenderer : IDisposable
                 eyeColor = new Color(225, 50, 45);
                 break;
         }
+    }
+
+    private void DrawWorldLoot(WorldLoot loot)
+    {
+        Color rarityColor = GetRarityColor(loot.Item.Rarity);
+        Rectangle glow = loot.Bounds;
+        glow.Inflate(7, 7);
+        Rectangle core = loot.Bounds;
+
+        _spriteBatch.Draw(_pixel, glow, new Color(
+            rarityColor.R,
+            rarityColor.G,
+            rarityColor.B,
+            (byte)55));
+        _spriteBatch.Draw(_pixel, core, new Color(22, 25, 29, 235));
+        DrawRectangleOutline(core, 2, rarityColor);
+        DrawEquipmentSymbol(loot.Item.Slot, core, rarityColor);
+        DrawRarityMarkers(
+            loot.Item.Rarity,
+            core.Center.X,
+            core.Bottom + 4,
+            rarityColor,
+            markerSize: 3);
+    }
+
+    private void DrawInventoryOverlay(GameSession gameSession)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - 310,
+            viewport.Height / 2 - 195,
+            620,
+            390);
+
+        _spriteBatch.Draw(_pixel, screen, new Color(7, 9, 13, 190));
+        _spriteBatch.Draw(_pixel, panel, new Color(22, 27, 34, 248));
+        DrawRectangleOutline(panel, 4, new Color(122, 111, 91));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(panel.X + 25, panel.Y + 24, 270, 6),
+            new Color(190, 164, 101));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(panel.Right - 215, panel.Y + 24, 190, 6),
+            new Color(101, 158, 137));
+
+        const int slotSize = 58;
+        const int slotGap = 10;
+        const int columns = 4;
+        int inventoryX = panel.X + 28;
+        int inventoryY = panel.Y + 57;
+
+        for (int index = 0; index < gameSession.Player.Inventory.Capacity; index++)
+        {
+            int column = index % columns;
+            int row = index / columns;
+            var slotBounds = new Rectangle(
+                inventoryX + column * (slotSize + slotGap),
+                inventoryY + row * (slotSize + slotGap),
+                slotSize,
+                slotSize);
+            EquipmentItem item = gameSession.Player.Inventory.GetItem(index);
+            bool isSelected = item != null &&
+                index == gameSession.SelectedInventoryIndex;
+            DrawInventorySlot(slotBounds, item, isSelected);
+        }
+
+        int equipmentX = panel.Right - 168;
+        DrawEquipmentSlot(
+            new Rectangle(equipmentX, panel.Y + 57, 128, 118),
+            EquipmentSlot.Weapon,
+            gameSession.Player.EquippedItems.Weapon);
+        DrawEquipmentSlot(
+            new Rectangle(equipmentX, panel.Y + 190, 128, 118),
+            EquipmentSlot.Armor,
+            gameSession.Player.EquippedItems.Armor);
+
+        DrawComparisonIndicator(
+            gameSession.SelectedInventoryItem,
+            gameSession.Player,
+            panel.Center.X + 27,
+            panel.Bottom - 49);
+
+        var controls = new Rectangle(panel.X + 28, panel.Bottom - 66, 267, 36);
+        _spriteBatch.Draw(_pixel, controls, new Color(31, 38, 47));
+        DrawRectangleOutline(controls, 2, new Color(77, 88, 98));
+        DrawControlHints(controls);
+    }
+
+    private void DrawInventorySlot(
+        Rectangle bounds,
+        EquipmentItem item,
+        bool isSelected)
+    {
+        Color borderColor = isSelected
+            ? new Color(245, 230, 151)
+            : new Color(83, 91, 99);
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            isSelected ? new Color(52, 55, 55) : new Color(30, 35, 42));
+        DrawRectangleOutline(bounds, isSelected ? 4 : 2, borderColor);
+
+        if (item == null)
+            return;
+
+        Color rarityColor = GetRarityColor(item.Rarity);
+        var symbolBounds = new Rectangle(
+            bounds.X + 12,
+            bounds.Y + 8,
+            bounds.Width - 24,
+            bounds.Height - 21);
+        DrawEquipmentSymbol(item.Slot, symbolBounds, rarityColor);
+        DrawRarityMarkers(
+            item.Rarity,
+            bounds.Center.X,
+            bounds.Bottom - 9,
+            rarityColor,
+            markerSize: 4);
+    }
+
+    private void DrawEquipmentSlot(
+        Rectangle bounds,
+        EquipmentSlot slot,
+        EquipmentItem item)
+    {
+        _spriteBatch.Draw(_pixel, bounds, new Color(27, 34, 40));
+        DrawRectangleOutline(bounds, 3, new Color(78, 155, 123));
+
+        var slotBadge = new Rectangle(bounds.X + 8, bounds.Y + 8, 30, 30);
+        _spriteBatch.Draw(_pixel, slotBadge, new Color(19, 24, 29));
+        DrawRectangleOutline(slotBadge, 2, new Color(91, 111, 107));
+        DrawEquipmentSymbol(slot, slotBadge, new Color(125, 163, 153));
+
+        if (item == null)
+        {
+            var empty = new Rectangle(
+                bounds.X + 40,
+                bounds.Y + 46,
+                48,
+                48);
+            DrawRectangleOutline(empty, 2, new Color(59, 68, 74));
+            return;
+        }
+
+        Color rarityColor = GetRarityColor(item.Rarity);
+        var itemBounds = new Rectangle(
+            bounds.Center.X - 25,
+            bounds.Y + 40,
+            50,
+            53);
+        DrawEquipmentSymbol(item.Slot, itemBounds, rarityColor);
+        DrawRarityMarkers(
+            item.Rarity,
+            bounds.Center.X,
+            bounds.Bottom - 16,
+            rarityColor,
+            markerSize: 5);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.Right - 19, bounds.Y + 10, 9, 9),
+            new Color(80, 199, 126));
+    }
+
+    private void DrawEquipmentSymbol(
+        EquipmentSlot slot,
+        Rectangle bounds,
+        Color color)
+    {
+        if (slot == EquipmentSlot.Weapon)
+        {
+            int centerX = bounds.Center.X;
+            int bladeTop = bounds.Y + 3;
+            int bladeHeight = Math.Max(8, bounds.Height - 14);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(centerX - 2, bladeTop, 5, bladeHeight),
+                color);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(centerX - 8, bladeTop + bladeHeight - 4, 17, 4),
+                new Color(173, 130, 70));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(centerX - 2, bladeTop + bladeHeight, 5, 9),
+                new Color(105, 68, 45));
+            return;
+        }
+
+        int chestWidth = Math.Max(10, bounds.Width - 14);
+        int chestHeight = Math.Max(10, bounds.Height - 13);
+        var chest = new Rectangle(
+            bounds.Center.X - chestWidth / 2,
+            bounds.Y + 9,
+            chestWidth,
+            chestHeight);
+        _spriteBatch.Draw(_pixel, chest, color);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(chest.X - 5, chest.Y + 3, 6, 10),
+            color);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(chest.Right - 1, chest.Y + 3, 6, 10),
+            color);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(chest.Center.X - 2, chest.Y + 4, 4, chest.Height - 8),
+            new Color(35, 40, 45, 150));
+    }
+
+    private void DrawRarityMarkers(
+        ItemRarity rarity,
+        int centerX,
+        int y,
+        Color color,
+        int markerSize)
+    {
+        int markerCount = (int)rarity + 1;
+        int spacing = markerSize + 2;
+        int startX = centerX - (markerCount * spacing - 2) / 2;
+
+        for (int index = 0; index < markerCount; index++)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(startX + index * spacing, y, markerSize, markerSize),
+                color);
+        }
+    }
+
+    private void DrawComparisonIndicator(
+        EquipmentItem selectedItem,
+        PlayerCharacter player,
+        int x,
+        int y)
+    {
+        if (selectedItem == null)
+            return;
+
+        EquipmentItem equippedItem = player.EquippedItems.GetEquipped(
+            selectedItem.Slot);
+        int equippedScore = equippedItem?.Score ?? 0;
+
+        if (selectedItem.Score > equippedScore)
+        {
+            Color color = new(91, 205, 128);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 8, y + 8, 6, 20), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 4, y + 4, 14, 6), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x, y + 8, 22, 5), color);
+        }
+        else if (selectedItem.Score < equippedScore)
+        {
+            Color color = new(218, 88, 82);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 8, y, 6, 20), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 4, y + 18, 14, 6), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x, y + 23, 22, 5), color);
+        }
+        else
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, y + 11, 22, 6),
+                new Color(189, 184, 151));
+        }
+    }
+
+    private void DrawControlHints(Rectangle bounds)
+    {
+        Color keyColor = new(126, 141, 153);
+        int centerY = bounds.Center.Y;
+        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 16, centerY - 9, 18, 18), new Color(49, 58, 68));
+        DrawRectangleOutline(new Rectangle(bounds.X + 16, centerY - 9, 18, 18), 2, keyColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 23, centerY - 5, 4, 10), keyColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 20, centerY - 5, 10, 4), keyColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 23, centerY + 2, 4, 4), keyColor);
+
+        var enterKey = new Rectangle(bounds.X + 73, centerY - 9, 55, 18);
+        _spriteBatch.Draw(_pixel, enterKey, new Color(49, 58, 68));
+        DrawRectangleOutline(enterKey, 2, keyColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(enterKey.X + 13, centerY - 2, 27, 4), keyColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(enterKey.X + 13, centerY - 2, 4, 8), keyColor);
+
+        var inventoryKey = new Rectangle(bounds.Right - 56, centerY - 9, 18, 18);
+        _spriteBatch.Draw(_pixel, inventoryKey, new Color(49, 58, 68));
+        DrawRectangleOutline(inventoryKey, 2, keyColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(inventoryKey.Center.X - 2, inventoryKey.Y + 4, 4, 10), keyColor);
+    }
+
+    private static Color GetRarityColor(ItemRarity rarity)
+    {
+        return rarity switch
+        {
+            ItemRarity.Uncommon => new Color(86, 193, 103),
+            ItemRarity.Rare => new Color(72, 132, 232),
+            ItemRarity.Epic => new Color(170, 89, 224),
+            ItemRarity.Legendary => new Color(236, 159, 52),
+            _ => new Color(202, 207, 210)
+        };
     }
 
     private void DrawHudPanel()
