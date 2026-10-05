@@ -11,6 +11,9 @@ namespace DungeonAscendant.Core;
 /// </summary>
 public sealed class GameSession
 {
+    private const float PlayerAttackThickness = 48f;
+    private const float PlayerKnockbackDistance = 24f;
+
     private readonly Vector2 _playerSpawnPosition;
     private readonly Rectangle _arenaBounds;
     private KeyboardState _previousKeyboardState;
@@ -19,6 +22,7 @@ public sealed class GameSession
     public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
     public int KillCount { get; private set; }
+    public Rectangle PlayerAttackArea { get; private set; }
 
     public GameSession(Vector2 playerSpawnPosition, Rectangle arenaBounds)
     {
@@ -44,18 +48,25 @@ public sealed class GameSession
 
         Player.Update(gameTime, keyboardState, _arenaBounds);
         PlayerAttack.Update(gameTime);
+        Enemies.UpdateTimers(gameTime);
+        UpdatePlayerAttackArea();
 
         bool attackPressed = keyboardState.IsKeyDown(Keys.Space) &&
             !_previousKeyboardState.IsKeyDown(Keys.Space);
 
         if (attackPressed && PlayerAttack.TryStart())
         {
-            Goblin target = Enemies.FindNearestTarget(
-                Player.Position,
-                PlayerAttack.Range);
+            foreach (Goblin goblin in Enemies.Goblins)
+            {
+                if (!goblin.IsAlive || !PlayerAttackArea.Intersects(goblin.Bounds))
+                    continue;
 
-            if (target != null)
-                target.ReceiveDamage(Player.MeleeDamage);
+                goblin.ReceiveDamage(Player.MeleeDamage);
+                goblin.ApplyKnockback(
+                    Player.Position,
+                    PlayerKnockbackDistance,
+                    _arenaBounds);
+            }
         }
 
         ProcessDefeatedGoblins();
@@ -67,7 +78,11 @@ public sealed class GameSession
         }
         else
         {
-            Enemies.UpdateSpawning(gameTime, Player.Position, Player.Level);
+            Enemies.UpdateSpawning(
+                gameTime,
+                Player.Position,
+                Player.Level,
+                KillCount);
         }
 
         _previousKeyboardState = keyboardState;
@@ -90,5 +105,16 @@ public sealed class GameSession
         PlayerAttack = new MeleeAttack();
         KillCount = 0;
         Enemies.Reset(Player.Position, Player.Level);
+        UpdatePlayerAttackArea();
+    }
+
+    private void UpdatePlayerAttackArea()
+    {
+        PlayerAttackArea = MeleeHitArea.Create(
+            Player.Position,
+            Player.Size,
+            Player.Facing,
+            PlayerAttack.Range,
+            PlayerAttackThickness);
     }
 }

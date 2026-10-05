@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using PlayerCharacter = DungeonAscendant.Player.Player;
@@ -11,38 +12,50 @@ public sealed class EnemyManager
 {
     private const int TargetLivingCount = 3;
     private const float RespawnDelaySeconds = 1.5f;
-    private const float MinimumSpawnDistance = 180f;
+    private const float MinimumPlayerSpawnDistance = 180f;
+    private const float MinimumEnemySpawnDistance = 72f;
+    private const float SpawnEdgeInset = 32f;
+    private const int SpawnAttempts = 24;
 
     private readonly Rectangle _arenaBounds;
     private readonly List<Goblin> _goblins = new();
-    private readonly Vector2[] _spawnPoints;
+    private readonly Random _random;
     private float _respawnTimeRemaining = RespawnDelaySeconds;
-    private int _nextSpawnPointIndex;
+    private int _nextEliteKillCount;
+    private bool _elitePending;
 
     public IReadOnlyList<Goblin> Goblins => _goblins;
+    public int NextEliteKillCount => _nextEliteKillCount;
 
-    public EnemyManager(Rectangle arenaBounds)
+    public EnemyManager(Rectangle arenaBounds, int? randomSeed = null)
     {
         _arenaBounds = arenaBounds;
-        _spawnPoints = CreateSpawnPoints(arenaBounds);
+        _random = randomSeed.HasValue
+            ? new Random(randomSeed.Value)
+            : new Random();
     }
 
     public void Reset(Vector2 playerPosition, int playerLevel)
     {
         _goblins.Clear();
-        _nextSpawnPointIndex = 0;
         _respawnTimeRemaining = RespawnDelaySeconds;
+        _elitePending = false;
+        _nextEliteKillCount = _random.Next(8, 13);
 
         while (_goblins.Count < TargetLivingCount)
-            SpawnGoblin(playerPosition, playerLevel);
+            SpawnGoblin(playerPosition, playerLevel, isElite: false);
+    }
+
+    public void UpdateTimers(GameTime gameTime)
+    {
+        foreach (Goblin goblin in _goblins)
+            goblin.UpdateTimers(gameTime);
     }
 
     public void UpdateCombatAndAi(GameTime gameTime, PlayerCharacter player)
     {
         foreach (Goblin goblin in _goblins)
         {
-            goblin.Attack.Update(gameTime);
-
             if (!goblin.IsAlive || !player.IsAlive)
                 continue;
 
@@ -57,37 +70,13 @@ public sealed class EnemyManager
             }
             else
             {
-                goblin.Update(
+                goblin.UpdateMovement(
                     gameTime,
                     player.Position,
                     goblin.Attack.Range,
                     _arenaBounds);
             }
         }
-    }
-
-    public Goblin FindNearestTarget(Vector2 position, float range)
-    {
-        Goblin nearest = null;
-        float nearestDistanceSquared = range * range;
-
-        foreach (Goblin goblin in _goblins)
-        {
-            if (!goblin.IsAlive)
-                continue;
-
-            float distanceSquared = Vector2.DistanceSquared(
-                position,
-                goblin.Position);
-
-            if (distanceSquared <= nearestDistanceSquared)
-            {
-                nearest = goblin;
-                nearestDistanceSquared = distanceSquared;
-            }
-        }
-
-        return nearest;
     }
 
     public int RemoveDefeated(out int experienceReward)
@@ -113,8 +102,11 @@ public sealed class EnemyManager
     public void UpdateSpawning(
         GameTime gameTime,
         Vector2 playerPosition,
-        int playerLevel)
+        int playerLevel,
+        int killCount)
     {
+        UpdateEliteSchedule(killCount);
+
         if (_goblins.Count >= TargetLivingCount)
         {
             _respawnTimeRemaining = RespawnDelaySeconds;
@@ -127,70 +119,140 @@ public sealed class EnemyManager
         if (_respawnTimeRemaining > 0f)
             return;
 
-        SpawnGoblin(playerPosition, playerLevel);
+        bool spawnElite = _elitePending && !HasLivingElite();
+        SpawnGoblin(playerPosition, playerLevel, spawnElite);
+
+        if (spawnElite)
+            _elitePending = false;
+
         _respawnTimeRemaining = RespawnDelaySeconds;
     }
 
-    private void SpawnGoblin(Vector2 playerPosition, int playerLevel)
+    private void UpdateEliteSchedule(int killCount)
+    {
+        while (killCount >= _nextEliteKillCount)
+        {
+            _elitePending = true;
+            _nextEliteKillCount += _random.Next(8, 13);
+        }
+    }
+
+    private bool HasLivingElite()
+    {
+        foreach (Goblin goblin in _goblins)
+        {
+            if (goblin.IsAlive && goblin.IsElite)
+                return true;
+        }
+
+        return false;
+    }
+
+    private void SpawnGoblin(
+        Vector2 playerPosition,
+        int playerLevel,
+        bool isElite)
     {
         Vector2 spawnPosition = SelectSpawnPosition(playerPosition);
-        _goblins.Add(new Goblin(spawnPosition, playerLevel));
+        GoblinVariant variant = SelectVariant(playerLevel);
+        _goblins.Add(new Goblin(
+            spawnPosition,
+            playerLevel,
+            variant,
+            isElite));
+    }
+
+    private GoblinVariant SelectVariant(int playerLevel)
+    {
+        int levelsAboveOne = Math.Max(0, playerLevel - 1);
+        int bruteChance = Math.Min(35, 15 + levelsAboveOne * 2);
+        int fastChance = Math.Min(30, 25 + levelsAboveOne);
+        int roll = _random.Next(100);
+
+        if (roll < bruteChance)
+            return GoblinVariant.Brute;
+
+        if (roll < bruteChance + fastChance)
+            return GoblinVariant.Fast;
+
+        return GoblinVariant.Normal;
     }
 
     private Vector2 SelectSpawnPosition(Vector2 playerPosition)
     {
-        float minimumDistanceSquared = MinimumSpawnDistance * MinimumSpawnDistance;
-        Vector2 farthestPoint = _spawnPoints[0];
-        float farthestDistanceSquared = -1f;
-        int farthestIndex = 0;
+        float minimumPlayerDistanceSquared =
+            MinimumPlayerSpawnDistance * MinimumPlayerSpawnDistance;
+        float minimumEnemyDistanceSquared =
+            MinimumEnemySpawnDistance * MinimumEnemySpawnDistance;
+        Vector2 bestCandidate = CreateRandomSpawnCandidate();
+        float bestScore = -1f;
 
-        for (int offset = 0; offset < _spawnPoints.Length; offset++)
+        for (int attempt = 0; attempt < SpawnAttempts; attempt++)
         {
-            int index = (_nextSpawnPointIndex + offset) % _spawnPoints.Length;
-            Vector2 spawnPoint = _spawnPoints[index];
-            float distanceSquared = Vector2.DistanceSquared(
-                spawnPoint,
+            Vector2 candidate = CreateRandomSpawnCandidate();
+            float playerDistanceSquared = Vector2.DistanceSquared(
+                candidate,
                 playerPosition);
+            float nearestEnemyDistanceSquared = GetNearestEnemyDistanceSquared(candidate);
+            float score = playerDistanceSquared + nearestEnemyDistanceSquared * 0.5f;
 
-            if (distanceSquared > farthestDistanceSquared)
+            if (score > bestScore)
             {
-                farthestPoint = spawnPoint;
-                farthestDistanceSquared = distanceSquared;
-                farthestIndex = index;
+                bestCandidate = candidate;
+                bestScore = score;
             }
 
-            if (distanceSquared < minimumDistanceSquared)
-                continue;
-
-            _nextSpawnPointIndex = (index + 1) % _spawnPoints.Length;
-            return spawnPoint;
+            if (playerDistanceSquared >= minimumPlayerDistanceSquared &&
+                nearestEnemyDistanceSquared >= minimumEnemyDistanceSquared)
+            {
+                return candidate;
+            }
         }
 
-        _nextSpawnPointIndex = (farthestIndex + 1) % _spawnPoints.Length;
-        return farthestPoint;
+        return bestCandidate;
     }
 
-    private static Vector2[] CreateSpawnPoints(Rectangle arenaBounds)
+    private float GetNearestEnemyDistanceSquared(Vector2 candidate)
     {
-        const float edgeInset = 40f;
+        if (_goblins.Count == 0)
+            return MinimumEnemySpawnDistance * MinimumEnemySpawnDistance;
 
-        float left = arenaBounds.Left + edgeInset;
-        float right = arenaBounds.Right - edgeInset;
-        float top = arenaBounds.Top + edgeInset;
-        float bottom = arenaBounds.Bottom - edgeInset;
-        float centerX = arenaBounds.Center.X;
-        float centerY = arenaBounds.Center.Y;
+        float nearestDistanceSquared = float.MaxValue;
 
-        return new[]
+        foreach (Goblin goblin in _goblins)
         {
-            new Vector2(left, top),
-            new Vector2(right, top),
-            new Vector2(right, bottom),
-            new Vector2(left, bottom),
-            new Vector2(centerX, top),
-            new Vector2(right, centerY),
-            new Vector2(centerX, bottom),
-            new Vector2(left, centerY)
+            float distanceSquared = Vector2.DistanceSquared(
+                candidate,
+                goblin.Position);
+            nearestDistanceSquared = MathF.Min(
+                nearestDistanceSquared,
+                distanceSquared);
+        }
+
+        return nearestDistanceSquared;
+    }
+
+    private Vector2 CreateRandomSpawnCandidate()
+    {
+        float left = _arenaBounds.Left + SpawnEdgeInset;
+        float right = _arenaBounds.Right - SpawnEdgeInset;
+        float top = _arenaBounds.Top + SpawnEdgeInset;
+        float bottom = _arenaBounds.Bottom - SpawnEdgeInset;
+        float horizontalPosition = MathHelper.Lerp(
+            left,
+            right,
+            (float)_random.NextDouble());
+        float verticalPosition = MathHelper.Lerp(
+            top,
+            bottom,
+            (float)_random.NextDouble());
+
+        return _random.Next(4) switch
+        {
+            0 => new Vector2(horizontalPosition, top),
+            1 => new Vector2(right, verticalPosition),
+            2 => new Vector2(horizontalPosition, bottom),
+            _ => new Vector2(left, verticalPosition)
         };
     }
 }

@@ -13,6 +13,11 @@ public sealed class Player
     private const int ExperienceRequirementPerLevel = 50;
     private const int HealthIncreasePerLevel = 20;
     private const int DamageIncreasePerLevel = 5;
+    private const float InvulnerabilityDurationSeconds = 0.5f;
+    private const float HitFeedbackDurationSeconds = 0.16f;
+
+    private float _invulnerabilityTimeRemaining;
+    private float _hitFeedbackTimeRemaining;
 
     public Vector2 Position { get; private set; }
     public float MovementSpeed { get; }
@@ -25,6 +30,9 @@ public sealed class Player
     public int CurrentExperience { get; private set; }
     public int ExperienceToNextLevel =>
         BaseExperienceRequirement + (Level - 1) * ExperienceRequirementPerLevel;
+    public FacingDirection Facing { get; private set; }
+    public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f;
+    public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
 
     public Player(
         Vector2 position,
@@ -40,6 +48,7 @@ public sealed class Player
         MeleeDamage = meleeDamage;
         Level = 1;
         CurrentExperience = 0;
+        Facing = FacingDirection.Down;
     }
 
     public void Update(
@@ -47,6 +56,14 @@ public sealed class Player
         KeyboardState keyboardState,
         Rectangle arenaBounds)
     {
+        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _invulnerabilityTimeRemaining = MathF.Max(
+            0f,
+            _invulnerabilityTimeRemaining - elapsedSeconds);
+        _hitFeedbackTimeRemaining = MathF.Max(
+            0f,
+            _hitFeedbackTimeRemaining - elapsedSeconds);
+
         if (!IsAlive)
             return;
 
@@ -65,9 +82,11 @@ public sealed class Player
             movement.X += 1f;
 
         if (movement != Vector2.Zero)
+        {
+            UpdateFacingDirection(movement);
             movement.Normalize();
+        }
 
-        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         Position += movement * MovementSpeed * elapsedSeconds;
         Position = new Vector2(
             MathHelper.Clamp(
@@ -80,12 +99,15 @@ public sealed class Player
                 arenaBounds.Bottom - Size.Y / 2f));
     }
 
-    public void ReceiveDamage(int damage)
+    public bool ReceiveDamage(int damage)
     {
-        if (!IsAlive || damage <= 0)
-            return;
+        if (!IsAlive || IsInvulnerable || damage <= 0)
+            return false;
 
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
+        _invulnerabilityTimeRemaining = InvulnerabilityDurationSeconds;
+        _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
+        return true;
     }
 
     public void GainExperience(int experience)
@@ -103,5 +125,20 @@ public sealed class Player
             MeleeDamage += DamageIncreasePerLevel;
             CurrentHealth = MaxHealth;
         }
+    }
+
+    private void UpdateFacingDirection(Vector2 movement)
+    {
+        if (MathF.Abs(movement.X) > MathF.Abs(movement.Y))
+        {
+            Facing = movement.X < 0f
+                ? FacingDirection.Left
+                : FacingDirection.Right;
+            return;
+        }
+
+        Facing = movement.Y < 0f
+            ? FacingDirection.Up
+            : FacingDirection.Down;
     }
 }
