@@ -39,7 +39,7 @@ public class Game1 : Game
     {
         KeyboardState keyboardState = Keyboard.GetState();
 
-        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || keyboardState.IsKeyDown(Keys.Escape))
+        if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)
             Exit();
 
         _gameSession.Update(gameTime, keyboardState);

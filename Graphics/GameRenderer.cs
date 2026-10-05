@@ -27,9 +27,17 @@ public sealed class GameRenderer : IDisposable
 
     public void Draw(GameSession gameSession)
     {
-        _graphicsDevice.Clear(new Color(28, 34, 48));
+        _graphicsDevice.Clear(new Color(18, 22, 29));
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        DrawArena();
+
+        if (gameSession.State == GameState.Start)
+        {
+            DrawStartScreen();
+            _spriteBatch.End();
+            return;
+        }
 
         if (gameSession.PlayerAttack.IsActive)
             DrawAttackArea(gameSession.PlayerAttackArea);
@@ -42,10 +50,72 @@ public sealed class GameRenderer : IDisposable
                 DrawGoblin(goblin);
         }
 
+        DrawHudPanel();
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
 
+        if (gameSession.State == GameState.Paused)
+            DrawPauseOverlay();
+        else if (gameSession.State == GameState.GameOver)
+            DrawGameOverOverlay();
+
         _spriteBatch.End();
+    }
+
+    private void DrawArena()
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var arena = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        const int wallThickness = 16;
+        const int tileSize = 48;
+
+        _spriteBatch.Draw(_pixel, arena, new Color(37, 43, 46));
+
+        for (int x = wallThickness; x < viewport.Width - wallThickness; x += tileSize)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, wallThickness, 1, viewport.Height - wallThickness * 2),
+                new Color(67, 75, 77, 80));
+        }
+
+        for (int y = wallThickness; y < viewport.Height - wallThickness; y += tileSize)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(wallThickness, y, viewport.Width - wallThickness * 2, 1),
+                new Color(67, 75, 77, 80));
+        }
+
+        Color wallColor = new(66, 61, 62);
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, viewport.Width, wallThickness), wallColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(0, viewport.Height - wallThickness, viewport.Width, wallThickness), wallColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, wallThickness, viewport.Height), wallColor);
+        _spriteBatch.Draw(_pixel, new Rectangle(viewport.Width - wallThickness, 0, wallThickness, viewport.Height), wallColor);
+
+        for (int x = 0; x < viewport.Width; x += 64)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(x, 0, 2, wallThickness), new Color(92, 84, 82));
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 32, viewport.Height - wallThickness, 2, wallThickness), new Color(92, 84, 82));
+        }
+
+        for (int y = 0; y < viewport.Height; y += 64)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(0, y, wallThickness, 2), new Color(92, 84, 82));
+            _spriteBatch.Draw(_pixel, new Rectangle(viewport.Width - wallThickness, y + 32, wallThickness, 2), new Color(92, 84, 82));
+        }
+
+        DrawCornerBrazier(22, 22);
+        DrawCornerBrazier(viewport.Width - 34, 22);
+        DrawCornerBrazier(22, viewport.Height - 34);
+        DrawCornerBrazier(viewport.Width - 34, viewport.Height - 34);
+    }
+
+    private void DrawCornerBrazier(int x, int y)
+    {
+        _spriteBatch.Draw(_pixel, new Rectangle(x, y + 8, 12, 4), new Color(108, 75, 47));
+        _spriteBatch.Draw(_pixel, new Rectangle(x + 3, y + 3, 6, 7), new Color(226, 108, 37));
+        _spriteBatch.Draw(_pixel, new Rectangle(x + 5, y, 3, 6), new Color(250, 190, 54));
     }
 
     private void DrawAttackArea(Rectangle attackArea)
@@ -62,6 +132,11 @@ public sealed class GameRenderer : IDisposable
         int swordLength = isAttacking ? 52 : 28;
         const int swordThickness = 6;
 
+        Rectangle shadow = new(
+            (int)topLeft.X + 4,
+            (int)(topLeft.Y + player.Size.Y) - 5,
+            (int)player.Size.X - 8,
+            8);
         Rectangle body = new(
             (int)topLeft.X + 5,
             (int)topLeft.Y + 22,
@@ -72,9 +147,15 @@ public sealed class GameRenderer : IDisposable
             (int)topLeft.Y,
             (int)player.Size.X - 20,
             24);
+        Rectangle leftLeg = new(body.X + 4, body.Bottom - 5, 8, 10);
+        Rectangle rightLeg = new(body.Right - 12, body.Bottom - 5, 8, 10);
+        Rectangle leftArm = new(body.X - 4, body.Y + 5, 6, 19);
+        Rectangle rightArm = new(body.Right - 2, body.Y + 5, 6, 19);
+        Rectangle belt = new(body.X, body.Y + 17, body.Width, 5);
 
         Rectangle swordBlade;
         Rectangle swordGuard;
+        Rectangle swordHandle;
 
         switch (player.Facing)
         {
@@ -89,6 +170,11 @@ public sealed class GameRenderer : IDisposable
                     swordBlade.Bottom - 3,
                     14,
                     6);
+                swordHandle = new Rectangle(
+                    swordBlade.X,
+                    swordGuard.Bottom - 1,
+                    swordThickness,
+                    9);
                 break;
             case FacingDirection.Down:
                 swordBlade = new Rectangle(
@@ -101,6 +187,11 @@ public sealed class GameRenderer : IDisposable
                     swordBlade.Y - 3,
                     14,
                     6);
+                swordHandle = new Rectangle(
+                    swordBlade.X,
+                    swordGuard.Y - 8,
+                    swordThickness,
+                    9);
                 break;
             case FacingDirection.Left:
                 swordBlade = new Rectangle(
@@ -113,6 +204,11 @@ public sealed class GameRenderer : IDisposable
                     swordBlade.Y - 4,
                     6,
                     14);
+                swordHandle = new Rectangle(
+                    swordGuard.Right - 1,
+                    swordBlade.Y,
+                    9,
+                    swordThickness);
                 break;
             default:
                 swordBlade = new Rectangle(
@@ -125,6 +221,11 @@ public sealed class GameRenderer : IDisposable
                     swordBlade.Y - 4,
                     6,
                     14);
+                swordHandle = new Rectangle(
+                    swordGuard.X - 8,
+                    swordBlade.Y,
+                    9,
+                    swordThickness);
                 break;
         }
 
@@ -139,9 +240,16 @@ public sealed class GameRenderer : IDisposable
             ? new Color(245, 238, 185)
             : new Color(205, 215, 226);
 
+        _spriteBatch.Draw(_pixel, shadow, new Color(16, 19, 22, 150));
+        _spriteBatch.Draw(_pixel, swordHandle, new Color(91, 57, 38));
         _spriteBatch.Draw(_pixel, swordBlade, bladeColor);
         _spriteBatch.Draw(_pixel, swordGuard, new Color(126, 85, 50));
+        _spriteBatch.Draw(_pixel, leftLeg, new Color(34, 55, 79));
+        _spriteBatch.Draw(_pixel, rightLeg, new Color(34, 55, 79));
         _spriteBatch.Draw(_pixel, body, bodyColor);
+        _spriteBatch.Draw(_pixel, leftArm, bodyColor);
+        _spriteBatch.Draw(_pixel, rightArm, bodyColor);
+        _spriteBatch.Draw(_pixel, belt, new Color(86, 58, 42));
         _spriteBatch.Draw(_pixel, head, headColor);
         _spriteBatch.Draw(_pixel, eye, new Color(30, 25, 27));
 
@@ -174,6 +282,11 @@ public sealed class GameRenderer : IDisposable
         Vector2 topLeft = goblin.Position - goblin.Size / 2f;
         int clubLength = goblin.Attack.IsActive ? 39 : 25;
 
+        Rectangle shadow = new(
+            (int)topLeft.X + 3,
+            (int)(topLeft.Y + goblin.Size.Y) - 5,
+            (int)goblin.Size.X - 6,
+            7);
         Rectangle leftEar = new(
             (int)topLeft.X,
             (int)topLeft.Y + 7,
@@ -202,12 +315,16 @@ public sealed class GameRenderer : IDisposable
             clubHandle.Bottom - 8,
             11,
             10);
+        Rectangle leftLeg = new(body.X + 2, body.Bottom - 3, 7, 8);
+        Rectangle rightLeg = new(body.Right - 9, body.Bottom - 3, 7, 8);
 
         GetGoblinColors(
             goblin,
             out Color skinColor,
             out Color bodyColor,
             out Color eyeColor);
+
+        _spriteBatch.Draw(_pixel, shadow, new Color(16, 19, 22, 145));
 
         if (goblin.IsElite)
         {
@@ -221,6 +338,8 @@ public sealed class GameRenderer : IDisposable
 
         _spriteBatch.Draw(_pixel, leftEar, skinColor);
         _spriteBatch.Draw(_pixel, rightEar, skinColor);
+        _spriteBatch.Draw(_pixel, leftLeg, bodyColor);
+        _spriteBatch.Draw(_pixel, rightLeg, bodyColor);
         _spriteBatch.Draw(_pixel, clubHandle, new Color(103, 68, 42));
         _spriteBatch.Draw(
             _pixel,
@@ -230,6 +349,19 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, head, skinColor);
         _spriteBatch.Draw(_pixel, leftEye, eyeColor);
         _spriteBatch.Draw(_pixel, rightEye, eyeColor);
+
+        if (goblin.Variant == GoblinVariant.Fast)
+        {
+            Rectangle sash = new(body.X + 2, body.Y + 7, body.Width - 4, 4);
+            _spriteBatch.Draw(_pixel, sash, new Color(76, 180, 184));
+        }
+        else if (goblin.Variant == GoblinVariant.Brute)
+        {
+            Rectangle leftShoulder = new(body.X - 4, body.Y + 2, 7, 9);
+            Rectangle rightShoulder = new(body.Right - 3, body.Y + 2, 7, 9);
+            _spriteBatch.Draw(_pixel, leftShoulder, new Color(82, 64, 62));
+            _spriteBatch.Draw(_pixel, rightShoulder, new Color(82, 64, 62));
+        }
 
         if (goblin.IsElite)
         {
@@ -274,12 +406,19 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
+    private void DrawHudPanel()
+    {
+        var panel = new Rectangle(12, 12, 238, 78);
+        _spriteBatch.Draw(_pixel, panel, new Color(17, 21, 28, 220));
+        DrawRectangleOutline(panel, 2, new Color(112, 119, 126, 230));
+    }
+
     private void DrawPlayerHealth(PlayerCharacter player)
     {
-        const int barX = 20;
-        const int barY = 20;
-        const int barWidth = 220;
-        const int barHeight = 18;
+        const int barX = 42;
+        const int barY = 22;
+        const int barWidth = 198;
+        const int barHeight = 16;
         const int borderWidth = 2;
 
         float healthRatio = player.CurrentHealth / (float)player.MaxHealth;
@@ -297,7 +436,10 @@ public sealed class GameRenderer : IDisposable
             fillWidth,
             background.Height);
 
-        _spriteBatch.Draw(_pixel, border, new Color(225, 225, 225));
+        _spriteBatch.Draw(_pixel, new Rectangle(20, 24, 14, 10), new Color(196, 48, 58));
+        _spriteBatch.Draw(_pixel, new Rectangle(23, 21, 4, 16), new Color(196, 48, 58));
+        _spriteBatch.Draw(_pixel, new Rectangle(29, 21, 4, 16), new Color(196, 48, 58));
+        _spriteBatch.Draw(_pixel, border, new Color(185, 190, 194));
         _spriteBatch.Draw(_pixel, background, new Color(62, 25, 30));
 
         if (fillWidth > 0)
@@ -306,10 +448,10 @@ public sealed class GameRenderer : IDisposable
 
     private void DrawPlayerProgression(PlayerCharacter player, int killCount)
     {
-        const int barX = 20;
-        const int barY = 44;
-        const int barWidth = 220;
-        const int barHeight = 12;
+        const int barX = 42;
+        const int barY = 46;
+        const int barWidth = 198;
+        const int barHeight = 10;
         const int borderWidth = 2;
         const int levelIndicatorY = 62;
         const int levelIndicatorSize = 8;
@@ -334,13 +476,15 @@ public sealed class GameRenderer : IDisposable
             fillWidth,
             background.Height);
 
-        _spriteBatch.Draw(_pixel, border, new Color(225, 225, 225));
+        _spriteBatch.Draw(_pixel, new Rectangle(22, 47, 10, 8), new Color(87, 132, 222));
+        _spriteBatch.Draw(_pixel, border, new Color(185, 190, 194));
         _spriteBatch.Draw(_pixel, background, new Color(28, 35, 66));
 
         if (fillWidth > 0)
             _spriteBatch.Draw(_pixel, experience, new Color(87, 132, 222));
 
-        int visibleLevel = Math.Min(player.Level, 18);
+        _spriteBatch.Draw(_pixel, new Rectangle(21, levelIndicatorY, 11, 8), new Color(235, 190, 62));
+        int visibleLevel = Math.Min(player.Level, 17);
 
         for (int level = 0; level < visibleLevel; level++)
         {
@@ -352,7 +496,8 @@ public sealed class GameRenderer : IDisposable
             _spriteBatch.Draw(_pixel, indicator, new Color(235, 190, 62));
         }
 
-        int visibleKills = Math.Min(killCount, 24);
+        _spriteBatch.Draw(_pixel, new Rectangle(22, killIndicatorY, 9, 6), new Color(181, 72, 66));
+        int visibleKills = Math.Min(killCount, 22);
 
         for (int kill = 0; kill < visibleKills; kill++)
         {
@@ -363,6 +508,86 @@ public sealed class GameRenderer : IDisposable
                 killIndicatorSize);
             _spriteBatch.Draw(_pixel, indicator, new Color(181, 72, 66));
         }
+    }
+
+    private void DrawStartScreen()
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - 180,
+            viewport.Height / 2 - 110,
+            360,
+            220);
+
+        _spriteBatch.Draw(_pixel, screen, new Color(8, 10, 16, 125));
+        _spriteBatch.Draw(_pixel, panel, new Color(20, 25, 34, 240));
+        DrawRectangleOutline(panel, 4, new Color(155, 121, 56));
+
+        int centerX = panel.Center.X;
+        _spriteBatch.Draw(_pixel, new Rectangle(centerX - 100, panel.Y + 34, 200, 6), new Color(223, 183, 76));
+        _spriteBatch.Draw(_pixel, new Rectangle(centerX - 72, panel.Y + 48, 144, 4), new Color(124, 101, 58));
+
+        var shield = new Rectangle(centerX - 30, panel.Y + 67, 60, 54);
+        _spriteBatch.Draw(_pixel, shield, new Color(49, 89, 126));
+        DrawRectangleOutline(shield, 3, new Color(188, 196, 202));
+        _spriteBatch.Draw(_pixel, new Rectangle(centerX - 3, shield.Y + 7, 6, 40), new Color(214, 220, 224));
+        _spriteBatch.Draw(_pixel, new Rectangle(centerX - 18, shield.Y + 17, 36, 6), new Color(214, 220, 224));
+
+        var startButton = new Rectangle(centerX - 78, panel.Bottom - 65, 156, 38);
+        _spriteBatch.Draw(_pixel, startButton, new Color(38, 50, 64));
+        DrawRectangleOutline(startButton, 2, new Color(105, 176, 120));
+        _spriteBatch.Draw(_pixel, new Rectangle(startButton.X + 42, startButton.Center.Y - 3, 62, 6), new Color(128, 216, 145));
+        _spriteBatch.Draw(_pixel, new Rectangle(startButton.Right - 53, startButton.Center.Y - 13, 6, 16), new Color(128, 216, 145));
+        _spriteBatch.Draw(_pixel, new Rectangle(startButton.Right - 62, startButton.Center.Y + 3, 15, 6), new Color(128, 216, 145));
+    }
+
+    private void DrawPauseOverlay()
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - 105,
+            viewport.Height / 2 - 70,
+            210,
+            140);
+
+        _spriteBatch.Draw(_pixel, screen, new Color(8, 10, 15, 155));
+        _spriteBatch.Draw(_pixel, panel, new Color(25, 30, 39, 235));
+        DrawRectangleOutline(panel, 3, new Color(142, 151, 160));
+        _spriteBatch.Draw(_pixel, new Rectangle(panel.Center.X - 30, panel.Y + 34, 20, 58), new Color(215, 220, 224));
+        _spriteBatch.Draw(_pixel, new Rectangle(panel.Center.X + 10, panel.Y + 34, 20, 58), new Color(215, 220, 224));
+        _spriteBatch.Draw(_pixel, new Rectangle(panel.Center.X - 48, panel.Bottom - 26, 96, 5), new Color(91, 111, 132));
+    }
+
+    private void DrawGameOverOverlay()
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - 130,
+            viewport.Height / 2 - 90,
+            260,
+            180);
+
+        _spriteBatch.Draw(_pixel, screen, new Color(48, 8, 12, 150));
+        _spriteBatch.Draw(_pixel, panel, new Color(35, 20, 25, 240));
+        DrawRectangleOutline(panel, 3, new Color(165, 62, 67));
+
+        var skull = new Rectangle(panel.Center.X - 34, panel.Y + 25, 68, 58);
+        _spriteBatch.Draw(_pixel, skull, new Color(205, 200, 184));
+        _spriteBatch.Draw(_pixel, new Rectangle(skull.X + 13, skull.Y + 18, 13, 14), new Color(45, 32, 35));
+        _spriteBatch.Draw(_pixel, new Rectangle(skull.Right - 26, skull.Y + 18, 13, 14), new Color(45, 32, 35));
+        _spriteBatch.Draw(_pixel, new Rectangle(skull.Center.X - 5, skull.Y + 35, 10, 9), new Color(45, 32, 35));
+        _spriteBatch.Draw(_pixel, new Rectangle(skull.X + 12, skull.Bottom, 44, 12), new Color(205, 200, 184));
+        _spriteBatch.Draw(_pixel, new Rectangle(skull.Center.X - 2, skull.Bottom, 4, 12), new Color(71, 54, 54));
+
+        var restartButton = new Rectangle(panel.Center.X - 65, panel.Bottom - 45, 130, 28);
+        _spriteBatch.Draw(_pixel, restartButton, new Color(57, 31, 35));
+        DrawRectangleOutline(restartButton, 2, new Color(210, 90, 91));
+        _spriteBatch.Draw(_pixel, new Rectangle(restartButton.X + 35, restartButton.Center.Y - 3, 54, 6), new Color(226, 112, 109));
+        _spriteBatch.Draw(_pixel, new Rectangle(restartButton.X + 35, restartButton.Center.Y - 11, 6, 14), new Color(226, 112, 109));
+        _spriteBatch.Draw(_pixel, new Rectangle(restartButton.X + 29, restartButton.Center.Y - 11, 12, 6), new Color(226, 112, 109));
     }
 
     private void DrawRectangleOutline(Rectangle rectangle, int thickness, Color color)

@@ -23,25 +23,67 @@ public sealed class GameSession
     public EnemyManager Enemies { get; }
     public int KillCount { get; private set; }
     public Rectangle PlayerAttackArea { get; private set; }
+    public GameState State { get; private set; }
 
     public GameSession(Vector2 playerSpawnPosition, Rectangle arenaBounds)
     {
         _playerSpawnPosition = playerSpawnPosition;
         _arenaBounds = arenaBounds;
         Enemies = new EnemyManager(arenaBounds);
-        RestartRun();
+        ResetRun();
+        State = GameState.Start;
     }
 
     public void Update(GameTime gameTime, KeyboardState keyboardState)
     {
+        bool startPressed = keyboardState.IsKeyDown(Keys.Enter) &&
+            !_previousKeyboardState.IsKeyDown(Keys.Enter);
+        bool pausePressed = keyboardState.IsKeyDown(Keys.Escape) &&
+            !_previousKeyboardState.IsKeyDown(Keys.Escape);
         bool restartPressed = keyboardState.IsKeyDown(Keys.R) &&
             !_previousKeyboardState.IsKeyDown(Keys.R);
 
-        if (!Player.IsAlive)
+        if (State == GameState.Start)
+        {
+            if (startPressed)
+                State = GameState.Playing;
+
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
+        if (State == GameState.Paused)
+        {
+            if (pausePressed)
+                State = GameState.Playing;
+
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
+        if (State == GameState.GameOver)
         {
             if (restartPressed)
-                RestartRun();
+            {
+                ResetRun();
+                State = GameState.Playing;
+            }
 
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
+        if (pausePressed)
+        {
+            State = GameState.Paused;
+            _previousKeyboardState = keyboardState;
+            return;
+        }
+
+        if (!Player.IsAlive)
+        {
+            PlayerAttack.Cancel();
+            State = GameState.GameOver;
             _previousKeyboardState = keyboardState;
             return;
         }
@@ -75,6 +117,7 @@ public sealed class GameSession
         if (!Player.IsAlive)
         {
             PlayerAttack.Cancel();
+            State = GameState.GameOver;
         }
         else
         {
@@ -99,7 +142,7 @@ public sealed class GameSession
         KillCount += defeatedCount;
     }
 
-    private void RestartRun()
+    private void ResetRun()
     {
         Player = new PlayerCharacter(_playerSpawnPosition);
         PlayerAttack = new MeleeAttack();
