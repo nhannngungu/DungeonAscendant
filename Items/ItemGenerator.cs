@@ -1,9 +1,46 @@
 using System;
+using DungeonAscendant.Progression;
 
 namespace DungeonAscendant.Items;
 
 public sealed class ItemGenerator
 {
+    private static readonly RarityWeights[] NormalEnemyWeights =
+    {
+        new(55, 25, 13, 6, 1),
+        new(49, 27, 15, 8, 1),
+        new(43, 28, 18, 9, 2),
+        new(37, 29, 20, 11, 3),
+        new(31, 30, 22, 13, 4)
+    };
+
+    private static readonly RarityWeights[] EliteEnemyWeights =
+    {
+        new(25, 30, 25, 15, 5),
+        new(21, 29, 27, 17, 6),
+        new(17, 28, 29, 19, 7),
+        new(13, 27, 31, 21, 8),
+        new(9, 26, 33, 23, 9)
+    };
+
+    private static readonly RarityWeights[] TreasureChestWeights =
+    {
+        new(15, 35, 30, 15, 5),
+        new(12, 32, 32, 18, 6),
+        new(9, 29, 34, 21, 7),
+        new(6, 26, 36, 24, 8),
+        new(3, 23, 38, 27, 9)
+    };
+
+    private static readonly RarityWeights[] BossWeights =
+    {
+        new(0, 0, 55, 35, 10),
+        new(0, 0, 50, 38, 12),
+        new(0, 0, 45, 41, 14),
+        new(0, 0, 40, 44, 16),
+        new(0, 0, 35, 47, 18)
+    };
+
     private readonly Random _random;
 
     public ItemGenerator(int? randomSeed = null)
@@ -21,7 +58,9 @@ public sealed class ItemGenerator
         return Generate(
             enemyLevel,
             playerLevel,
-            isElite ? LootSource.EliteEnemy : LootSource.NormalEnemy);
+            isElite ? LootSource.EliteEnemy : LootSource.NormalEnemy,
+            dungeonDepth: 1,
+            worldTier: 1);
     }
 
     public EquipmentItem Generate(
@@ -29,17 +68,35 @@ public sealed class ItemGenerator
         int playerLevel,
         LootSource source)
     {
-        int itemLevel = Math.Max(1, Math.Max(sourceLevel, playerLevel));
+        return Generate(
+            sourceLevel,
+            playerLevel,
+            source,
+            dungeonDepth: 1,
+            worldTier: 1);
+    }
 
+    public EquipmentItem Generate(
+        int sourceLevel,
+        int playerLevel,
+        LootSource source,
+        int dungeonDepth,
+        int worldTier)
+    {
+        int safeDepth = Math.Max(1, dungeonDepth);
+        int safeWorldTier = WorldProgression.ClampWorldTier(worldTier);
+        int itemLevel = Math.Max(1, Math.Max(sourceLevel, playerLevel));
+        itemLevel += (safeDepth - 1) / 3;
+        itemLevel += (safeWorldTier - 1) / 2;
         itemLevel += source switch
         {
             LootSource.EliteEnemy => _random.Next(0, 2),
-            LootSource.TreasureChest => _random.Next(0, 2),
-            LootSource.Boss => 1 + _random.Next(0, 2),
+            LootSource.TreasureChest => 1 + _random.Next(0, 2),
+            LootSource.Boss => 2 + _random.Next(0, 2),
             _ => 0
         };
 
-        ItemRarity rarity = RollRarity(source);
+        ItemRarity rarity = RollRarity(source, safeWorldTier);
         EquipmentSlot slot = _random.Next(2) == 0
             ? EquipmentSlot.Weapon
             : EquipmentSlot.Armor;
@@ -68,57 +125,51 @@ public sealed class ItemGenerator
     public ItemRarity RollRarity(bool isElite)
     {
         return RollRarity(
-            isElite ? LootSource.EliteEnemy : LootSource.NormalEnemy);
+            isElite ? LootSource.EliteEnemy : LootSource.NormalEnemy,
+            worldTier: 1);
     }
 
     public ItemRarity RollRarity(LootSource source)
     {
+        return RollRarity(source, worldTier: 1);
+    }
+
+    public ItemRarity RollRarity(LootSource source, int worldTier)
+    {
+        RarityWeights weights = GetRarityWeights(source, worldTier);
         int roll = _random.Next(100);
 
-        if (source == LootSource.Boss)
-        {
-            if (roll < 55)
-                return ItemRarity.Rare;
-            if (roll < 90)
-                return ItemRarity.Epic;
-            return ItemRarity.Legendary;
-        }
-
-        if (source == LootSource.TreasureChest)
-        {
-            if (roll < 15)
-                return ItemRarity.Common;
-            if (roll < 50)
-                return ItemRarity.Uncommon;
-            if (roll < 80)
-                return ItemRarity.Rare;
-            if (roll < 95)
-                return ItemRarity.Epic;
-            return ItemRarity.Legendary;
-        }
-
-        if (source == LootSource.EliteEnemy)
-        {
-            if (roll < 25)
-                return ItemRarity.Common;
-            if (roll < 55)
-                return ItemRarity.Uncommon;
-            if (roll < 80)
-                return ItemRarity.Rare;
-            if (roll < 95)
-                return ItemRarity.Epic;
-            return ItemRarity.Legendary;
-        }
-
-        if (roll < 55)
+        if (roll < weights.Common)
             return ItemRarity.Common;
-        if (roll < 80)
+
+        int threshold = weights.Common + weights.Uncommon;
+
+        if (roll < threshold)
             return ItemRarity.Uncommon;
-        if (roll < 93)
+
+        threshold += weights.Rare;
+
+        if (roll < threshold)
             return ItemRarity.Rare;
-        if (roll < 99)
-            return ItemRarity.Epic;
-        return ItemRarity.Legendary;
+
+        threshold += weights.Epic;
+        return roll < threshold
+            ? ItemRarity.Epic
+            : ItemRarity.Legendary;
+    }
+
+    public static RarityWeights GetRarityWeights(
+        LootSource source,
+        int worldTier)
+    {
+        int index = WorldProgression.ClampWorldTier(worldTier) - 1;
+        return source switch
+        {
+            LootSource.EliteEnemy => EliteEnemyWeights[index],
+            LootSource.TreasureChest => TreasureChestWeights[index],
+            LootSource.Boss => BossWeights[index],
+            _ => NormalEnemyWeights[index]
+        };
     }
 
     public static int GetRarityMultiplierPercent(ItemRarity rarity)

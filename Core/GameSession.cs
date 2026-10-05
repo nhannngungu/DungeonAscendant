@@ -4,6 +4,7 @@ using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
+using DungeonAscendant.Progression;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -19,10 +20,12 @@ public sealed class GameSession
     private const float PlayerAttackThickness = 48f;
     private const float PlayerKnockbackDistance = 24f;
     private const float ExitInteractionRadius = 72f;
+    private const float WorldTierTransitionDurationSeconds = 1.4f;
 
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly List<Goblin> _defeatedGoblins = new();
     private KeyboardState _previousKeyboardState;
+    private float _worldTierTransitionTimeRemaining;
 
     public PlayerCharacter Player { get; private set; }
     public MeleeAttack PlayerAttack { get; private set; }
@@ -34,8 +37,12 @@ public sealed class GameSession
     public Camera2D Camera { get; }
     public int KillCount { get; private set; }
     public int DungeonDepth { get; private set; }
+    public int WorldTier { get; private set; }
     public bool BossDefeated { get; private set; }
     public bool IsExitUnlocked => BossDefeated;
+    public float WorldTierTransitionProgress =>
+        _worldTierTransitionTimeRemaining /
+        WorldTierTransitionDurationSeconds;
     public Rectangle PlayerAttackArea { get; private set; }
     public GameState State { get; private set; }
     public bool IsInventoryOpen { get; private set; }
@@ -134,6 +141,10 @@ public sealed class GameSession
             return;
         }
 
+        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _worldTierTransitionTimeRemaining = System.MathF.Max(
+            0f,
+            _worldTierTransitionTimeRemaining - elapsedSeconds);
         Player.UpdateTimers(gameTime);
         Vector2 desiredPosition = Player.GetDesiredPosition(
             gameTime,
@@ -223,6 +234,8 @@ public sealed class GameSession
             Loot.TryCreateDrop(
                 goblin,
                 Player.Level,
+                DungeonDepth,
+                WorldTier,
                 CurrentDungeon);
         }
 
@@ -232,6 +245,8 @@ public sealed class GameSession
     private void ResetRun()
     {
         DungeonDepth = 1;
+        WorldTier = 1;
+        _worldTierTransitionTimeRemaining = 0f;
         CurrentDungeon = _dungeonGenerator.Generate();
         Player = new PlayerCharacter(CurrentDungeon.StartRoom.Center);
         KillCount = 0;
@@ -242,7 +257,16 @@ public sealed class GameSession
 
     private void CompleteDungeon()
     {
+        int previousWorldTier = WorldTier;
         DungeonDepth++;
+        WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
+
+        if (WorldTier > previousWorldTier)
+        {
+            _worldTierTransitionTimeRemaining =
+                WorldTierTransitionDurationSeconds;
+        }
+
         CurrentDungeon = _dungeonGenerator.Generate();
         Player.MoveTo(CurrentDungeon.StartRoom.Center);
         IsInventoryOpen = false;
@@ -254,10 +278,11 @@ public sealed class GameSession
     {
         PlayerAttack = new MeleeAttack();
         Loot.Reset();
-        int enemyLevel = DungeonProgression.GetEnemyLevel(
+        int enemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level,
-            DungeonDepth);
-        Enemies.Reset(CurrentDungeon, enemyLevel);
+            DungeonDepth,
+            WorldTier);
+        Enemies.Reset(CurrentDungeon, enemyLevel, WorldTier);
         Chest = new TreasureChest(
             CurrentDungeon.TreasureRoom.Center,
             CurrentDungeon.TreasureRoom.Id);
@@ -265,7 +290,8 @@ public sealed class GameSession
             CurrentDungeon.BossRoom.Center,
             CurrentDungeon.BossRoom.Id,
             Player.Level,
-            DungeonDepth);
+            DungeonDepth,
+            WorldTier);
         BossDefeated = false;
         UpdatePlayerAttackArea();
         Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
@@ -278,6 +304,7 @@ public sealed class GameSession
             Loot,
             Player.Level,
             DungeonDepth,
+            WorldTier,
             CurrentDungeon))
         {
             return false;
@@ -311,6 +338,8 @@ public sealed class GameSession
             Boss.Position,
             Boss.Level,
             Player.Level,
+            DungeonDepth,
+            WorldTier,
             CurrentDungeon);
         BossDefeated = true;
         KillCount++;

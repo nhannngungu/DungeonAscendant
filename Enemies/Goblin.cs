@@ -1,6 +1,7 @@
 using System;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
+using DungeonAscendant.Progression;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 
@@ -28,6 +29,7 @@ public sealed class Goblin
     public bool IsAlive => CurrentHealth > 0;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
     public int Level { get; }
+    public int WorldTier { get; }
     public int AttackDamage { get; }
     public int ExperienceReward { get; }
     public GoblinVariant Variant { get; }
@@ -46,17 +48,23 @@ public sealed class Goblin
         GoblinVariant variant = GoblinVariant.Normal,
         bool isElite = false,
         float detectionRange = 200f,
-        int roomId = -1)
+        int roomId = -1,
+        int worldTier = 1)
     {
         Position = position;
         DetectionRange = detectionRange;
         Level = Math.Max(1, level);
+        WorldTier = WorldProgression.ClampWorldTier(worldTier);
         Variant = variant;
         IsElite = isElite;
         RoomId = roomId;
 
-        int scaledHealth = BaseMaxHealth + (Level - 1) * HealthIncreasePerLevel;
-        int scaledDamage = BaseAttackDamage + (Level - 1) * DamageIncreasePerLevel;
+        int scaledHealth = WorldProgression.ApplyPercent(
+            BaseMaxHealth + (Level - 1) * HealthIncreasePerLevel,
+            WorldProgression.GetHealthMultiplierPercent(WorldTier));
+        int scaledDamage = WorldProgression.ApplyPercent(
+            BaseAttackDamage + (Level - 1) * DamageIncreasePerLevel,
+            WorldProgression.GetDamageMultiplierPercent(WorldTier));
 
         switch (Variant)
         {

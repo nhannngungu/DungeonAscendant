@@ -84,6 +84,9 @@ public sealed class GameRenderer : IDisposable
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
         DrawDungeonStatus(gameSession);
 
+        if (gameSession.WorldTierTransitionProgress > 0f)
+            DrawWorldTierTransition(gameSession);
+
         if (gameSession.IsInventoryOpen)
             DrawInventoryOverlay(gameSession);
         else if (gameSession.State == GameState.Paused)
@@ -1037,7 +1040,7 @@ public sealed class GameRenderer : IDisposable
     private void DrawDungeonStatus(GameSession gameSession)
     {
         Viewport viewport = _graphicsDevice.Viewport;
-        var panel = new Rectangle(viewport.Width - 208, 12, 196, 70);
+        var panel = new Rectangle(viewport.Width - 244, 12, 232, 70);
         _spriteBatch.Draw(_pixel, panel, new Color(17, 21, 28, 220));
         DrawRectangleOutline(panel, 2, new Color(112, 119, 126, 230));
 
@@ -1095,6 +1098,23 @@ public sealed class GameRenderer : IDisposable
             new Rectangle(bossX + 19, statusY, 6, 9),
             bossColor);
 
+        Color tierColor = new(151, 104, 221);
+        int tierStartX = panel.Center.X -
+            (gameSession.WorldTier * 11 - 3) / 2;
+
+        for (int index = 0; index < gameSession.WorldTier; index++)
+        {
+            int markerX = tierStartX + index * 11;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(markerX, statusY + 2, 8, 17),
+                tierColor);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(markerX + 2, statusY - 2, 4, 4),
+                new Color(202, 163, 244));
+        }
+
         int exitX = panel.Right - 53;
         Color exitColor = gameSession.IsExitUnlocked
             ? new Color(111, 202, 113)
@@ -1119,6 +1139,40 @@ public sealed class GameRenderer : IDisposable
                 _pixel,
                 new Rectangle(exitFrame.Right - 11, exitFrame.Y + 6, 4, 16),
                 exitColor);
+        }
+    }
+
+    private void DrawWorldTierTransition(GameSession gameSession)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        float progress = MathHelper.Clamp(
+            gameSession.WorldTierTransitionProgress,
+            0f,
+            1f);
+        float pulse = 0.55f +
+            0.45f * MathF.Abs(MathF.Sin(progress * MathHelper.Pi * 4f));
+        byte alpha = (byte)(190f * progress * pulse);
+        Color borderColor = new(171, 116, 235, (int)alpha);
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        DrawRectangleOutline(screen, 8, borderColor);
+
+        int markerCount = gameSession.WorldTier;
+        int spacing = 22;
+        int centerX = viewport.Width / 2;
+        int startX = centerX - (markerCount * spacing - 6) / 2;
+        int y = viewport.Height / 2 - 25;
+
+        for (int index = 0; index < markerCount; index++)
+        {
+            int x = startX + index * spacing;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, y + 8, 16, 34),
+                new Color(151, 91, 222, (int)alpha));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x + 4, y, 8, 50),
+                new Color(211, 169, 247, (int)alpha));
         }
     }
 

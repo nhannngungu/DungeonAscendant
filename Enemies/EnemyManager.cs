@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DungeonAscendant.Dungeon;
+using DungeonAscendant.Progression;
 using Microsoft.Xna.Framework;
 using PlayerCharacter = DungeonAscendant.Player.Player;
 
@@ -28,19 +29,36 @@ public sealed class EnemyManager
             : new Random();
     }
 
-    public void Reset(DungeonMap dungeon, int playerLevel)
+    public void Reset(DungeonMap dungeon, int enemyLevel)
+    {
+        Reset(dungeon, enemyLevel, worldTier: 1);
+    }
+
+    public void Reset(
+        DungeonMap dungeon,
+        int enemyLevel,
+        int worldTier)
     {
         _goblins.Clear();
-        DungeonRoom eliteRoom = FindEliteRoom(dungeon);
+        int safeWorldTier = WorldProgression.ClampWorldTier(worldTier);
+        DungeonRoom primaryEliteRoom = FindEliteRoom(dungeon);
+        int additionalEliteChance = GetAdditionalEliteRoomChance(safeWorldTier);
 
         foreach (DungeonRoom room in dungeon.Rooms)
         {
             int enemyCount = GetEnemyCount(room.Type);
+            bool roomHasElite = room == primaryEliteRoom ||
+                room.Type == RoomType.Enemy &&
+                _random.Next(100) < additionalEliteChance;
 
             for (int index = 0; index < enemyCount; index++)
             {
-                bool isElite = room == eliteRoom && index == 0;
-                SpawnGoblin(room, playerLevel, isElite);
+                bool isElite = roomHasElite && index == 0;
+                SpawnGoblin(
+                    room,
+                    enemyLevel,
+                    safeWorldTier,
+                    isElite);
             }
         }
     }
@@ -146,17 +164,19 @@ public sealed class EnemyManager
 
     private void SpawnGoblin(
         DungeonRoom room,
-        int playerLevel,
+        int enemyLevel,
+        int worldTier,
         bool isElite)
     {
         Vector2 spawnPosition = SelectSpawnPosition(room.Bounds);
-        GoblinVariant variant = SelectVariant(playerLevel);
+        GoblinVariant variant = SelectVariant(worldTier);
         _goblins.Add(new Goblin(
             spawnPosition,
-            playerLevel,
+            enemyLevel,
             variant,
             isElite,
-            roomId: room.Id));
+            roomId: room.Id,
+            worldTier: worldTier));
     }
 
     private Vector2 SelectSpawnPosition(Rectangle roomBounds)
@@ -207,20 +227,70 @@ public sealed class EnemyManager
         return nearestDistanceSquared;
     }
 
-    private GoblinVariant SelectVariant(int playerLevel)
+    private GoblinVariant SelectVariant(int worldTier)
     {
-        int levelsAboveOne = Math.Max(0, playerLevel - 1);
-        int bruteChance = Math.Min(35, 15 + levelsAboveOne * 2);
-        int fastChance = Math.Min(30, 25 + levelsAboveOne);
+        GetVariantProbabilities(
+            worldTier,
+            out int normalChance,
+            out int fastChance,
+            out _);
         int roll = _random.Next(100);
 
-        if (roll < bruteChance)
-            return GoblinVariant.Brute;
+        if (roll < normalChance)
+            return GoblinVariant.Normal;
 
-        if (roll < bruteChance + fastChance)
+        if (roll < normalChance + fastChance)
             return GoblinVariant.Fast;
 
-        return GoblinVariant.Normal;
+        return GoblinVariant.Brute;
+    }
+
+    public static void GetVariantProbabilities(
+        int worldTier,
+        out int normalChance,
+        out int fastChance,
+        out int bruteChance)
+    {
+        switch (WorldProgression.ClampWorldTier(worldTier))
+        {
+            case 2:
+                normalChance = 52;
+                fastChance = 28;
+                bruteChance = 20;
+                break;
+            case 3:
+                normalChance = 44;
+                fastChance = 31;
+                bruteChance = 25;
+                break;
+            case 4:
+                normalChance = 36;
+                fastChance = 34;
+                bruteChance = 30;
+                break;
+            case 5:
+                normalChance = 30;
+                fastChance = 35;
+                bruteChance = 35;
+                break;
+            default:
+                normalChance = 60;
+                fastChance = 25;
+                bruteChance = 15;
+                break;
+        }
+    }
+
+    public static int GetAdditionalEliteRoomChance(int worldTier)
+    {
+        return WorldProgression.ClampWorldTier(worldTier) switch
+        {
+            2 => 10,
+            3 => 18,
+            4 => 26,
+            5 => 34,
+            _ => 0
+        };
     }
 
     private static DungeonRoom FindEliteRoom(DungeonMap dungeon)

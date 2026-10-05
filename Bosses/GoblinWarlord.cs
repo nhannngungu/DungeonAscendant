@@ -1,6 +1,7 @@
 using System;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
+using DungeonAscendant.Progression;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using PlayerCharacter = DungeonAscendant.Player.Player;
@@ -25,6 +26,7 @@ public sealed class GoblinWarlord
     public int RoomId { get; }
     public int Level { get; }
     public int DungeonDepth { get; }
+    public int WorldTier { get; }
     public int MaxHealth { get; }
     public int CurrentHealth { get; private set; }
     public int AttackDamage { get; }
@@ -44,22 +46,33 @@ public sealed class GoblinWarlord
         Vector2 position,
         int roomId,
         int playerLevel,
-        int dungeonDepth)
+        int dungeonDepth,
+        int worldTier = 1)
     {
         Position = position;
         RoomId = roomId;
         DungeonDepth = Math.Max(1, dungeonDepth);
-        Level = DungeonProgression.GetEnemyLevel(playerLevel, DungeonDepth);
+        WorldTier = WorldProgression.ClampWorldTier(worldTier);
+        Level = WorldProgression.GetEnemyLevel(
+            playerLevel,
+            DungeonDepth,
+            WorldTier);
         int equivalentGoblinHealth =
             BaseGoblinHealth + (Level - 1) * GoblinHealthPerLevel;
         int equivalentGoblinDamage =
             BaseGoblinDamage + (Level - 1) * GoblinDamagePerLevel;
-        MaxHealth = equivalentGoblinHealth * 6;
+        MaxHealth = WorldProgression.ApplyPercent(
+            equivalentGoblinHealth * 6,
+            WorldProgression.GetHealthMultiplierPercent(WorldTier));
         CurrentHealth = MaxHealth;
-        AttackDamage = (equivalentGoblinDamage * 9 + 2) / 5;
+        int baseBossDamage = (equivalentGoblinDamage * 9 + 2) / 5;
+        AttackDamage = WorldProgression.ApplyPercent(
+            baseBossDamage,
+            WorldProgression.GetDamageMultiplierPercent(WorldTier));
         ExperienceReward = 300 +
             (Math.Max(1, playerLevel) - 1) * 75 +
-            (DungeonDepth - 1) * 100;
+            (DungeonDepth - 1) * 100 +
+            (WorldTier - 1) * 100;
     }
 
     public void Update(

@@ -1,5 +1,6 @@
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Items;
+using DungeonAscendant.Progression;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.World;
@@ -36,6 +37,23 @@ public sealed class TreasureChest
         int dungeonDepth,
         DungeonMap dungeon)
     {
+        return TryOpen(
+            playerPosition,
+            loot,
+            playerLevel,
+            dungeonDepth,
+            WorldProgression.GetWorldTier(dungeonDepth),
+            dungeon);
+    }
+
+    public bool TryOpen(
+        Vector2 playerPosition,
+        LootManager loot,
+        int playerLevel,
+        int dungeonDepth,
+        int worldTier,
+        DungeonMap dungeon)
+    {
         if (IsOpen || !IsPlayerInRange(playerPosition))
             return false;
 
@@ -43,6 +61,7 @@ public sealed class TreasureChest
             Position,
             playerLevel,
             dungeonDepth,
+            worldTier,
             dungeon);
         IsOpen = true;
         return true;
