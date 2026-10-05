@@ -9,23 +9,37 @@ namespace DungeonAscendant.Player;
 /// </summary>
 public sealed class Player
 {
+    private const int BaseExperienceRequirement = 100;
+    private const int ExperienceRequirementPerLevel = 50;
+    private const int HealthIncreasePerLevel = 20;
+    private const int DamageIncreasePerLevel = 5;
+
     public Vector2 Position { get; private set; }
     public float MovementSpeed { get; }
     public Vector2 Size { get; }
-    public int MaxHealth { get; }
+    public int MaxHealth { get; private set; }
     public int CurrentHealth { get; private set; }
     public bool IsAlive => CurrentHealth > 0;
+    public int MeleeDamage { get; private set; }
+    public int Level { get; private set; }
+    public int CurrentExperience { get; private set; }
+    public int ExperienceToNextLevel =>
+        BaseExperienceRequirement + (Level - 1) * ExperienceRequirementPerLevel;
 
     public Player(
         Vector2 position,
         float movementSpeed = 220f,
-        int maxHealth = 100)
+        int maxHealth = 100,
+        int meleeDamage = 25)
     {
         Position = position;
         MovementSpeed = movementSpeed;
         Size = new Vector2(40f, 56f);
         MaxHealth = maxHealth;
         CurrentHealth = MaxHealth;
+        MeleeDamage = meleeDamage;
+        Level = 1;
+        CurrentExperience = 0;
     }
 
     public void Update(GameTime gameTime, KeyboardState keyboardState)
@@ -60,5 +74,22 @@ public sealed class Player
             return;
 
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
+    }
+
+    public void GainExperience(int experience)
+    {
+        if (experience <= 0)
+            return;
+
+        CurrentExperience += experience;
+
+        while (CurrentExperience >= ExperienceToNextLevel)
+        {
+            CurrentExperience -= ExperienceToNextLevel;
+            Level++;
+            MaxHealth += HealthIncreasePerLevel;
+            MeleeDamage += DamageIncreasePerLevel;
+            CurrentHealth = MaxHealth;
+        }
     }
 }

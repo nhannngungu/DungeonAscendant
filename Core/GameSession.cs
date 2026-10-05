@@ -12,6 +12,7 @@ namespace DungeonAscendant.Core;
 public sealed class GameSession
 {
     private KeyboardState _previousKeyboardState;
+    private bool _goblinExperienceAwarded;
 
     public PlayerCharacter Player { get; }
     public Goblin Goblin { get; }
@@ -21,10 +22,11 @@ public sealed class GameSession
     public GameSession(Vector2 playerSpawnPosition)
     {
         Player = new PlayerCharacter(playerSpawnPosition);
-        Goblin = new Goblin(playerSpawnPosition + new Vector2(280f, 0f));
+        Goblin = new Goblin(
+            playerSpawnPosition + new Vector2(280f, 0f),
+            Player.Level);
         PlayerAttack = new MeleeAttack();
         GoblinAttack = new MeleeAttack(
-            damage: 10,
             range: 50f,
             cooldownSeconds: 1f);
     }
@@ -43,8 +45,10 @@ public sealed class GameSession
             PlayerAttack.TryPerform(Player.Position, Goblin.Position) &&
             Goblin.IsAlive)
         {
-            Goblin.ReceiveDamage(PlayerAttack.Damage);
+            Goblin.ReceiveDamage(Player.MeleeDamage);
         }
+
+        AwardGoblinExperienceIfDefeated();
 
         if (Goblin.IsAlive && Player.IsAlive)
         {
@@ -56,7 +60,7 @@ public sealed class GameSession
             {
                 if (GoblinAttack.TryPerform(Goblin.Position, Player.Position))
                 {
-                    Player.ReceiveDamage(GoblinAttack.Damage);
+                    Player.ReceiveDamage(Goblin.AttackDamage);
 
                     if (!Player.IsAlive)
                         PlayerAttack.Cancel();
@@ -72,5 +76,14 @@ public sealed class GameSession
             PlayerAttack.Cancel();
 
         _previousKeyboardState = keyboardState;
+    }
+
+    private void AwardGoblinExperienceIfDefeated()
+    {
+        if (Goblin.IsAlive || _goblinExperienceAwarded)
+            return;
+
+        _goblinExperienceAwarded = true;
+        Player.GainExperience(Goblin.ExperienceReward);
     }
 }

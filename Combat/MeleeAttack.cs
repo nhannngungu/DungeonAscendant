@@ -12,18 +12,15 @@ public sealed class MeleeAttack
     private float _feedbackTimeRemaining;
     private float _cooldownTimeRemaining;
 
-    public int Damage { get; }
     public float Range { get; }
     public float CooldownSeconds { get; }
     public bool IsActive => _feedbackTimeRemaining > 0f;
     public bool IsReady => _cooldownTimeRemaining <= 0f;
 
     public MeleeAttack(
-        int damage = 25,
         float range = 75f,
         float cooldownSeconds = 0f)
     {
-        Damage = damage;
         Range = range;
         CooldownSeconds = cooldownSeconds;
     }

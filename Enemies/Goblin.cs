@@ -8,6 +8,11 @@ namespace DungeonAscendant.Enemies;
 /// </summary>
 public sealed class Goblin
 {
+    private const int BaseMaxHealth = 100;
+    private const int HealthIncreasePerLevel = 20;
+    private const int BaseAttackDamage = 10;
+    private const int DamageIncreasePerLevel = 2;
+
     public Vector2 Position { get; private set; }
     public Vector2 Size { get; }
     public float MovementSpeed { get; }
@@ -15,19 +20,25 @@ public sealed class Goblin
     public int MaxHealth { get; }
     public int CurrentHealth { get; private set; }
     public bool IsAlive => CurrentHealth > 0;
+    public int Level { get; }
+    public int AttackDamage { get; }
+    public int ExperienceReward { get; }
 
     public Goblin(
         Vector2 position,
+        int level = 1,
         float movementSpeed = 110f,
-        float detectionRange = 200f,
-        int maxHealth = 100)
+        float detectionRange = 200f)
     {
         Position = position;
         Size = new Vector2(36f, 44f);
         MovementSpeed = movementSpeed;
         DetectionRange = detectionRange;
-        MaxHealth = maxHealth;
+        Level = Math.Max(1, level);
+        MaxHealth = BaseMaxHealth + (Level - 1) * HealthIncreasePerLevel;
         CurrentHealth = MaxHealth;
+        AttackDamage = BaseAttackDamage + (Level - 1) * DamageIncreasePerLevel;
+        ExperienceReward = 50;
     }
 
     public void Update(

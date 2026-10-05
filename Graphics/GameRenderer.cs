@@ -35,6 +35,7 @@ public sealed class GameRenderer : IDisposable
             DrawGoblin(gameSession.Goblin, gameSession.GoblinAttack.IsActive);
 
         DrawPlayerHealth(gameSession.Player);
+        DrawPlayerProgression(gameSession.Player);
 
         _spriteBatch.End();
     }
@@ -146,6 +147,52 @@ public sealed class GameRenderer : IDisposable
 
         if (fillWidth > 0)
             _spriteBatch.Draw(_pixel, health, new Color(196, 48, 58));
+    }
+
+    private void DrawPlayerProgression(PlayerCharacter player)
+    {
+        const int barX = 20;
+        const int barY = 44;
+        const int barWidth = 220;
+        const int barHeight = 12;
+        const int borderWidth = 2;
+        const int levelIndicatorY = 62;
+        const int levelIndicatorSize = 8;
+        const int levelIndicatorSpacing = 4;
+
+        float experienceRatio = player.CurrentExperience /
+            (float)player.ExperienceToNextLevel;
+        int fillWidth = (int)((barWidth - borderWidth * 2) * experienceRatio);
+
+        Rectangle border = new(barX, barY, barWidth, barHeight);
+        Rectangle background = new(
+            barX + borderWidth,
+            barY + borderWidth,
+            barWidth - borderWidth * 2,
+            barHeight - borderWidth * 2);
+        Rectangle experience = new(
+            background.X,
+            background.Y,
+            fillWidth,
+            background.Height);
+
+        _spriteBatch.Draw(_pixel, border, new Color(225, 225, 225));
+        _spriteBatch.Draw(_pixel, background, new Color(28, 35, 66));
+
+        if (fillWidth > 0)
+            _spriteBatch.Draw(_pixel, experience, new Color(87, 132, 222));
+
+        int visibleLevel = Math.Min(player.Level, 18);
+
+        for (int level = 0; level < visibleLevel; level++)
+        {
+            Rectangle indicator = new(
+                barX + level * (levelIndicatorSize + levelIndicatorSpacing),
+                levelIndicatorY,
+                levelIndicatorSize,
+                levelIndicatorSize);
+            _spriteBatch.Draw(_pixel, indicator, new Color(235, 190, 62));
+        }
     }
 
     public void Dispose()
