@@ -4,11 +4,11 @@ DungeonAscendant is a code-first 2D medieval fantasy progression action RPG buil
 
 ## Overview
 
-Explore a procedurally generated dungeon, fight room-based groups of Goblins, earn experience, and grow stronger. The current prototype combines the original combat and progression loop with connected rooms, corridors, collision, and a following camera, all without external art assets.
+Explore a procedurally generated dungeon, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype combines the original combat and progression loop with connected rooms, corridors, collision, and a following camera, all without external art assets.
 
 ## Current Version: v0.5.0 Dungeon & Progression
 
-The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon and adds World Tiers that raise enemy pressure and loot quality as a run descends.
+The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon, adds World Tiers, and introduces the first official content region: the corrupted Wild Forest.
 
 ## Current Features
 
@@ -18,6 +18,11 @@ The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon
 - Multiple independently acting Goblins with attack cooldowns
 - Normal, Fast, and Brute Goblin variants
 - Elite Goblins with improved stats and rewards
+- Wild Forest Goblins, Dire Wolves, Giant Spiders, and Goblin Hunters
+- Dire Wolf low-health retreat and re-engagement behavior
+- Spider web shots, temporary web patches, and non-stacking Slow
+- Ranged arrows with lifetime, Player collision, and dungeon-wall collision
+- Reusable room-aware enemy, projectile, and temporary-status foundations
 - Procedural generation of 7-10 non-overlapping rooms with connected corridors
 - Distinct Start, Normal, Enemy, Treasure, Boss, and Exit rooms
 - One-shot Treasure Chest with improved 1-2 item rewards
@@ -52,7 +57,43 @@ The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon
 
 ## Progression Loop
 
-Fight Goblins, earn experience and equipment drops, open the Treasure Chest, defeat the Goblin Warlord, and use the unlocked Exit to descend. Weapons add melee damage, Armor adds maximum health, and level progression continues to improve the underlying base stats. Completing a floor preserves Player progression while increasing Dungeon Depth and generating a new dungeon; Game Over restart still resets the entire run.
+Fight region enemies, earn experience and equipment drops, open the Treasure Chest, defeat the Goblin Warlord, and use the unlocked Exit to descend. Weapons add melee damage, Armor adds maximum health, and level progression continues to improve the underlying base stats. Completing a floor preserves Player progression while increasing Dungeon Depth and generating a new dungeon; Game Over restart still resets the entire run.
+
+## Regions
+
+The run tracks Region independently from World Tier. Region selects content and presentation; World Tier continues to control difficulty pressure and loot quality. The current run starts and remains in `WildForest`. The region model also reserves Ancient Catacombs, Ruined City, Demon Lands, Demon Fortress, Demon City, and Demon King's Sanctuary for future milestones without implementing their content early.
+
+The Wild Forest uses dark earth, moss markings, corrupted growth, roots, vines, and thorn-like boundaries drawn entirely from runtime primitives. The current Goblin Warlord remains its temporary Boss.
+
+## Wild Forest Encounters
+
+Base archetype selection weights are:
+
+| World Tier | Goblin | Dire Wolf | Giant Spider | Goblin Hunter |
+|---:|---:|---:|---:|---:|
+| 1 | 40% | 25% | 20% | 15% |
+| 2 | 37% | 26% | 21% | 16% |
+| 3 | 34% | 27% | 22% | 17% |
+| 4 | 31% | 28% | 23% | 18% |
+| 5 | 28% | 29% | 24% | 19% |
+
+Enemy rooms receive a 4-5 point budget. Goblins and Dire Wolves cost one point; Giant Spiders and Goblin Hunters cost two. Spider and Hunter anchors receive a Goblin frontline companion when budget permits, while Wolf anchors have a 55% chance to form a two-Wolf pack. Remaining budget uses the table above. Normal rooms have a 38% chance of a smaller 1-2 point encounter. Start, Treasure, Boss, and Exit rooms do not receive regular enemies.
+
+Wild Forest archetype values before Elite modifiers are:
+
+| Enemy | Health | Damage | Speed | Attack | EXP |
+|---|---|---|---:|---|---:|
+| Goblin | `100 + 20 * (Level - 1)` | `10 + 2 * (Level - 1)` | 110 | 50 range / 1.0s | 50 |
+| Dire Wolf | `80 + 16 * (Level - 1)` | `12 + 2 * (Level - 1)` | 178 | 44 range / 0.85s | 60 |
+| Giant Spider | `110 + 22 * (Level - 1)` | `11 + 2 * (Level - 1)` | 96 | 48 range / 1.15s | 75 |
+| Goblin Hunter | `85 + 17 * (Level - 1)` | `14 + 2 * (Level - 1)` | 112 | 300 range / 1.4s | 70 |
+
+All health and damage values receive the existing World Tier multipliers. Elites receive 1.75x health, 1.5x damage, doubled EXP, and 1.15x size.
+
+- Dire Wolves retreat at 28% health or lower for 1.4 seconds at 1.12x movement speed, then re-engage. The retreat occurs once per Wolf.
+- Giant Spiders prefer 82-155 range. Web shots fire every 3.1 seconds at 245 world units per second and apply a 58% movement multiplier for 2.5 seconds. Web patches last 4.5 seconds and are attempted every 6.2 seconds.
+- Goblin Hunters prefer 145-220 range. Arrows fire every 1.4 seconds, travel at 330 world units per second, inherit Hunter damage, and expire after 2.4 seconds.
+- Slow never changes base Player speed. Reapplication keeps the strongest multiplier and refreshes only to the longer remaining duration.
 
 ## Dungeon and World Tier Progression
 
@@ -70,7 +111,7 @@ Fight Goblins, earn experience and equipment drops, open the Treasure Chest, def
 
 ## Item Progression
 
-- Normal Goblins have a 35% equipment drop chance; Elite Goblins always drop equipment.
+- Normal enemies have a 35% equipment drop chance; Elite enemies always drop equipment.
 - Item level is `max(SourceLevel, PlayerLevel) + floor((DungeonDepth - 1) / 3) + floor((WorldTier - 1) / 2) + SourceBonus`.
 - Source bonuses are 0 for Normal enemies, 0-1 for Elites, 1-2 for Treasure Chests, and 2-3 for Bosses.
 - Normal rarity weights by Tier (Common/Uncommon/Rare/Epic/Legendary) are `55/25/13/6/1`, `49/27/15/8/1`, `43/28/18/9/2`, `37/29/20/11/3`, and `31/30/22/13/4`.
@@ -83,10 +124,11 @@ Fight Goblins, earn experience and equipment drops, open the Treasure Chest, def
 
 ## Enemy Types
 
-- **Normal Goblin** — Balanced health, damage, and movement speed.
-- **Fast Goblin** — Lower health and damage, but substantially faster movement.
-- **Brute Goblin** — Higher health and damage, with slower movement.
-- **Elite Goblin** — A modifier that increases health, damage, size, visual prominence, and experience rewards for any Goblin variant.
+- **Goblin** - Balanced melee baseline with Normal, Fast, and Brute variants.
+- **Dire Wolf** - Fast melee pressure that briefly retreats at low health.
+- **Giant Spider** - Control enemy with melee, web shots, and floor patches.
+- **Goblin Hunter** - Ranged enemy that maintains distance and fires arrows.
+- **Elite** - A shared modifier that increases health, damage, size, visual prominence, and EXP for any archetype.
 
 ## Technology
 

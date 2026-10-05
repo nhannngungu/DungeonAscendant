@@ -32,12 +32,12 @@ public sealed class LootManager
     }
 
     public bool TryCreateDrop(
-        Goblin goblin,
+        Enemy enemy,
         int playerLevel,
         DungeonMap dungeon)
     {
         return TryCreateDrop(
-            goblin,
+            enemy,
             playerLevel,
             dungeonDepth: 1,
             worldTier: 1,
@@ -45,27 +45,27 @@ public sealed class LootManager
     }
 
     public bool TryCreateDrop(
-        Goblin goblin,
+        Enemy enemy,
         int playerLevel,
         int dungeonDepth,
         int worldTier,
         DungeonMap dungeon)
     {
-        if (goblin == null || dungeon == null)
+        if (enemy == null || dungeon == null)
             return false;
 
-        if (!goblin.IsElite && _random.NextDouble() >= NormalDropChance)
+        if (!enemy.IsElite && _random.NextDouble() >= NormalDropChance)
             return false;
 
         EquipmentItem item = _itemGenerator.Generate(
-            goblin.Level,
+            enemy.Level,
             playerLevel,
-            goblin.IsElite
+            enemy.IsElite
                 ? LootSource.EliteEnemy
                 : LootSource.NormalEnemy,
             dungeonDepth,
             worldTier);
-        Vector2 position = FindSafeDropPosition(goblin.Position, dungeon);
+        Vector2 position = FindSafeDropPosition(enemy.Position, dungeon);
         _worldLoot.Add(new WorldLoot(item, position));
         return true;
     }

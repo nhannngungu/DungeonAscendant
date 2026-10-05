@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Bosses;
+using DungeonAscendant.Combat;
 using DungeonAscendant.Core;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
@@ -31,7 +32,8 @@ public sealed class GameRenderer : IDisposable
 
     public void Draw(GameSession gameSession)
     {
-        _graphicsDevice.Clear(new Color(9, 11, 16));
+        RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
+        _graphicsDevice.Clear(theme.Background);
 
         if (gameSession.State == GameState.Start)
         {
@@ -47,6 +49,12 @@ public sealed class GameRenderer : IDisposable
             transformMatrix: gameSession.Camera.Transform);
         DrawDungeon(gameSession, gameSession.Camera.ViewBounds);
 
+        foreach (WebPatch patch in gameSession.Projectiles.WebPatches)
+        {
+            if (patch.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                DrawWebPatch(patch);
+        }
+
         if (gameSession.Chest.Bounds.Intersects(gameSession.Camera.ViewBounds))
             DrawTreasureChest(gameSession.Chest);
 
@@ -61,13 +69,19 @@ public sealed class GameRenderer : IDisposable
 
         DrawPlayer(gameSession.Player, gameSession.PlayerAttack.IsActive);
 
-        foreach (Goblin goblin in gameSession.Enemies.Goblins)
+        foreach (Enemy enemy in gameSession.Enemies.Enemies)
         {
-            if (goblin.IsAlive &&
-                goblin.Bounds.Intersects(gameSession.Camera.ViewBounds))
+            if (enemy.IsAlive &&
+                enemy.Bounds.Intersects(gameSession.Camera.ViewBounds))
             {
-                DrawGoblin(goblin);
+                DrawEnemy(enemy);
             }
+        }
+
+        foreach (Projectile projectile in gameSession.Projectiles.Projectiles)
+        {
+            if (projectile.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                DrawProjectile(projectile);
         }
 
         if (gameSession.Boss.IsAlive &&
@@ -100,10 +114,9 @@ public sealed class GameRenderer : IDisposable
     private void DrawDungeon(GameSession gameSession, Rectangle cameraBounds)
     {
         DungeonMap dungeon = gameSession.CurrentDungeon;
+        RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         Rectangle visibleBounds = cameraBounds;
         visibleBounds.Inflate(80, 80);
-        Color wallColor = new(48, 43, 46);
-        Color corridorFloor = new(45, 50, 52);
 
         foreach (Rectangle corridor in dungeon.Corridors)
         {
@@ -112,7 +125,7 @@ public sealed class GameRenderer : IDisposable
 
             Rectangle wall = corridor;
             wall.Inflate(8, 8);
-            _spriteBatch.Draw(_pixel, wall, wallColor);
+            _spriteBatch.Draw(_pixel, wall, theme.Boundary);
         }
 
         foreach (DungeonRoom room in dungeon.Rooms)
@@ -122,8 +135,9 @@ public sealed class GameRenderer : IDisposable
 
             Rectangle wall = room.Bounds;
             wall.Inflate(10, 10);
-            _spriteBatch.Draw(_pixel, wall, wallColor);
-            DrawRectangleOutline(wall, 3, new Color(82, 71, 71));
+            _spriteBatch.Draw(_pixel, wall, theme.Boundary);
+            DrawRectangleOutline(wall, 3, theme.BoundaryAccent);
+            DrawForestBoundaryDetails(wall, visibleBounds, theme);
         }
 
         foreach (Rectangle corridor in dungeon.Corridors)
@@ -131,8 +145,8 @@ public sealed class GameRenderer : IDisposable
             if (!corridor.Intersects(visibleBounds))
                 continue;
 
-            _spriteBatch.Draw(_pixel, corridor, corridorFloor);
-            DrawFloorGrid(corridor, visibleBounds, new Color(72, 77, 78, 75));
+            _spriteBatch.Draw(_pixel, corridor, theme.CorridorFloor);
+            DrawForestGroundDetails(corridor, visibleBounds, theme);
         }
 
         foreach (DungeonRoom room in dungeon.Rooms)
@@ -140,18 +154,10 @@ public sealed class GameRenderer : IDisposable
             if (!room.Bounds.Intersects(visibleBounds))
                 continue;
 
-            Color floorColor = room.Type switch
-            {
-                RoomType.Start => new Color(43, 55, 53),
-                RoomType.Enemy => new Color(51, 45, 46),
-                RoomType.Treasure => new Color(54, 55, 43),
-                RoomType.Boss => new Color(61, 39, 42),
-                RoomType.Exit => new Color(54, 49, 42),
-                _ => new Color(47, 51, 52)
-            };
+            Color floorColor = theme.GetRoomFloor(room.Type);
 
             _spriteBatch.Draw(_pixel, room.Bounds, floorColor);
-            DrawFloorGrid(room.Bounds, visibleBounds, new Color(76, 82, 82, 80));
+            DrawForestGroundDetails(room.Bounds, visibleBounds, theme);
 
             if (room.Type == RoomType.Start)
                 DrawStartMarker(room.Center);
@@ -182,6 +188,92 @@ public sealed class GameRenderer : IDisposable
 
         for (int y = firstY; y < bottom; y += tileSize)
             _spriteBatch.Draw(_pixel, new Rectangle(area.Left, y, area.Width, 1), color);
+    }
+
+    private void DrawForestGroundDetails(
+        Rectangle area,
+        Rectangle visibleBounds,
+        RegionTheme theme)
+    {
+        const int cellSize = 64;
+        int firstX = Math.Max(area.Left, visibleBounds.Left);
+        int firstY = Math.Max(area.Top, visibleBounds.Top);
+        firstX = area.Left + ((firstX - area.Left) / cellSize) * cellSize;
+        firstY = area.Top + ((firstY - area.Top) / cellSize) * cellSize;
+        int right = Math.Min(area.Right, visibleBounds.Right);
+        int bottom = Math.Min(area.Bottom, visibleBounds.Bottom);
+
+        for (int y = firstY; y < bottom; y += cellSize)
+        {
+            for (int x = firstX; x < right; x += cellSize)
+            {
+                int hash = unchecked(x * 73856093 ^ y * 19349663);
+                int offsetX = 8 + Math.Abs(hash % 29);
+                int offsetY = 8 + Math.Abs(hash / 31 % 29);
+                int detailX = Math.Min(x + offsetX, area.Right - 13);
+                int detailY = Math.Min(y + offsetY, area.Bottom - 8);
+
+                if ((hash & 3) == 0)
+                {
+                    _spriteBatch.Draw(
+                        _pixel,
+                        new Rectangle(detailX, detailY, 13, 6),
+                        theme.Corruption);
+                    _spriteBatch.Draw(
+                        _pixel,
+                        new Rectangle(detailX + 4, detailY - 4, 5, 14),
+                        theme.Corruption);
+                }
+                else
+                {
+                    _spriteBatch.Draw(
+                        _pixel,
+                        new Rectangle(detailX, detailY, 15, 3),
+                        theme.GroundMarking);
+                    _spriteBatch.Draw(
+                        _pixel,
+                        new Rectangle(detailX + 2, detailY - 3, 3, 8),
+                        theme.Root);
+                }
+            }
+        }
+    }
+
+    private void DrawForestBoundaryDetails(
+        Rectangle wall,
+        Rectangle visibleBounds,
+        RegionTheme theme)
+    {
+        if (!wall.Intersects(visibleBounds))
+            return;
+
+        for (int x = wall.Left + 18; x < wall.Right - 18; x += 72)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, wall.Top - 4, 5, 12),
+                theme.Root);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x + 5, wall.Top - 7, 7, 4),
+                theme.BoundaryAccent);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, wall.Bottom - 8, 5, 12),
+                theme.Root);
+        }
+
+        for (int y = wall.Top + 22; y < wall.Bottom - 18; y += 72)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(wall.Left - 4, y, 12, 5),
+                theme.Root);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(wall.Right - 8, y, 12, 5),
+                theme.Root);
+        }
     }
 
     private void DrawStartMarker(Vector2 center)
@@ -463,6 +555,24 @@ public sealed class GameRenderer : IDisposable
                 (int)player.Size.Y + 4);
             DrawRectangleOutline(outline, 2, new Color(245, 115, 115, 150));
         }
+
+        if (player.IsSlowed)
+        {
+            Rectangle webOutline = player.Bounds;
+            webOutline.Inflate(7, 5);
+            DrawRectangleOutline(
+                webOutline,
+                2,
+                new Color(205, 220, 211, 155));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(webOutline.X, webOutline.Center.Y, webOutline.Width, 2),
+                new Color(180, 204, 194, 120));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(webOutline.Center.X, webOutline.Y, 2, webOutline.Height),
+                new Color(180, 204, 194, 120));
+        }
     }
 
     private static Rectangle CreatePlayerEye(
@@ -476,6 +586,220 @@ public sealed class GameRenderer : IDisposable
             FacingDirection.Left => new Rectangle(head.X + 3, head.Y + 8, 4, 4),
             _ => new Rectangle(head.Right - 7, head.Y + 8, 4, 4)
         };
+    }
+
+    private void DrawEnemy(Enemy enemy)
+    {
+        switch (enemy)
+        {
+            case Goblin goblin:
+                DrawGoblin(goblin);
+                break;
+            case DireWolf direWolf:
+                DrawDireWolf(direWolf);
+                break;
+            case GiantSpider giantSpider:
+                DrawGiantSpider(giantSpider);
+                break;
+            case GoblinHunter goblinHunter:
+                DrawGoblinHunter(goblinHunter);
+                break;
+        }
+    }
+
+    private void DrawDireWolf(DireWolf wolf)
+    {
+        Vector2 topLeft = wolf.Position - wolf.Size / 2f;
+        Color fur = wolf.IsHitFlashing
+            ? new Color(232, 230, 211)
+            : wolf.IsRetreating
+                ? new Color(116, 96, 92)
+                : new Color(83, 89, 76);
+        Color darkFur = wolf.IsRetreating
+            ? new Color(68, 56, 58)
+            : new Color(48, 55, 47);
+        Rectangle body = new(
+            (int)topLeft.X + 9,
+            (int)topLeft.Y + 9,
+            (int)wolf.Size.X - 19,
+            17);
+        int muzzleExtension = wolf.Attack.IsActive ? 8 : 3;
+        Rectangle head = new(body.Right - 4, body.Y - 4, 17, 17);
+        Rectangle muzzle = new(
+            head.Right - 2,
+            head.Y + 7,
+            7 + muzzleExtension,
+            7);
+
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(body.X + 2, body.Bottom - 2, body.Width - 3, 7),
+            new Color(12, 17, 14, 145));
+        DrawEliteOutline(wolf, new Color(237, 190, 59));
+        _spriteBatch.Draw(_pixel, new Rectangle(body.X + 4, body.Bottom - 2, 6, 10), darkFur);
+        _spriteBatch.Draw(_pixel, new Rectangle(body.Right - 11, body.Bottom - 2, 6, 10), darkFur);
+        _spriteBatch.Draw(_pixel, new Rectangle(body.X - 10, body.Y + 2, 14, 5), darkFur);
+        _spriteBatch.Draw(_pixel, body, fur);
+        _spriteBatch.Draw(_pixel, head, fur);
+        _spriteBatch.Draw(_pixel, new Rectangle(head.X + 2, head.Y - 7, 6, 9), darkFur);
+        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 7, head.Y - 6, 6, 8), darkFur);
+        _spriteBatch.Draw(_pixel, muzzle, darkFur);
+        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 5, head.Y + 4, 4, 4), new Color(229, 66, 51));
+    }
+
+    private void DrawGiantSpider(GiantSpider spider)
+    {
+        Vector2 topLeft = spider.Position - spider.Size / 2f;
+        Color bodyColor = spider.IsHitFlashing
+            ? new Color(235, 225, 211)
+            : new Color(66, 44, 70);
+        Color legColor = spider.IsHitFlashing
+            ? new Color(210, 207, 196)
+            : new Color(41, 32, 44);
+        Rectangle abdomen = new(
+            (int)topLeft.X + 7,
+            (int)topLeft.Y + 8,
+            25,
+            22);
+        Rectangle head = new(abdomen.Right - 3, abdomen.Y + 5, 17, 15);
+
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(abdomen.X - 2, abdomen.Bottom - 2, 41, 7),
+            new Color(12, 15, 14, 145));
+        DrawEliteOutline(spider, new Color(237, 190, 59));
+
+        for (int index = 0; index < 4; index++)
+        {
+            int legY = abdomen.Y + index * 5;
+            int reach = index == 0 || index == 3 ? 12 : 9;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(abdomen.X - reach, legY, reach + 3, 3),
+                legColor);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(head.Right - 2, legY, reach + 2, 3),
+                legColor);
+        }
+
+        _spriteBatch.Draw(_pixel, abdomen, bodyColor);
+        _spriteBatch.Draw(_pixel, head, new Color(51, 37, 54));
+        _spriteBatch.Draw(_pixel, new Rectangle(abdomen.X + 8, abdomen.Y + 7, 9, 7), new Color(104, 49, 93));
+        _spriteBatch.Draw(_pixel, new Rectangle(head.X + 4, head.Y + 4, 3, 3), new Color(229, 58, 54));
+        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 6, head.Y + 4, 3, 3), new Color(229, 58, 54));
+    }
+
+    private void DrawGoblinHunter(GoblinHunter hunter)
+    {
+        Vector2 topLeft = hunter.Position - hunter.Size / 2f;
+        Color skin = hunter.IsHitFlashing
+            ? new Color(239, 237, 214)
+            : new Color(106, 148, 69);
+        Rectangle body = new(
+            (int)topLeft.X + 8,
+            (int)topLeft.Y + 20,
+            (int)hunter.Size.X - 16,
+            (int)hunter.Size.Y - 20);
+        Rectangle head = new(
+            (int)topLeft.X + 5,
+            (int)topLeft.Y + 3,
+            (int)hunter.Size.X - 10,
+            21);
+        int bowReach = hunter.Attack.IsActive ? 13 : 8;
+        Rectangle bow = new(body.Right + bowReach, body.Y - 1, 4, 30);
+
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(body.X - 2, body.Bottom - 3, body.Width + 4, 7),
+            new Color(12, 16, 14, 145));
+        DrawEliteOutline(hunter, new Color(237, 190, 59));
+        _spriteBatch.Draw(_pixel, new Rectangle(head.X - 6, head.Y + 7, 8, 8), skin);
+        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 2, head.Y + 7, 8, 8), skin);
+        _spriteBatch.Draw(_pixel, new Rectangle(body.X + 2, body.Bottom - 2, 6, 8), new Color(43, 55, 37));
+        _spriteBatch.Draw(_pixel, new Rectangle(body.Right - 8, body.Bottom - 2, 6, 8), new Color(43, 55, 37));
+        _spriteBatch.Draw(_pixel, body, new Color(57, 72, 43));
+        _spriteBatch.Draw(_pixel, head, skin);
+        _spriteBatch.Draw(_pixel, new Rectangle(head.X + 5, head.Y + 7, 4, 4), new Color(225, 65, 42));
+        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 9, head.Y + 7, 4, 4), new Color(225, 65, 42));
+        _spriteBatch.Draw(_pixel, bow, new Color(139, 91, 48));
+        _spriteBatch.Draw(_pixel, new Rectangle(body.Right + 2, body.Y + 13, bowReach + 3, 2), new Color(213, 207, 178));
+    }
+
+    private void DrawEliteOutline(Enemy enemy, Color color)
+    {
+        if (!enemy.IsElite)
+            return;
+
+        Rectangle outline = enemy.Bounds;
+        outline.Inflate(4, 5);
+        DrawRectangleOutline(outline, 3, color);
+    }
+
+    private void DrawProjectile(Projectile projectile)
+    {
+        if (projectile.Type == ProjectileType.WebShot)
+        {
+            Rectangle bounds = projectile.Bounds;
+            _spriteBatch.Draw(_pixel, bounds, new Color(202, 218, 207, 205));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.X - 4, bounds.Center.Y - 1, bounds.Width + 8, 3),
+                new Color(232, 239, 233, 180));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.Center.X - 1, bounds.Y - 4, 3, bounds.Height + 8),
+                new Color(232, 239, 233, 180));
+            return;
+        }
+
+        bool horizontal = MathF.Abs(projectile.Velocity.X) >=
+            MathF.Abs(projectile.Velocity.Y);
+        Rectangle shaft = projectile.Bounds;
+
+        if (horizontal)
+        {
+            shaft.Height = 3;
+            shaft.Y = (int)projectile.Position.Y - 1;
+        }
+        else
+        {
+            shaft.Width = 3;
+            shaft.X = (int)projectile.Position.X - 1;
+        }
+
+        _spriteBatch.Draw(_pixel, shaft, new Color(183, 139, 76));
+        Rectangle arrowHead = horizontal
+            ? new Rectangle(
+                projectile.Velocity.X >= 0f ? shaft.Right - 2 : shaft.X - 3,
+                shaft.Y - 2,
+                5,
+                7)
+            : new Rectangle(
+                shaft.X - 2,
+                projectile.Velocity.Y >= 0f ? shaft.Bottom - 2 : shaft.Y - 3,
+                7,
+                5);
+        _spriteBatch.Draw(_pixel, arrowHead, new Color(205, 210, 195));
+    }
+
+    private void DrawWebPatch(WebPatch patch)
+    {
+        Rectangle bounds = patch.Bounds;
+        _spriteBatch.Draw(_pixel, bounds, new Color(190, 207, 192, 38));
+        DrawRectangleOutline(bounds, 2, new Color(208, 220, 210, 105));
+
+        for (int offset = 10; offset < bounds.Width; offset += 14)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.X + offset, bounds.Y + 5, 2, bounds.Height - 10),
+                new Color(218, 228, 220, 90));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.X + 5, bounds.Y + offset, bounds.Width - 10, 2),
+                new Color(218, 228, 220, 90));
+        }
     }
 
     private void DrawGoblin(Goblin goblin)

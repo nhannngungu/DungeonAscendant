@@ -19,12 +19,21 @@ public sealed class Player
 
     private float _invulnerabilityTimeRemaining;
     private float _hitFeedbackTimeRemaining;
+    private float _slowTimeRemaining;
+    private float _slowMovementMultiplier = 1f;
     private int _baseMaxHealth;
     private int _baseMeleeDamage;
 
     public Vector2 Position { get; private set; }
     public float MovementSpeed { get; }
+    public float EffectiveMovementSpeed => MovementSpeed *
+        (IsSlowed ? _slowMovementMultiplier : 1f);
     public Vector2 Size { get; }
+    public Rectangle Bounds => new(
+        (int)(Position.X - Size.X / 2f),
+        (int)(Position.Y - Size.Y / 2f),
+        (int)MathF.Ceiling(Size.X),
+        (int)MathF.Ceiling(Size.Y));
     public int BaseMaxHealth => _baseMaxHealth;
     public int BaseMeleeDamage => _baseMeleeDamage;
     public int MaxHealth => _baseMaxHealth +
@@ -40,6 +49,10 @@ public sealed class Player
     public FacingDirection Facing { get; private set; }
     public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
+    public bool IsSlowed => _slowTimeRemaining > 0f;
+    public float SlowMovementMultiplier => IsSlowed
+        ? _slowMovementMultiplier
+        : 1f;
     public Inventory Inventory { get; }
     public Equipment EquippedItems { get; }
 
@@ -71,6 +84,12 @@ public sealed class Player
         _hitFeedbackTimeRemaining = MathF.Max(
             0f,
             _hitFeedbackTimeRemaining - elapsedSeconds);
+        _slowTimeRemaining = MathF.Max(
+            0f,
+            _slowTimeRemaining - elapsedSeconds);
+
+        if (_slowTimeRemaining <= 0f)
+            _slowMovementMultiplier = 1f;
     }
 
     public Vector2 GetDesiredPosition(
@@ -101,7 +120,7 @@ public sealed class Player
         }
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        return Position + movement * MovementSpeed * elapsedSeconds;
+        return Position + movement * EffectiveMovementSpeed * elapsedSeconds;
     }
 
     public void MoveTo(Vector2 position)
@@ -127,6 +146,29 @@ public sealed class Player
         _invulnerabilityTimeRemaining = InvulnerabilityDurationSeconds;
         _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
         return true;
+    }
+
+    public void ApplySlow(float movementMultiplier, float durationSeconds)
+    {
+        if (!IsAlive || durationSeconds <= 0f)
+            return;
+
+        float clampedMultiplier = MathHelper.Clamp(
+            movementMultiplier,
+            0.2f,
+            1f);
+        _slowMovementMultiplier = IsSlowed
+            ? MathF.Min(_slowMovementMultiplier, clampedMultiplier)
+            : clampedMultiplier;
+        _slowTimeRemaining = MathF.Max(
+            _slowTimeRemaining,
+            durationSeconds);
+    }
+
+    public void ClearTemporaryStatus()
+    {
+        _slowTimeRemaining = 0f;
+        _slowMovementMultiplier = 1f;
     }
 
     public void GainExperience(int experience)

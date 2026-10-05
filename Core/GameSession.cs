@@ -23,13 +23,14 @@ public sealed class GameSession
     private const float WorldTierTransitionDurationSeconds = 1.4f;
 
     private readonly DungeonGenerator _dungeonGenerator;
-    private readonly List<Goblin> _defeatedGoblins = new();
+    private readonly List<Enemy> _defeatedEnemies = new();
     private KeyboardState _previousKeyboardState;
     private float _worldTierTransitionTimeRemaining;
 
     public PlayerCharacter Player { get; private set; }
     public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
+    public ProjectileManager Projectiles { get; }
     public LootManager Loot { get; }
     public TreasureChest Chest { get; private set; }
     public GoblinWarlord Boss { get; private set; }
@@ -38,6 +39,8 @@ public sealed class GameSession
     public int KillCount { get; private set; }
     public int DungeonDepth { get; private set; }
     public int WorldTier { get; private set; }
+    public RegionDefinition Region { get; private set; }
+    public RegionType CurrentRegion => Region.Type;
     public bool BossDefeated { get; private set; }
     public bool IsExitUnlocked => BossDefeated;
     public float WorldTierTransitionProgress =>
@@ -54,10 +57,12 @@ public sealed class GameSession
     {
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         Enemies = new EnemyManager(randomSeed);
+        Projectiles = new ProjectileManager();
         Loot = new LootManager(randomSeed);
         Camera = new Camera2D(viewportBounds.Width, viewportBounds.Height);
         Player = new PlayerCharacter(viewportBounds.Center.ToVector2());
         PlayerAttack = new MeleeAttack();
+        Region = RegionDefinition.WildForest;
         UpdatePlayerAttackArea();
         State = GameState.Start;
     }
@@ -136,6 +141,8 @@ public sealed class GameSession
         if (!Player.IsAlive)
         {
             PlayerAttack.Cancel();
+            Projectiles.Clear();
+            Player.ClearTemporaryStatus();
             State = GameState.GameOver;
             _previousKeyboardState = keyboardState;
             return;
@@ -165,7 +172,6 @@ public sealed class GameSession
         }
 
         PlayerAttack.Update(gameTime);
-        Enemies.UpdateTimers(gameTime, Player.Position, CurrentDungeon);
         UpdatePlayerAttackArea();
 
         bool attackPressed = keyboardState.IsKeyDown(Keys.Space) &&
@@ -173,16 +179,16 @@ public sealed class GameSession
 
         if (attackPressed && PlayerAttack.TryStart())
         {
-            foreach (Goblin goblin in Enemies.Goblins)
+            foreach (Enemy enemy in Enemies.Enemies)
             {
-                if (!goblin.IsAlive ||
-                    !PlayerAttackArea.Intersects(goblin.Bounds))
+                if (!enemy.IsAlive ||
+                    !PlayerAttackArea.Intersects(enemy.Bounds))
                 {
                     continue;
                 }
 
-                goblin.ReceiveDamage(Player.MeleeDamage);
-                goblin.ApplyKnockback(
+                enemy.ReceiveDamage(Player.MeleeDamage);
+                enemy.ApplyKnockback(
                     Player.Position,
                     PlayerKnockbackDistance,
                     CurrentDungeon);
@@ -198,9 +204,14 @@ public sealed class GameSession
             }
         }
 
-        ProcessDefeatedGoblins();
+        ProcessDefeatedEnemies();
         ProcessBossDefeat();
-        Enemies.UpdateCombatAndAi(gameTime, Player, CurrentDungeon);
+        Enemies.UpdateCombatAndAi(
+            gameTime,
+            Player,
+            CurrentDungeon,
+            Projectiles);
+        Projectiles.Update(gameTime, Player, CurrentDungeon);
         Boss.Update(
             gameTime,
             Player,
@@ -210,6 +221,8 @@ public sealed class GameSession
         if (!Player.IsAlive)
         {
             PlayerAttack.Cancel();
+            Projectiles.Clear();
+            Player.ClearTemporaryStatus();
             IsInventoryOpen = false;
             State = GameState.GameOver;
         }
@@ -218,10 +231,10 @@ public sealed class GameSession
         _previousKeyboardState = keyboardState;
     }
 
-    private void ProcessDefeatedGoblins()
+    private void ProcessDefeatedEnemies()
     {
         int defeatedCount = Enemies.RemoveDefeated(
-            _defeatedGoblins,
+            _defeatedEnemies,
             out int experienceReward);
 
         if (defeatedCount == 0)
@@ -229,10 +242,10 @@ public sealed class GameSession
 
         Player.GainExperience(experienceReward);
 
-        foreach (Goblin goblin in _defeatedGoblins)
+        foreach (Enemy enemy in _defeatedEnemies)
         {
             Loot.TryCreateDrop(
-                goblin,
+                enemy,
                 Player.Level,
                 DungeonDepth,
                 WorldTier,
@@ -246,6 +259,7 @@ public sealed class GameSession
     {
         DungeonDepth = 1;
         WorldTier = 1;
+        Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
         CurrentDungeon = _dungeonGenerator.Generate();
         Player = new PlayerCharacter(CurrentDungeon.StartRoom.Center);
@@ -277,12 +291,18 @@ public sealed class GameSession
     private void InitializeDungeonState()
     {
         PlayerAttack = new MeleeAttack();
+        Player.ClearTemporaryStatus();
+        Projectiles.Clear();
         Loot.Reset();
         int enemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level,
             DungeonDepth,
             WorldTier);
-        Enemies.Reset(CurrentDungeon, enemyLevel, WorldTier);
+        Enemies.Reset(
+            CurrentDungeon,
+            enemyLevel,
+            WorldTier,
+            CurrentRegion);
         Chest = new TreasureChest(
             CurrentDungeon.TreasureRoom.Center,
             CurrentDungeon.TreasureRoom.Id);

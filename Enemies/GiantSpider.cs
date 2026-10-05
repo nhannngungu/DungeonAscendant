@@ -1,0 +1,117 @@
+using System;
+using DungeonAscendant.Combat;
+using DungeonAscendant.Dungeon;
+using DungeonAscendant.Progression;
+using Microsoft.Xna.Framework;
+using PlayerCharacter = DungeonAscendant.Player.Player;
+
+namespace DungeonAscendant.Enemies;
+
+public sealed class GiantSpider : Enemy
+{
+    public const float WebShotCooldownSeconds = 3.1f;
+    public const float WebPatchCooldownSeconds = 6.2f;
+    public const float PreferredMinimumRange = 82f;
+    public const float PreferredMaximumRange = 155f;
+
+    private float _webShotCooldownRemaining = 1.1f;
+    private float _webPatchCooldownRemaining = 2.8f;
+
+    public GiantSpider(
+        Vector2 position,
+        int level,
+        bool isElite,
+        int roomId,
+        int worldTier)
+        : base(
+            EnemyType.GiantSpider,
+            position,
+            new Vector2(50f, 36f),
+            movementSpeed: 96f,
+            detectionRange: 265f,
+            GetScaledStat(110, 22, level, worldTier, health: true),
+            GetScaledStat(11, 2, level, worldTier, health: false),
+            experienceReward: 75,
+            level,
+            worldTier,
+            isElite,
+            roomId,
+            attackRange: 48f,
+            attackCooldownSeconds: 1.15f)
+    {
+    }
+
+    public override void UpdateTimers(GameTime gameTime)
+    {
+        base.UpdateTimers(gameTime);
+        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _webShotCooldownRemaining = MathF.Max(
+            0f,
+            _webShotCooldownRemaining - elapsedSeconds);
+        _webPatchCooldownRemaining = MathF.Max(
+            0f,
+            _webPatchCooldownRemaining - elapsedSeconds);
+    }
+
+    protected override void UpdateBehavior(
+        GameTime gameTime,
+        PlayerCharacter player,
+        DungeonMap dungeon,
+        ProjectileManager projectiles)
+    {
+        if (!IsPlayerDetected(player.Position))
+            return;
+
+        Vector2 toPlayer = player.Position - Position;
+        float distanceSquared = toPlayer.LengthSquared();
+        float distance = MathF.Sqrt(distanceSquared);
+
+        if (_webShotCooldownRemaining <= 0f)
+        {
+            projectiles.SpawnWebShot(Position, toPlayer, RoomId);
+            _webShotCooldownRemaining = WebShotCooldownSeconds;
+        }
+
+        if (_webPatchCooldownRemaining <= 0f)
+        {
+            bool patchCreated = projectiles.TryCreateWebPatch(
+                player.Position,
+                RoomId,
+                dungeon);
+            _webPatchCooldownRemaining = patchCreated
+                ? WebPatchCooldownSeconds
+                : 1f;
+        }
+
+        if (distance <= Attack.Range)
+        {
+            if (Attack.TryStart())
+                player.ReceiveDamage(AttackDamage);
+
+            return;
+        }
+
+        if (distance < PreferredMinimumRange)
+            MoveAway(gameTime, player.Position, dungeon);
+        else if (distance > PreferredMaximumRange)
+            MoveToward(
+                gameTime,
+                player.Position,
+                PreferredMaximumRange,
+                dungeon);
+    }
+
+    private static int GetScaledStat(
+        int baseValue,
+        int perLevel,
+        int level,
+        int worldTier,
+        bool health)
+    {
+        int value = baseValue + (Math.Max(1, level) - 1) * perLevel;
+        int percent = health
+            ? WorldProgression.GetHealthMultiplierPercent(worldTier)
+            : WorldProgression.GetDamageMultiplierPercent(worldTier);
+        return WorldProgression.ApplyPercent(value, percent);
+    }
+}

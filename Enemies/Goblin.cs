@@ -2,45 +2,22 @@ using System;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Progression;
-using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
+using PlayerCharacter = DungeonAscendant.Player.Player;
 
 namespace DungeonAscendant.Enemies;
 
 /// <summary>
-/// Owns one Goblin's scaled stats, combat state, and chase behavior.
+/// Balanced Wild Forest melee enemy with Fast and Brute variants.
 /// </summary>
-public sealed class Goblin
+public sealed class Goblin : Enemy
 {
     private const int BaseMaxHealth = 100;
     private const int HealthIncreasePerLevel = 20;
     private const int BaseAttackDamage = 10;
     private const int DamageIncreasePerLevel = 2;
-    private const float HitFeedbackDurationSeconds = 0.14f;
 
-    private float _hitFeedbackTimeRemaining;
-
-    public Vector2 Position { get; private set; }
-    public Vector2 Size { get; }
-    public float MovementSpeed { get; }
-    public float DetectionRange { get; }
-    public int MaxHealth { get; }
-    public int CurrentHealth { get; private set; }
-    public bool IsAlive => CurrentHealth > 0;
-    public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
-    public int Level { get; }
-    public int WorldTier { get; }
-    public int AttackDamage { get; }
-    public int ExperienceReward { get; }
     public GoblinVariant Variant { get; }
-    public bool IsElite { get; }
-    public int RoomId { get; private set; }
-    public MeleeAttack Attack { get; }
-    public Rectangle Bounds => new(
-        (int)(Position.X - Size.X / 2f),
-        (int)(Position.Y - Size.Y / 2f),
-        (int)MathF.Ceiling(Size.X),
-        (int)MathF.Ceiling(Size.Y));
 
     public Goblin(
         Vector2 position,
@@ -50,67 +27,47 @@ public sealed class Goblin
         float detectionRange = 200f,
         int roomId = -1,
         int worldTier = 1)
+        : base(
+            EnemyType.Goblin,
+            position,
+            GetSize(variant),
+            GetMovementSpeed(variant),
+            detectionRange,
+            GetMaxHealth(level, worldTier, variant),
+            GetAttackDamage(level, worldTier, variant),
+            GetExperienceReward(variant),
+            level,
+            worldTier,
+            isElite,
+            roomId,
+            attackRange: 50f,
+            attackCooldownSeconds: 1f)
     {
-        Position = position;
-        DetectionRange = detectionRange;
-        Level = Math.Max(1, level);
-        WorldTier = WorldProgression.ClampWorldTier(worldTier);
         Variant = variant;
-        IsElite = isElite;
-        RoomId = roomId;
-
-        int scaledHealth = WorldProgression.ApplyPercent(
-            BaseMaxHealth + (Level - 1) * HealthIncreasePerLevel,
-            WorldProgression.GetHealthMultiplierPercent(WorldTier));
-        int scaledDamage = WorldProgression.ApplyPercent(
-            BaseAttackDamage + (Level - 1) * DamageIncreasePerLevel,
-            WorldProgression.GetDamageMultiplierPercent(WorldTier));
-
-        switch (Variant)
-        {
-            case GoblinVariant.Fast:
-                MaxHealth = scaledHealth * 3 / 4;
-                AttackDamage = Math.Max(1, scaledDamage - 2);
-                MovementSpeed = 155f;
-                ExperienceReward = 45;
-                Size = new Vector2(32f, 40f);
-                break;
-            case GoblinVariant.Brute:
-                MaxHealth = scaledHealth * 3 / 2;
-                AttackDamage = scaledDamage + 5;
-                MovementSpeed = 75f;
-                ExperienceReward = 75;
-                Size = new Vector2(44f, 52f);
-                break;
-            default:
-                MaxHealth = scaledHealth;
-                AttackDamage = scaledDamage;
-                MovementSpeed = 110f;
-                ExperienceReward = 50;
-                Size = new Vector2(36f, 44f);
-                break;
-        }
-
-        if (IsElite)
-        {
-            MaxHealth = (MaxHealth * 7 + 3) / 4;
-            AttackDamage = (AttackDamage * 3 + 1) / 2;
-            ExperienceReward *= 2;
-            Size *= 1.15f;
-        }
-
-        CurrentHealth = MaxHealth;
-        Attack = new MeleeAttack(range: 50f, cooldownSeconds: 1f);
     }
 
-    public void UpdateTimers(GameTime gameTime)
+    protected override void UpdateBehavior(
+        GameTime gameTime,
+        PlayerCharacter player,
+        DungeonMap dungeon,
+        ProjectileManager projectiles)
     {
-        Attack.Update(gameTime);
+        if (!IsPlayerDetected(player.Position))
+            return;
 
-        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        _hitFeedbackTimeRemaining = MathF.Max(
-            0f,
-            _hitFeedbackTimeRemaining - elapsedSeconds);
+        float distanceSquared = Vector2.DistanceSquared(
+            Position,
+            player.Position);
+
+        if (distanceSquared <= Attack.Range * Attack.Range)
+        {
+            if (Attack.TryStart())
+                player.ReceiveDamage(AttackDamage);
+
+            return;
+        }
+
+        MoveToward(gameTime, player.Position, Attack.Range, dungeon);
     }
 
     public void UpdateMovement(
@@ -119,72 +76,69 @@ public sealed class Goblin
         float stoppingRange,
         DungeonMap dungeon)
     {
-        if (!IsAlive)
-            return;
+        if (IsAlive && IsPlayerDetected(playerPosition))
+            MoveToward(gameTime, playerPosition, stoppingRange, dungeon);
+    }
 
-        Vector2 toPlayer = playerPosition - Position;
-        float distanceSquared = toPlayer.LengthSquared();
-
-        if (distanceSquared > DetectionRange * DetectionRange ||
-            distanceSquared <= stoppingRange * stoppingRange)
+    private static int GetMaxHealth(
+        int level,
+        int worldTier,
+        GoblinVariant variant)
+    {
+        int health = WorldProgression.ApplyPercent(
+            BaseMaxHealth + (Math.Max(1, level) - 1) * HealthIncreasePerLevel,
+            WorldProgression.GetHealthMultiplierPercent(worldTier));
+        return variant switch
         {
-            return;
-        }
-
-        float distance = MathF.Sqrt(distanceSquared);
-        Vector2 direction = toPlayer / distance;
-        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        float movementDistance = MathF.Min(
-            MovementSpeed * elapsedSeconds,
-            distance - stoppingRange);
-
-        Vector2 desiredPosition = Position + direction * movementDistance;
-        Position = DungeonCollision.ResolveMovement(
-            Position,
-            desiredPosition,
-            Size,
-            dungeon);
-        UpdateRoom(dungeon);
+            GoblinVariant.Fast => health * 3 / 4,
+            GoblinVariant.Brute => health * 3 / 2,
+            _ => health
+        };
     }
 
-    public void ReceiveDamage(int damage)
+    private static int GetAttackDamage(
+        int level,
+        int worldTier,
+        GoblinVariant variant)
     {
-        if (!IsAlive || damage <= 0)
-            return;
-
-        CurrentHealth = Math.Max(0, CurrentHealth - damage);
-        _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
+        int damage = WorldProgression.ApplyPercent(
+            BaseAttackDamage + (Math.Max(1, level) - 1) * DamageIncreasePerLevel,
+            WorldProgression.GetDamageMultiplierPercent(worldTier));
+        return variant switch
+        {
+            GoblinVariant.Fast => Math.Max(1, damage - 2),
+            GoblinVariant.Brute => damage + 5,
+            _ => damage
+        };
     }
 
-    public void ApplyKnockback(
-        Vector2 sourcePosition,
-        float distance,
-        DungeonMap dungeon)
+    private static int GetExperienceReward(GoblinVariant variant)
     {
-        if (!IsAlive || distance <= 0f)
-            return;
-
-        Vector2 direction = Position - sourcePosition;
-
-        if (direction == Vector2.Zero)
-            direction = Vector2.UnitX;
-        else
-            direction.Normalize();
-
-        Vector2 desiredPosition = Position + direction * distance;
-        Position = DungeonCollision.ResolveMovement(
-            Position,
-            desiredPosition,
-            Size,
-            dungeon);
-        UpdateRoom(dungeon);
+        return variant switch
+        {
+            GoblinVariant.Fast => 45,
+            GoblinVariant.Brute => 75,
+            _ => 50
+        };
     }
 
-    private void UpdateRoom(DungeonMap dungeon)
+    private static float GetMovementSpeed(GoblinVariant variant)
     {
-        DungeonRoom room = dungeon.FindRoomContaining(Position);
+        return variant switch
+        {
+            GoblinVariant.Fast => 155f,
+            GoblinVariant.Brute => 75f,
+            _ => 110f
+        };
+    }
 
-        if (room != null)
-            RoomId = room.Id;
+    private static Vector2 GetSize(GoblinVariant variant)
+    {
+        return variant switch
+        {
+            GoblinVariant.Fast => new Vector2(32f, 40f),
+            GoblinVariant.Brute => new Vector2(44f, 52f),
+            _ => new Vector2(36f, 44f)
+        };
     }
 }
