@@ -29,19 +29,23 @@ public sealed class GameRenderer : IDisposable
         _graphicsDevice.Clear(new Color(28, 34, 48));
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        DrawPlayer(gameSession.Player);
-        DrawGoblin(gameSession.Goblin);
+        DrawPlayer(gameSession.Player, gameSession.PlayerAttack.IsActive);
+
+        if (gameSession.Goblin.IsAlive)
+            DrawGoblin(gameSession.Goblin);
+
         _spriteBatch.End();
     }
 
-    private void DrawPlayer(PlayerCharacter player)
+    private void DrawPlayer(PlayerCharacter player, bool isAttacking)
     {
         Vector2 topLeft = player.Position - player.Size / 2f;
+        int swordLength = isAttacking ? 48 : 30;
 
         Rectangle swordBlade = new(
             (int)(topLeft.X + player.Size.X - 2f),
             (int)(topLeft.Y + 19f),
-            30,
+            swordLength,
             7);
         Rectangle swordGuard = new(
             swordBlade.X - 5,
