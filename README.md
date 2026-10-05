@@ -19,7 +19,10 @@ The first v0.5.0 milestone replaces the fixed arena with a playable procedural d
 - Normal, Fast, and Brute Goblin variants
 - Elite Goblins with improved stats and rewards
 - Procedural generation of 7-10 non-overlapping rooms with connected corridors
-- Distinct Start, Normal, Enemy, and Exit rooms
+- Distinct Start, Normal, Enemy, Treasure, Boss, and Exit rooms
+- One-shot Treasure Chest with improved 1-2 item rewards
+- Goblin Warlord encounter with activation, enrage, guaranteed loot, and Exit unlock
+- Multi-floor dungeon completion with persistent Player progression and linear depth scaling
 - Dungeon-wall collision and a world-space following camera
 - Room-based enemy placement and local enemy activation
 - Procedural Weapon and Armor drops with five rarity tiers
@@ -39,7 +42,7 @@ The first v0.5.0 milestone replaces the fixed arena with a playable procedural d
 | Enter | Start from the start screen |
 | W/A/S/D or Arrow Keys | Move and change facing direction |
 | Space | Directional melee attack |
-| E | Pick up the nearest nearby item |
+| E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
 | W/S or Up/Down | Change inventory selection |
 | Enter | Equip the selected inventory item |
@@ -48,13 +51,23 @@ The first v0.5.0 milestone replaces the fixed arena with a playable procedural d
 
 ## Progression Loop
 
-Fight Goblins, earn experience and equipment drops, then choose stronger gear from the inventory. Weapons add melee damage, Armor adds maximum health, and level progression continues to improve the underlying base stats. Dungeon enemies are scaled when the run is created, and a distant Enemy room contains an Elite challenge with increased experience and guaranteed improved loot odds.
+Fight Goblins, earn experience and equipment drops, open the Treasure Chest, defeat the Goblin Warlord, and use the unlocked Exit to descend. Weapons add melee damage, Armor adds maximum health, and level progression continues to improve the underlying base stats. Completing a floor preserves Player progression while increasing Dungeon Depth and generating a new dungeon; Game Over restart still resets the entire run.
+
+## Dungeon Progression
+
+- Every floor contains exactly one Start, Treasure, Boss, and Exit room.
+- The Boss room directly precedes the Exit in the generated room tree.
+- Effective enemy and Boss level is `PlayerLevel + DungeonDepth - 1`.
+- The Goblin Warlord has six times equivalent Goblin health and 1.8 times equivalent Goblin damage.
+- Defeating the Boss unlocks the Exit; interacting with it generates the next floor and increments Dungeon Depth.
 
 ## Item Progression
 
 - Normal Goblins have a 35% equipment drop chance; Elite Goblins always drop equipment.
 - Normal rarity weights are Common 55%, Uncommon 25%, Rare 13%, Epic 6%, and Legendary 1%.
 - Elite rarity weights are Common 25%, Uncommon 30%, Rare 25%, Epic 15%, and Legendary 5%.
+- Treasure Chest rarity weights are Common 15%, Uncommon 35%, Rare 30%, Epic 15%, and Legendary 5%.
+- Boss rarity weights are Rare 55%, Epic 35%, and Legendary 10%.
 - Weapon base bonus is `4 + ItemLevel * 2`.
 - Armor base health bonus is `10 + ItemLevel * 5`.
 - Rarity multipliers are 100%, 125%, 150%, 190%, and 250% respectively.

@@ -44,10 +44,50 @@ public sealed class LootManager
         EquipmentItem item = _itemGenerator.Generate(
             goblin.Level,
             playerLevel,
-            goblin.IsElite);
+            goblin.IsElite
+                ? LootSource.EliteEnemy
+                : LootSource.NormalEnemy);
         Vector2 position = FindSafeDropPosition(goblin.Position, dungeon);
         _worldLoot.Add(new WorldLoot(item, position));
         return true;
+    }
+
+    public int CreateTreasureChestDrops(
+        Vector2 chestPosition,
+        int playerLevel,
+        int dungeonDepth,
+        DungeonMap dungeon)
+    {
+        int itemCount = _random.Next(1, 3);
+        int sourceLevel = DungeonProgression.GetEnemyLevel(
+            playerLevel,
+            dungeonDepth);
+
+        for (int index = 0; index < itemCount; index++)
+        {
+            EquipmentItem item = _itemGenerator.Generate(
+                sourceLevel,
+                playerLevel,
+                LootSource.TreasureChest);
+            Vector2 position = FindSafeDropPosition(chestPosition, dungeon);
+            _worldLoot.Add(new WorldLoot(item, position));
+        }
+
+        return itemCount;
+    }
+
+    public void CreateBossDrop(
+        Vector2 bossPosition,
+        int bossLevel,
+        int playerLevel,
+        DungeonMap dungeon)
+    {
+        EquipmentItem item = _itemGenerator.Generate(
+            bossLevel,
+            playerLevel,
+            LootSource.Boss);
+        Vector2 position = FindSafeDropPosition(bossPosition, dungeon);
+        _worldLoot.Add(new WorldLoot(item, position));
     }
 
     public bool TryCollectNearest(Vector2 playerPosition, Inventory inventory)

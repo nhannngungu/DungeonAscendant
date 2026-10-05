@@ -18,12 +18,28 @@ public sealed class ItemGenerator
         int playerLevel,
         bool isElite)
     {
-        int itemLevel = Math.Max(1, Math.Max(enemyLevel, playerLevel));
+        return Generate(
+            enemyLevel,
+            playerLevel,
+            isElite ? LootSource.EliteEnemy : LootSource.NormalEnemy);
+    }
 
-        if (isElite)
-            itemLevel += _random.Next(0, 2);
+    public EquipmentItem Generate(
+        int sourceLevel,
+        int playerLevel,
+        LootSource source)
+    {
+        int itemLevel = Math.Max(1, Math.Max(sourceLevel, playerLevel));
 
-        ItemRarity rarity = RollRarity(isElite);
+        itemLevel += source switch
+        {
+            LootSource.EliteEnemy => _random.Next(0, 2),
+            LootSource.TreasureChest => _random.Next(0, 2),
+            LootSource.Boss => 1 + _random.Next(0, 2),
+            _ => 0
+        };
+
+        ItemRarity rarity = RollRarity(source);
         EquipmentSlot slot = _random.Next(2) == 0
             ? EquipmentSlot.Weapon
             : EquipmentSlot.Armor;
@@ -51,9 +67,37 @@ public sealed class ItemGenerator
 
     public ItemRarity RollRarity(bool isElite)
     {
+        return RollRarity(
+            isElite ? LootSource.EliteEnemy : LootSource.NormalEnemy);
+    }
+
+    public ItemRarity RollRarity(LootSource source)
+    {
         int roll = _random.Next(100);
 
-        if (isElite)
+        if (source == LootSource.Boss)
+        {
+            if (roll < 55)
+                return ItemRarity.Rare;
+            if (roll < 90)
+                return ItemRarity.Epic;
+            return ItemRarity.Legendary;
+        }
+
+        if (source == LootSource.TreasureChest)
+        {
+            if (roll < 15)
+                return ItemRarity.Common;
+            if (roll < 50)
+                return ItemRarity.Uncommon;
+            if (roll < 80)
+                return ItemRarity.Rare;
+            if (roll < 95)
+                return ItemRarity.Epic;
+            return ItemRarity.Legendary;
+        }
+
+        if (source == LootSource.EliteEnemy)
         {
             if (roll < 25)
                 return ItemRarity.Common;

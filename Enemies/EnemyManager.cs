@@ -136,8 +136,10 @@ public sealed class EnemyManager
         return roomType switch
         {
             RoomType.Start => 0,
+            RoomType.Treasure => 0,
+            RoomType.Boss => 0,
+            RoomType.Exit => 0,
             RoomType.Enemy => _random.Next(2, 5),
-            RoomType.Exit => _random.Next(1, 3),
             _ => _random.Next(0, 3)
         };
     }

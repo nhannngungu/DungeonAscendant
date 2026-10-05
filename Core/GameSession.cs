@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using DungeonAscendant.Bosses;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
@@ -17,6 +18,7 @@ public sealed class GameSession
 {
     private const float PlayerAttackThickness = 48f;
     private const float PlayerKnockbackDistance = 24f;
+    private const float ExitInteractionRadius = 72f;
 
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly List<Goblin> _defeatedGoblins = new();
@@ -26,9 +28,14 @@ public sealed class GameSession
     public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
     public LootManager Loot { get; }
+    public TreasureChest Chest { get; private set; }
+    public GoblinWarlord Boss { get; private set; }
     public DungeonMap CurrentDungeon { get; private set; }
     public Camera2D Camera { get; }
     public int KillCount { get; private set; }
+    public int DungeonDepth { get; private set; }
+    public bool BossDefeated { get; private set; }
+    public bool IsExitUnlocked => BossDefeated;
     public Rectangle PlayerAttackArea { get; private set; }
     public GameState State { get; private set; }
     public bool IsInventoryOpen { get; private set; }
@@ -137,11 +144,14 @@ public sealed class GameSession
             Player.Size,
             CurrentDungeon));
 
-        bool pickupPressed = keyboardState.IsKeyDown(Keys.E) &&
+        bool interactPressed = keyboardState.IsKeyDown(Keys.E) &&
             !_previousKeyboardState.IsKeyDown(Keys.E);
 
-        if (pickupPressed)
-            Loot.TryCollectNearest(Player.Position, Player.Inventory);
+        if (interactPressed && HandleWorldInteraction())
+        {
+            _previousKeyboardState = keyboardState;
+            return;
+        }
 
         PlayerAttack.Update(gameTime);
         Enemies.UpdateTimers(gameTime, Player.Position, CurrentDungeon);
@@ -166,10 +176,25 @@ public sealed class GameSession
                     PlayerKnockbackDistance,
                     CurrentDungeon);
             }
+
+            if (Boss.IsAlive && PlayerAttackArea.Intersects(Boss.Bounds))
+            {
+                Boss.ReceiveDamage(Player.MeleeDamage);
+                Boss.ApplyKnockback(
+                    Player.Position,
+                    PlayerKnockbackDistance,
+                    CurrentDungeon);
+            }
         }
 
         ProcessDefeatedGoblins();
+        ProcessBossDefeat();
         Enemies.UpdateCombatAndAi(gameTime, Player, CurrentDungeon);
+        Boss.Update(
+            gameTime,
+            Player,
+            CurrentDungeon,
+            CurrentDungeon.BossRoom);
 
         if (!Player.IsAlive)
         {
@@ -206,16 +231,89 @@ public sealed class GameSession
 
     private void ResetRun()
     {
+        DungeonDepth = 1;
         CurrentDungeon = _dungeonGenerator.Generate();
         Player = new PlayerCharacter(CurrentDungeon.StartRoom.Center);
-        PlayerAttack = new MeleeAttack();
         KillCount = 0;
         IsInventoryOpen = false;
         SelectedInventoryIndex = 0;
+        InitializeDungeonState();
+    }
+
+    private void CompleteDungeon()
+    {
+        DungeonDepth++;
+        CurrentDungeon = _dungeonGenerator.Generate();
+        Player.MoveTo(CurrentDungeon.StartRoom.Center);
+        IsInventoryOpen = false;
+        ClampInventorySelection();
+        InitializeDungeonState();
+    }
+
+    private void InitializeDungeonState()
+    {
+        PlayerAttack = new MeleeAttack();
         Loot.Reset();
-        Enemies.Reset(CurrentDungeon, Player.Level);
+        int enemyLevel = DungeonProgression.GetEnemyLevel(
+            Player.Level,
+            DungeonDepth);
+        Enemies.Reset(CurrentDungeon, enemyLevel);
+        Chest = new TreasureChest(
+            CurrentDungeon.TreasureRoom.Center,
+            CurrentDungeon.TreasureRoom.Id);
+        Boss = new GoblinWarlord(
+            CurrentDungeon.BossRoom.Center,
+            CurrentDungeon.BossRoom.Id,
+            Player.Level,
+            DungeonDepth);
+        BossDefeated = false;
         UpdatePlayerAttackArea();
         Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
+    }
+
+    private bool HandleWorldInteraction()
+    {
+        if (Chest.TryOpen(
+            Player.Position,
+            Loot,
+            Player.Level,
+            DungeonDepth,
+            CurrentDungeon))
+        {
+            return false;
+        }
+
+        if (IsExitUnlocked && IsPlayerNearExit())
+        {
+            CompleteDungeon();
+            return true;
+        }
+
+        Loot.TryCollectNearest(Player.Position, Player.Inventory);
+        return false;
+    }
+
+    private bool IsPlayerNearExit()
+    {
+        return Vector2.DistanceSquared(
+            Player.Position,
+            CurrentDungeon.ExitRoom.Center) <=
+            ExitInteractionRadius * ExitInteractionRadius;
+    }
+
+    private void ProcessBossDefeat()
+    {
+        if (BossDefeated || Boss.IsAlive)
+            return;
+
+        Player.GainExperience(Boss.ExperienceReward);
+        Loot.CreateBossDrop(
+            Boss.Position,
+            Boss.Level,
+            Player.Level,
+            CurrentDungeon);
+        BossDefeated = true;
+        KillCount++;
     }
 
     private void UpdatePlayerAttackArea()

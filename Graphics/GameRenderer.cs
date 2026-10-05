@@ -1,9 +1,11 @@
 using System;
+using DungeonAscendant.Bosses;
 using DungeonAscendant.Core;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
 using DungeonAscendant.Player;
+using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using PlayerCharacter = DungeonAscendant.Player.Player;
@@ -43,7 +45,10 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Begin(
             samplerState: SamplerState.PointClamp,
             transformMatrix: gameSession.Camera.Transform);
-        DrawDungeon(gameSession.CurrentDungeon, gameSession.Camera.ViewBounds);
+        DrawDungeon(gameSession, gameSession.Camera.ViewBounds);
+
+        if (gameSession.Chest.Bounds.Intersects(gameSession.Camera.ViewBounds))
+            DrawTreasureChest(gameSession.Chest);
 
         foreach (WorldLoot loot in gameSession.Loot.Drops)
         {
@@ -65,12 +70,19 @@ public sealed class GameRenderer : IDisposable
             }
         }
 
+        if (gameSession.Boss.IsAlive &&
+            gameSession.Boss.Bounds.Intersects(gameSession.Camera.ViewBounds))
+        {
+            DrawGoblinWarlord(gameSession.Boss);
+        }
+
         _spriteBatch.End();
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawHudPanel();
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
+        DrawDungeonStatus(gameSession);
 
         if (gameSession.IsInventoryOpen)
             DrawInventoryOverlay(gameSession);
@@ -82,8 +94,9 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.End();
     }
 
-    private void DrawDungeon(DungeonMap dungeon, Rectangle cameraBounds)
+    private void DrawDungeon(GameSession gameSession, Rectangle cameraBounds)
     {
+        DungeonMap dungeon = gameSession.CurrentDungeon;
         Rectangle visibleBounds = cameraBounds;
         visibleBounds.Inflate(80, 80);
         Color wallColor = new(48, 43, 46);
@@ -128,6 +141,8 @@ public sealed class GameRenderer : IDisposable
             {
                 RoomType.Start => new Color(43, 55, 53),
                 RoomType.Enemy => new Color(51, 45, 46),
+                RoomType.Treasure => new Color(54, 55, 43),
+                RoomType.Boss => new Color(61, 39, 42),
                 RoomType.Exit => new Color(54, 49, 42),
                 _ => new Color(47, 51, 52)
             };
@@ -137,8 +152,12 @@ public sealed class GameRenderer : IDisposable
 
             if (room.Type == RoomType.Start)
                 DrawStartMarker(room.Center);
+            else if (room.Type == RoomType.Treasure)
+                DrawTreasureRoomMarker(room.Center);
+            else if (room.Type == RoomType.Boss)
+                DrawBossRoomMarker(room.Center);
             else if (room.Type == RoomType.Exit)
-                DrawExitMarker(room.Center);
+                DrawExitMarker(room.Center, gameSession.IsExitUnlocked);
         }
     }
 
@@ -172,14 +191,73 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, new Rectangle((int)center.X - 13, (int)center.Y - 3, 26, 6), new Color(128, 218, 169, 165));
     }
 
-    private void DrawExitMarker(Vector2 center)
+    private void DrawTreasureRoomMarker(Vector2 center)
+    {
+        var outer = new Rectangle((int)center.X - 44, (int)center.Y - 38, 88, 76);
+        DrawRectangleOutline(outer, 3, new Color(191, 161, 72, 160));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(outer.X + 8, outer.Y + 8, 8, 8),
+            new Color(226, 196, 91, 145));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(outer.Right - 16, outer.Bottom - 16, 8, 8),
+            new Color(226, 196, 91, 145));
+    }
+
+    private void DrawBossRoomMarker(Vector2 center)
+    {
+        var outer = new Rectangle((int)center.X - 72, (int)center.Y - 62, 144, 124);
+        DrawRectangleOutline(outer, 5, new Color(139, 45, 48, 175));
+        DrawRectangleOutline(
+            new Rectangle(outer.X + 12, outer.Y + 12, outer.Width - 24, outer.Height - 24),
+            2,
+            new Color(188, 68, 57, 120));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle((int)center.X - 30, (int)center.Y - 3, 60, 6),
+            new Color(155, 54, 48, 115));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle((int)center.X - 3, (int)center.Y - 30, 6, 60),
+            new Color(155, 54, 48, 115));
+    }
+
+    private void DrawExitMarker(Vector2 center, bool isUnlocked)
     {
         var frame = new Rectangle((int)center.X - 28, (int)center.Y - 34, 56, 68);
         var doorway = new Rectangle(frame.X + 9, frame.Y + 10, frame.Width - 18, frame.Height - 10);
-        _spriteBatch.Draw(_pixel, frame, new Color(136, 104, 48, 205));
+        Color frameColor = isUnlocked
+            ? new Color(108, 155, 84, 220)
+            : new Color(136, 79, 52, 220);
+        Color outlineColor = isUnlocked
+            ? new Color(159, 226, 121)
+            : new Color(218, 99, 73);
+        _spriteBatch.Draw(_pixel, frame, frameColor);
         _spriteBatch.Draw(_pixel, doorway, new Color(30, 21, 43));
-        DrawRectangleOutline(frame, 3, new Color(226, 190, 85));
-        _spriteBatch.Draw(_pixel, new Rectangle(doorway.Center.X - 3, doorway.Center.Y - 3, 6, 6), new Color(224, 185, 72));
+        DrawRectangleOutline(frame, 3, outlineColor);
+
+        if (isUnlocked)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(doorway.Center.X - 3, doorway.Center.Y - 3, 6, 6),
+                new Color(177, 235, 126));
+            return;
+        }
+
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(doorway.X + 7, doorway.Y + 4, 5, doorway.Height - 8),
+            new Color(177, 79, 62));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(doorway.Right - 12, doorway.Y + 4, 5, doorway.Height - 8),
+            new Color(177, 79, 62));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(doorway.X + 5, doorway.Center.Y - 3, doorway.Width - 10, 6),
+            new Color(207, 94, 68));
     }
 
     private void DrawArena()
@@ -526,6 +604,136 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
+    private void DrawTreasureChest(TreasureChest chest)
+    {
+        Rectangle bounds = chest.Bounds;
+        Rectangle shadow = new(bounds.X + 3, bounds.Bottom - 3, bounds.Width - 6, 8);
+        Rectangle body = new(bounds.X, bounds.Y + 13, bounds.Width, bounds.Height - 13);
+        Color woodColor = chest.IsOpen
+            ? new Color(112, 70, 38)
+            : new Color(138, 83, 39);
+
+        _spriteBatch.Draw(_pixel, shadow, new Color(14, 16, 18, 145));
+        _spriteBatch.Draw(_pixel, body, woodColor);
+        DrawRectangleOutline(body, 3, new Color(198, 155, 67));
+
+        if (chest.IsOpen)
+        {
+            Rectangle openLid = new(bounds.X + 2, bounds.Y - 2, bounds.Width - 4, 12);
+            _spriteBatch.Draw(_pixel, openLid, new Color(101, 62, 34));
+            DrawRectangleOutline(openLid, 2, new Color(185, 143, 61));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.Center.X - 11, body.Y + 5, 22, 6),
+                new Color(232, 202, 101, 175));
+        }
+        else
+        {
+            Rectangle lid = new(bounds.X, bounds.Y + 3, bounds.Width, 16);
+            _spriteBatch.Draw(_pixel, lid, new Color(157, 95, 43));
+            DrawRectangleOutline(lid, 3, new Color(205, 161, 69));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.Center.X - 5, bounds.Y + 16, 10, 12),
+                new Color(225, 183, 69));
+        }
+
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(body.X + 6, body.Y + 3, 4, body.Height - 6),
+            new Color(190, 145, 62));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(body.Right - 10, body.Y + 3, 4, body.Height - 6),
+            new Color(190, 145, 62));
+    }
+
+    private void DrawGoblinWarlord(GoblinWarlord boss)
+    {
+        Vector2 topLeft = boss.Position - boss.Size / 2f;
+        Color skinColor = boss.IsHitFlashing
+            ? new Color(240, 232, 204)
+            : boss.IsEnraged
+                ? new Color(119, 103, 47)
+                : new Color(74, 119, 52);
+        Color armorColor = boss.IsEnraged
+            ? new Color(143, 48, 41)
+            : new Color(91, 51, 47);
+        int weaponLength = boss.Attack.IsActive ? 62 : 43;
+        Rectangle shadow = new(
+            (int)topLeft.X + 5,
+            (int)(topLeft.Y + boss.Size.Y) - 7,
+            (int)boss.Size.X - 10,
+            11);
+        Rectangle body = new(
+            (int)topLeft.X + 12,
+            (int)topLeft.Y + 36,
+            (int)boss.Size.X - 24,
+            (int)boss.Size.Y - 36);
+        Rectangle head = new(
+            (int)topLeft.X + 8,
+            (int)topLeft.Y + 9,
+            (int)boss.Size.X - 16,
+            36);
+        Rectangle leftEar = new((int)topLeft.X, head.Y + 7, 13, 18);
+        Rectangle rightEar = new((int)(topLeft.X + boss.Size.X) - 13, head.Y + 7, 13, 18);
+        Rectangle leftEye = new(head.X + 12, head.Y + 13, 7, 6);
+        Rectangle rightEye = new(head.Right - 19, head.Y + 13, 7, 6);
+        Rectangle leftLeg = new(body.X + 5, body.Bottom - 4, 12, 13);
+        Rectangle rightLeg = new(body.Right - 17, body.Bottom - 4, 12, 13);
+        Rectangle axeHandle = new(body.Right + 4, body.Y - 2, 7, weaponLength);
+        Rectangle axeHead = new(axeHandle.X - 8, axeHandle.Bottom - 16, 23, 15);
+
+        _spriteBatch.Draw(_pixel, shadow, new Color(12, 14, 16, 170));
+        _spriteBatch.Draw(_pixel, leftEar, skinColor);
+        _spriteBatch.Draw(_pixel, rightEar, skinColor);
+        _spriteBatch.Draw(_pixel, leftLeg, armorColor);
+        _spriteBatch.Draw(_pixel, rightLeg, armorColor);
+        _spriteBatch.Draw(_pixel, axeHandle, new Color(91, 57, 38));
+        _spriteBatch.Draw(_pixel, axeHead, new Color(174, 154, 127));
+        _spriteBatch.Draw(_pixel, body, armorColor);
+        DrawRectangleOutline(body, 3, new Color(164, 119, 62));
+        _spriteBatch.Draw(_pixel, head, skinColor);
+        _spriteBatch.Draw(_pixel, leftEye, new Color(244, 63, 43));
+        _spriteBatch.Draw(_pixel, rightEye, new Color(244, 63, 43));
+
+        Rectangle crownBase = new(head.X + 8, head.Y - 7, head.Width - 16, 8);
+        _spriteBatch.Draw(_pixel, crownBase, new Color(215, 157, 43));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(crownBase.X + 3, crownBase.Y - 8, 8, 9),
+            new Color(235, 185, 54));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(crownBase.Center.X - 4, crownBase.Y - 12, 8, 13),
+            new Color(242, 196, 61));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(crownBase.Right - 11, crownBase.Y - 8, 8, 9),
+            new Color(235, 185, 54));
+
+        int barWidth = 96;
+        int healthWidth = (int)((barWidth - 4) *
+            (boss.CurrentHealth / (float)boss.MaxHealth));
+        Rectangle healthBorder = new(
+            (int)boss.Position.X - barWidth / 2,
+            (int)topLeft.Y - 25,
+            barWidth,
+            10);
+        _spriteBatch.Draw(_pixel, healthBorder, new Color(30, 20, 22));
+        DrawRectangleOutline(healthBorder, 2, new Color(183, 145, 86));
+
+        if (healthWidth > 0)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(healthBorder.X + 2, healthBorder.Y + 2, healthWidth, 6),
+                boss.IsEnraged
+                    ? new Color(228, 64, 48)
+                    : new Color(155, 48, 48));
+        }
+    }
+
     private void DrawWorldLoot(WorldLoot loot)
     {
         Color rarityColor = GetRarityColor(loot.Item.Rarity);
@@ -824,6 +1032,94 @@ public sealed class GameRenderer : IDisposable
             ItemRarity.Legendary => new Color(236, 159, 52),
             _ => new Color(202, 207, 210)
         };
+    }
+
+    private void DrawDungeonStatus(GameSession gameSession)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var panel = new Rectangle(viewport.Width - 208, 12, 196, 70);
+        _spriteBatch.Draw(_pixel, panel, new Color(17, 21, 28, 220));
+        DrawRectangleOutline(panel, 2, new Color(112, 119, 126, 230));
+
+        Color depthColor = new(191, 164, 78);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(panel.X + 10, panel.Y + 11, 17, 6),
+            depthColor);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(panel.X + 14, panel.Y + 5, 9, 18),
+            depthColor);
+        int visibleDepth = Math.Min(gameSession.DungeonDepth, 12);
+
+        for (int index = 0; index < visibleDepth; index++)
+        {
+            int markerHeight = 7 + index % 3 * 3;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(
+                    panel.X + 36 + index * 10,
+                    panel.Y + 23 - markerHeight,
+                    7,
+                    markerHeight),
+                depthColor);
+        }
+
+        if (gameSession.DungeonDepth > visibleDepth)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(panel.Right - 28, panel.Y + 8, 16, 12),
+                new Color(231, 198, 88));
+        }
+
+        Color bossColor = gameSession.BossDefeated
+            ? new Color(86, 190, 112)
+            : new Color(207, 72, 63);
+        int bossX = panel.X + 18;
+        int statusY = panel.Y + 42;
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bossX, statusY + 7, 28, 10),
+            bossColor);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bossX + 3, statusY, 6, 9),
+            bossColor);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bossX + 11, statusY - 4, 6, 13),
+            bossColor);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bossX + 19, statusY, 6, 9),
+            bossColor);
+
+        int exitX = panel.Right - 53;
+        Color exitColor = gameSession.IsExitUnlocked
+            ? new Color(111, 202, 113)
+            : new Color(206, 91, 67);
+        var exitFrame = new Rectangle(exitX, statusY - 4, 31, 27);
+        DrawRectangleOutline(exitFrame, 3, exitColor);
+
+        if (gameSession.IsExitUnlocked)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(exitFrame.Center.X - 2, exitFrame.Center.Y - 2, 5, 5),
+                exitColor);
+        }
+        else
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(exitFrame.X + 7, exitFrame.Y + 6, 4, 16),
+                exitColor);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(exitFrame.Right - 11, exitFrame.Y + 6, 4, 16),
+                exitColor);
+        }
     }
 
     private void DrawHudPanel()

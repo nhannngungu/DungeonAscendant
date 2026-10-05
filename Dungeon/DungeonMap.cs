@@ -9,6 +9,8 @@ public sealed class DungeonMap
     public IReadOnlyList<Rectangle> Corridors { get; }
     public Rectangle WorldBounds { get; }
     public DungeonRoom StartRoom { get; }
+    public DungeonRoom TreasureRoom { get; }
+    public DungeonRoom BossRoom { get; }
     public DungeonRoom ExitRoom { get; }
 
     public DungeonMap(
@@ -24,6 +26,10 @@ public sealed class DungeonMap
         {
             if (room.Type == RoomType.Start)
                 StartRoom = room;
+            else if (room.Type == RoomType.Treasure)
+                TreasureRoom = room;
+            else if (room.Type == RoomType.Boss)
+                BossRoom = room;
             else if (room.Type == RoomType.Exit)
                 ExitRoom = room;
         }
