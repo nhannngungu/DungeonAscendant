@@ -243,7 +243,10 @@ public sealed class LootManager
             }
         }
 
-        return dungeon.StartRoom.Center;
+        return SideScrollingCollision.PlaceOnGround(
+            dungeon.StartRoom.Bounds.Left + 120f,
+            WorldLoot.Size,
+            dungeon.StartRoom);
     }
 
     private static bool IsValidDropPosition(

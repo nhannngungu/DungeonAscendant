@@ -9,6 +9,7 @@ namespace DungeonAscendant.Combat;
 
 public sealed class ProjectileManager
 {
+    public const float ArrowSpeed = 330f;
     public const float WebSlowMultiplier = 0.58f;
     public const float WebShotSlowDurationSeconds = 2.5f;
     public const float WebPatchLifetimeSeconds = 4.5f;
@@ -31,7 +32,7 @@ public sealed class ProjectileManager
         _projectiles.Add(new Projectile(
             ProjectileType.Arrow,
             position,
-            NormalizeOrDefault(direction) * 330f,
+            NormalizeOrDefault(direction) * ArrowSpeed,
             new Vector2(16f, 7f),
             lifetimeSeconds: 2.4f,
             damage,
@@ -67,7 +68,8 @@ public sealed class ProjectileManager
             WebPatchLifetimeSeconds,
             roomId);
 
-        if (!DungeonCollision.IsWalkable(patch.Bounds, dungeon))
+        if (dungeon.FindRoomContaining(position) == null ||
+            !DungeonCollision.IsWalkable(patch.Bounds, dungeon))
             return false;
 
         _webPatches.Add(patch);

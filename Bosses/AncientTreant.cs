@@ -128,9 +128,10 @@ public sealed class AncientTreant
         }
 
         Vector2 toPlayer = player.Position - Position;
-        float distanceSquared = toPlayer.LengthSquared();
+        float horizontalDistance = MathF.Abs(toPlayer.X);
 
-        if (distanceSquared <= Attack.Range * Attack.Range)
+        if (horizontalDistance <= Attack.Range &&
+            MathF.Abs(toPlayer.Y) <= Size.Y)
         {
             if (Attack.TryStart())
                 player.ReceiveDamage(AttackDamage);
@@ -138,9 +139,7 @@ public sealed class AncientTreant
             return;
         }
 
-        float distance = MathF.Sqrt(distanceSquared);
-
-        if (distance <= 0f)
+        if (horizontalDistance <= 0f)
             return;
 
         float speed = Phase switch
@@ -151,9 +150,9 @@ public sealed class AncientTreant
         };
         float movementDistance = MathF.Min(
             speed * elapsedSeconds,
-            distance - Attack.Range);
+            horizontalDistance - Attack.Range);
         Vector2 desiredPosition = Position +
-            toPlayer / distance * movementDistance;
+            new Vector2(MathF.Sign(toPlayer.X) * movementDistance, 0f);
         Position = DungeonCollision.ResolveMovement(
             Position,
             desiredPosition,
@@ -179,12 +178,9 @@ public sealed class AncientTreant
         if (!IsAlive || distance <= 0f)
             return;
 
-        Vector2 direction = Position - sourcePosition;
-
-        if (direction == Vector2.Zero)
-            direction = Vector2.UnitX;
-        else
-            direction.Normalize();
+        Vector2 direction = new(
+            Position.X < sourcePosition.X ? -1f : 1f,
+            0f);
 
         Vector2 desiredPosition = Position + direction * distance * 0.15f;
         Position = DungeonCollision.ResolveMovement(

@@ -1,36 +1,42 @@
 using System;
 using System.Collections.Generic;
+using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.Dungeon;
 
+/// <summary>
+/// Builds readable left-to-right dungeons. Elevated geometry is optional;
+/// the continuous ground is always a valid route through the floor.
+/// </summary>
 public sealed class DungeonGenerator
 {
+    public const int MinimumRoomWidth = 1100;
+    public const int MaximumRoomWidth = 1700;
+    public const int RoomHeight = 720;
+    public const int CorridorWidth = 144;
+    public const int GroundThickness = 96;
+    public const int MaximumPlatformRise = 108;
+    public const int MinimumPlatformWidth = 190;
+    public const int MaximumPlatformWidth = 320;
+
     private const int MinimumRoomCount = 7;
     private const int MaximumRoomCount = 10;
-    private const int GridColumns = 4;
-    private const int GridRows = 3;
-    private const int CellWidth = 600;
-    private const int CellHeight = 500;
-    private const int WorldWidth = 2600;
-    private const int WorldHeight = 1800;
-    public const int CorridorWidth = 104;
-    private const int GenerationAttempts = 3;
-
+    private const int WorldMargin = 80;
+    private const int GenerationAttempts = 8;
+    private const int EntranceClearance = 190;
     private readonly Random _random;
 
     public DungeonGenerator(int? randomSeed = null)
     {
-        _random = randomSeed.HasValue
-            ? new Random(randomSeed.Value)
-            : new Random();
+        _random = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
     }
 
     public DungeonMap Generate()
     {
         for (int attempt = 0; attempt < GenerationAttempts; attempt++)
         {
-            DungeonMap dungeon = GenerateRandomDungeon();
+            DungeonMap dungeon = GenerateLinearDungeon();
 
             if (Validate(dungeon))
                 return dungeon;
@@ -41,378 +47,255 @@ public sealed class DungeonGenerator
 
     public bool Validate(DungeonMap dungeon)
     {
-        if (dungeon == null ||
-            dungeon.Rooms.Count < MinimumRoomCount ||
-            dungeon.Rooms.Count > MaximumRoomCount ||
-            dungeon.StartRoom == null ||
-            dungeon.TreasureRoom == null ||
-            dungeon.BossRoom == null ||
-            dungeon.ExitRoom == null)
-        {
-            return false;
-        }
-
-        if (CountRoomsOfType(dungeon.Rooms, RoomType.Start) != 1 ||
+        if (dungeon == null || dungeon.Rooms.Count < MinimumRoomCount ||
+            dungeon.Rooms.Count > MaximumRoomCount || dungeon.StartRoom == null ||
+            dungeon.TreasureRoom == null || dungeon.BossRoom == null ||
+            dungeon.ExitRoom == null ||
+            CountRoomsOfType(dungeon.Rooms, RoomType.Start) != 1 ||
             CountRoomsOfType(dungeon.Rooms, RoomType.Treasure) != 1 ||
             CountRoomsOfType(dungeon.Rooms, RoomType.Boss) != 1 ||
-            CountRoomsOfType(dungeon.Rooms, RoomType.Exit) != 1 ||
-            !AreConnected(dungeon.BossRoom, dungeon.ExitRoom))
+            CountRoomsOfType(dungeon.Rooms, RoomType.Exit) != 1)
         {
             return false;
         }
 
-        for (int first = 0; first < dungeon.Rooms.Count; first++)
+        for (int index = 0; index < dungeon.Rooms.Count; index++)
         {
-            Rectangle firstBounds = dungeon.Rooms[first].Bounds;
-            firstBounds.Inflate(24, 24);
+            DungeonRoom room = dungeon.Rooms[index];
 
-            if (!dungeon.WorldBounds.Contains(dungeon.Rooms[first].Bounds))
-                return false;
-
-            for (int second = first + 1; second < dungeon.Rooms.Count; second++)
+            if (room.Bounds.Width < MinimumRoomWidth ||
+                room.Bounds.Width > MaximumRoomWidth ||
+                room.Bounds.Height != RoomHeight ||
+                !dungeon.WorldBounds.Contains(room.Bounds) ||
+                !HasSafeGround(room) || !HasValidPlatforms(room))
             {
-                if (firstBounds.Intersects(dungeon.Rooms[second].Bounds))
-                    return false;
+                return false;
             }
+
+            if (index > 0 && !AreConnected(room, dungeon.Rooms[index - 1]))
+                return false;
         }
 
-        var visited = new HashSet<int> { dungeon.StartRoom.Id };
-        var pending = new Queue<int>();
-        pending.Enqueue(dungeon.StartRoom.Id);
-
-        while (pending.Count > 0)
-        {
-            int roomId = pending.Dequeue();
-            DungeonRoom room = FindRoomById(dungeon.Rooms, roomId);
-
-            if (room == null)
-                return false;
-
-            foreach (int connectedRoomId in room.Connections)
-            {
-                if (visited.Add(connectedRoomId))
-                    pending.Enqueue(connectedRoomId);
-            }
-        }
-
-        return visited.Count == dungeon.Rooms.Count;
+        return AreConnected(dungeon.BossRoom, dungeon.ExitRoom) &&
+            dungeon.Corridors.Count == dungeon.Rooms.Count - 1;
     }
 
-    private DungeonMap GenerateRandomDungeon()
+    private DungeonMap GenerateLinearDungeon()
     {
         int roomCount = _random.Next(MinimumRoomCount, MaximumRoomCount + 1);
-        var availableCells = new List<int>();
-
-        for (int index = 0; index < GridColumns * GridRows; index++)
-            availableCells.Add(index);
-
-        Shuffle(availableCells);
         var rooms = new List<DungeonRoom>(roomCount);
+        var corridors = new List<Rectangle>(roomCount - 1);
+        int x = WorldMargin;
 
         for (int index = 0; index < roomCount; index++)
         {
-            int cell = availableCells[index];
-            int column = cell % GridColumns;
-            int row = cell / GridColumns;
-            int width = _random.Next(260, 421);
-            int height = _random.Next(200, 341);
-            int cellX = 100 + column * CellWidth;
-            int cellY = 100 + row * CellHeight;
-            int x = cellX + _random.Next(40, CellWidth - width - 39);
-            int y = cellY + _random.Next(40, CellHeight - height - 39);
-
-            rooms.Add(new DungeonRoom(
+            int width = _random.Next(MinimumRoomWidth, MaximumRoomWidth + 1);
+            var room = new DungeonRoom(
                 index,
-                new Rectangle(x, y, width, height),
-                RoomType.Normal));
+                new Rectangle(x, WorldMargin, width, RoomHeight),
+                RoomType.Normal);
+            room.GroundY = room.Bounds.Bottom - GroundThickness;
+            AddRoomGeometry(room, index > 0);
+            rooms.Add(room);
+
+            if (index > 0)
+            {
+                DungeonRoom previous = rooms[index - 1];
+                previous.ConnectTo(room.Id);
+                room.ConnectTo(previous.Id);
+                var corridor = new Rectangle(
+                    previous.Bounds.Right,
+                    WorldMargin,
+                    CorridorWidth,
+                    RoomHeight);
+                corridors.Add(corridor);
+                previous.AddPlatform(new Platform(
+                    new Rectangle(corridor.Left, previous.GroundY, corridor.Width, GroundThickness),
+                    PlatformKind.Transition,
+                    previous.Id));
+            }
+
+            x += width + CorridorWidth;
         }
 
-        DungeonRoom startRoom = FindTopLeftRoom(rooms);
-        var corridors = ConnectRooms(rooms, startRoom);
-        AssignRoomTypes(rooms, startRoom);
+        AssignRoomTypes(rooms);
+
+        foreach (DungeonRoom room in rooms)
+        {
+            if (room.Type == RoomType.Start || room.Type == RoomType.Treasure ||
+                room.Type == RoomType.Boss || room.Type == RoomType.Exit)
+            {
+                room.ClearOptionalPlatforms();
+            }
+            else if (room.Type == RoomType.Enemy)
+            {
+                room.ClearObstacles();
+            }
+        }
+
         return new DungeonMap(
             rooms,
             corridors,
-            new Rectangle(0, 0, WorldWidth, WorldHeight));
+            new Rectangle(
+                rooms[0].Bounds.Left,
+                rooms[0].Bounds.Top,
+                rooms[^1].Bounds.Right - rooms[0].Bounds.Left,
+                RoomHeight));
     }
 
-    private void AssignRoomTypes(
-        List<DungeonRoom> rooms,
-        DungeonRoom startRoom)
+    private void AddRoomGeometry(DungeonRoom room, bool allowObstacle)
     {
-        var parents = new Dictionary<int, int>();
-        var depths = new Dictionary<int, int>();
-        var pending = new Queue<DungeonRoom>();
-        parents[startRoom.Id] = -1;
-        depths[startRoom.Id] = 0;
-        pending.Enqueue(startRoom);
+        room.AddPlatform(new Platform(
+            new Rectangle(room.Bounds.Left, room.GroundY, room.Bounds.Width, GroundThickness),
+            PlatformKind.Ground,
+            room.Id));
+        int platformCount = _random.Next(0, 4);
+        var occupied = new List<Rectangle>();
 
-        while (pending.Count > 0)
+        for (int index = 0; index < platformCount; index++)
         {
-            DungeonRoom room = pending.Dequeue();
+            int width = _random.Next(MinimumPlatformWidth, MaximumPlatformWidth + 1);
+            int leftLimit = room.Bounds.Left + EntranceClearance;
+            int rightLimit = room.Bounds.Right - EntranceClearance - width;
 
-            foreach (int connectedId in room.Connections)
-            {
-                if (depths.ContainsKey(connectedId))
-                    continue;
-
-                DungeonRoom connectedRoom = FindRoomById(rooms, connectedId);
-                parents[connectedId] = room.Id;
-                depths[connectedId] = depths[room.Id] + 1;
-                pending.Enqueue(connectedRoom);
-            }
-        }
-
-        DungeonRoom exitRoom = startRoom;
-        int greatestDepth = -1;
-        float greatestDistanceSquared = -1f;
-
-        foreach (DungeonRoom room in rooms)
-        {
-            int depth = depths[room.Id];
-            float distanceSquared = Vector2.DistanceSquared(
-                room.Center,
-                startRoom.Center);
-
-            if (depth > greatestDepth ||
-                depth == greatestDepth && distanceSquared > greatestDistanceSquared)
-            {
-                exitRoom = room;
-                greatestDepth = depth;
-                greatestDistanceSquared = distanceSquared;
-            }
-        }
-
-        DungeonRoom bossRoom = FindRoomById(rooms, parents[exitRoom.Id]);
-
-        if (bossRoom == startRoom)
-            bossRoom = FindFarthestAvailableRoom(rooms, startRoom, exitRoom, null);
-
-        var pathToExit = new List<DungeonRoom>();
-        DungeonRoom pathRoom = exitRoom;
-
-        while (pathRoom != null)
-        {
-            pathToExit.Add(pathRoom);
-            int parentId = parents[pathRoom.Id];
-            pathRoom = parentId < 0 ? null : FindRoomById(rooms, parentId);
-        }
-
-        pathToExit.Reverse();
-        DungeonRoom treasureRoom = null;
-        int preferredTreasureIndex = Math.Max(1, (pathToExit.Count - 1) / 2);
-
-        for (int offset = 0; offset < pathToExit.Count; offset++)
-        {
-            int index = Math.Min(
-                pathToExit.Count - 1,
-                preferredTreasureIndex + offset);
-            DungeonRoom candidate = pathToExit[index];
-
-            if (candidate != startRoom &&
-                candidate != bossRoom &&
-                candidate != exitRoom)
-            {
-                treasureRoom = candidate;
-                break;
-            }
-        }
-
-        treasureRoom ??= FindFarthestAvailableRoom(
-            rooms,
-            startRoom,
-            exitRoom,
-            bossRoom);
-
-        foreach (DungeonRoom room in rooms)
-            room.Type = RoomType.Normal;
-
-        startRoom.Type = RoomType.Start;
-        treasureRoom.Type = RoomType.Treasure;
-        bossRoom.Type = RoomType.Boss;
-        exitRoom.Type = RoomType.Exit;
-
-        int enemyRoomCount = 0;
-
-        foreach (DungeonRoom room in rooms)
-        {
-            if (room.Type != RoomType.Normal)
+            if (rightLimit <= leftLimit)
                 continue;
 
-            if (_random.NextDouble() < 0.6)
-            {
-                room.Type = RoomType.Enemy;
-                enemyRoomCount++;
-            }
-        }
+            var bounds = new Rectangle(
+                _random.Next(leftLimit, rightLimit + 1),
+                room.GroundY - MaximumPlatformRise,
+                width,
+                16);
 
-        for (int index = 0; enemyRoomCount < 2 && index < rooms.Count; index++)
-        {
-            DungeonRoom room = rooms[index];
-
-            if (room.Type != RoomType.Normal)
+            if (OverlapsAny(bounds, occupied, 48))
                 continue;
 
-            room.Type = RoomType.Enemy;
-            enemyRoomCount++;
+            occupied.Add(bounds);
+            room.AddPlatform(new Platform(bounds, PlatformKind.Raised, room.Id));
+        }
+
+        if (allowObstacle && _random.NextDouble() < 0.55)
+        {
+            int width = _random.Next(34, 61);
+            int height = _random.Next(28, 49);
+            int leftLimit = room.Bounds.Left + EntranceClearance + 40;
+            int rightLimit = room.Bounds.Right - EntranceClearance - width - 40;
+
+            if (rightLimit > leftLimit)
+            {
+                room.AddPlatform(new Platform(
+                    new Rectangle(
+                        _random.Next(leftLimit, rightLimit + 1),
+                        room.GroundY - height,
+                        width,
+                        height),
+                    PlatformKind.Obstacle,
+                    room.Id));
+            }
         }
     }
 
-    private static DungeonRoom FindFarthestAvailableRoom(
-        IReadOnlyList<DungeonRoom> rooms,
-        DungeonRoom startRoom,
-        DungeonRoom excludedRoom,
-        DungeonRoom secondExcludedRoom)
+    private void AssignRoomTypes(List<DungeonRoom> rooms)
     {
-        DungeonRoom result = null;
-        float farthestDistanceSquared = -1f;
+        rooms[0].Type = RoomType.Start;
+        rooms[^1].Type = RoomType.Exit;
+        rooms[^2].Type = RoomType.Boss;
+        int treasureIndex = Math.Clamp(rooms.Count / 2, 2, rooms.Count - 3);
+        rooms[treasureIndex].Type = RoomType.Treasure;
+        int enemyCount = 0;
 
-        foreach (DungeonRoom room in rooms)
+        for (int index = 1; index < rooms.Count - 2; index++)
         {
-            if (room == startRoom ||
-                room == excludedRoom ||
-                room == secondExcludedRoom)
-            {
+            if (index == treasureIndex)
                 continue;
-            }
 
-            float distanceSquared = Vector2.DistanceSquared(
-                room.Center,
-                startRoom.Center);
-
-            if (distanceSquared > farthestDistanceSquared)
+            if (_random.NextDouble() < 0.7)
             {
-                result = room;
-                farthestDistanceSquared = distanceSquared;
+                rooms[index].Type = RoomType.Enemy;
+                enemyCount++;
             }
         }
 
-        return result;
+        for (int index = 1; enemyCount < 2 && index < rooms.Count - 2; index++)
+        {
+            if (rooms[index].Type != RoomType.Normal)
+                continue;
+
+            rooms[index].Type = RoomType.Enemy;
+            enemyCount++;
+        }
     }
 
-    private List<Rectangle> ConnectRooms(
-        List<DungeonRoom> rooms,
-        DungeonRoom startRoom)
+    private static bool HasSafeGround(DungeonRoom room)
     {
-        var corridors = new List<Rectangle>();
-        var connected = new List<DungeonRoom> { startRoom };
-        var remaining = new List<DungeonRoom>(rooms);
-        remaining.Remove(startRoom);
-
-        while (remaining.Count > 0)
+        foreach (Platform platform in room.Platforms)
         {
-            DungeonRoom nextRoom = remaining[0];
-            DungeonRoom nearestRoom = connected[0];
-            float nearestDistanceSquared = float.MaxValue;
-
-            foreach (DungeonRoom candidate in remaining)
+            if (platform.Kind == PlatformKind.Ground &&
+                platform.Bounds.Left <= room.Bounds.Left &&
+                platform.Bounds.Right >= room.Bounds.Right &&
+                platform.Bounds.Top == room.GroundY)
             {
-                foreach (DungeonRoom existing in connected)
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasValidPlatforms(DungeonRoom room)
+    {
+        for (int first = 0; first < room.Platforms.Count; first++)
+        {
+            Platform platform = room.Platforms[first];
+
+            if (!room.Bounds.Contains(platform.Bounds) &&
+                platform.Kind != PlatformKind.Transition)
+            {
+                return false;
+            }
+
+            if (platform.Kind == PlatformKind.Raised &&
+                room.GroundY - platform.Bounds.Top > MaximumPlatformRise)
+            {
+                return false;
+            }
+
+            for (int second = first + 1; second < room.Platforms.Count; second++)
+            {
+                Platform other = room.Platforms[second];
+
+                if (platform.Kind != PlatformKind.Ground &&
+                    other.Kind != PlatformKind.Ground &&
+                    platform.Bounds.Intersects(other.Bounds))
                 {
-                    float distanceSquared = Vector2.DistanceSquared(
-                        candidate.Center,
-                        existing.Center);
-
-                    if (distanceSquared >= nearestDistanceSquared)
-                        continue;
-
-                    nextRoom = candidate;
-                    nearestRoom = existing;
-                    nearestDistanceSquared = distanceSquared;
+                    return false;
                 }
             }
-
-            AddConnectionCorridors(
-                corridors,
-                nearestRoom.Center.ToPoint(),
-                nextRoom.Center.ToPoint(),
-                _random.Next(2) == 0);
-            nearestRoom.ConnectTo(nextRoom.Id);
-            nextRoom.ConnectTo(nearestRoom.Id);
-            connected.Add(nextRoom);
-            remaining.Remove(nextRoom);
         }
 
-        return corridors;
+        return true;
     }
 
-    private static void AddConnectionCorridors(
-        List<Rectangle> corridors,
-        Point start,
-        Point end,
-        bool horizontalFirst)
+    private static bool OverlapsAny(Rectangle candidate, IReadOnlyList<Rectangle> occupied, int padding)
     {
-        if (horizontalFirst)
+        candidate.Inflate(padding, padding);
+
+        foreach (Rectangle bounds in occupied)
         {
-            corridors.Add(CreateHorizontalCorridor(start.X, end.X, start.Y));
-            corridors.Add(CreateVerticalCorridor(start.Y, end.Y, end.X));
-        }
-        else
-        {
-            corridors.Add(CreateVerticalCorridor(start.Y, end.Y, start.X));
-            corridors.Add(CreateHorizontalCorridor(start.X, end.X, end.Y));
-        }
-    }
-
-    private static Rectangle CreateHorizontalCorridor(int startX, int endX, int y)
-    {
-        return new Rectangle(
-            Math.Min(startX, endX) - CorridorWidth / 2,
-            y - CorridorWidth / 2,
-            Math.Abs(endX - startX) + CorridorWidth,
-            CorridorWidth);
-    }
-
-    private static Rectangle CreateVerticalCorridor(int startY, int endY, int x)
-    {
-        return new Rectangle(
-            x - CorridorWidth / 2,
-            Math.Min(startY, endY) - CorridorWidth / 2,
-            CorridorWidth,
-            Math.Abs(endY - startY) + CorridorWidth);
-    }
-
-    private static DungeonRoom FindTopLeftRoom(List<DungeonRoom> rooms)
-    {
-        DungeonRoom result = rooms[0];
-        int bestScore = result.Bounds.Center.X + result.Bounds.Center.Y;
-
-        foreach (DungeonRoom room in rooms)
-        {
-            int score = room.Bounds.Center.X + room.Bounds.Center.Y;
-
-            if (score < bestScore)
-            {
-                result = room;
-                bestScore = score;
-            }
+            if (candidate.Intersects(bounds))
+                return true;
         }
 
-        return result;
+        return false;
     }
 
-    private static DungeonRoom FindRoomById(
-        IReadOnlyList<DungeonRoom> rooms,
-        int roomId)
-    {
-        foreach (DungeonRoom room in rooms)
-        {
-            if (room.Id == roomId)
-                return room;
-        }
-
-        return null;
-    }
-
-    private static int CountRoomsOfType(
-        IReadOnlyList<DungeonRoom> rooms,
-        RoomType roomType)
+    private static int CountRoomsOfType(IReadOnlyList<DungeonRoom> rooms, RoomType type)
     {
         int count = 0;
 
         foreach (DungeonRoom room in rooms)
         {
-            if (room.Type == roomType)
+            if (room.Type == type)
                 count++;
         }
 
@@ -430,45 +313,53 @@ public sealed class DungeonGenerator
         return false;
     }
 
-    private void Shuffle(List<int> values)
-    {
-        for (int index = values.Count - 1; index > 0; index--)
-        {
-            int swapIndex = _random.Next(index + 1);
-            (values[index], values[swapIndex]) = (values[swapIndex], values[index]);
-        }
-    }
-
     private static DungeonMap CreateFallbackDungeon()
     {
-        var rooms = new List<DungeonRoom>
-        {
-            new(0, new Rectangle(140, 160, 320, 240), RoomType.Start),
-            new(1, new Rectangle(700, 140, 300, 240), RoomType.Enemy),
-            new(2, new Rectangle(1260, 180, 340, 260), RoomType.Treasure),
-            new(3, new Rectangle(1880, 160, 340, 250), RoomType.Enemy),
-            new(4, new Rectangle(1840, 760, 360, 280), RoomType.Normal),
-            new(5, new Rectangle(1160, 1120, 360, 280), RoomType.Boss),
-            new(6, new Rectangle(420, 1180, 360, 280), RoomType.Exit)
-        };
-        var corridors = new List<Rectangle>();
+        var rooms = new List<DungeonRoom>(MinimumRoomCount);
+        var corridors = new List<Rectangle>(MinimumRoomCount - 1);
+        int x = WorldMargin;
 
-        for (int index = 0; index < rooms.Count - 1; index++)
+        for (int index = 0; index < MinimumRoomCount; index++)
         {
-            DungeonRoom first = rooms[index];
-            DungeonRoom second = rooms[index + 1];
-            AddConnectionCorridors(
-                corridors,
-                first.Center.ToPoint(),
-                second.Center.ToPoint(),
-                horizontalFirst: index % 2 == 0);
-            first.ConnectTo(second.Id);
-            second.ConnectTo(first.Id);
+            RoomType type = index switch
+            {
+                0 => RoomType.Start,
+                3 => RoomType.Treasure,
+                5 => RoomType.Boss,
+                6 => RoomType.Exit,
+                _ => RoomType.Enemy
+            };
+            var room = new DungeonRoom(index, new Rectangle(x, WorldMargin, 1200, RoomHeight), type);
+            room.GroundY = room.Bounds.Bottom - GroundThickness;
+            room.AddPlatform(new Platform(
+                new Rectangle(room.Bounds.Left, room.GroundY, room.Bounds.Width, GroundThickness),
+                PlatformKind.Ground,
+                room.Id));
+            rooms.Add(room);
+
+            if (index > 0)
+            {
+                DungeonRoom previous = rooms[index - 1];
+                previous.ConnectTo(room.Id);
+                room.ConnectTo(previous.Id);
+                var corridor = new Rectangle(previous.Bounds.Right, WorldMargin, CorridorWidth, RoomHeight);
+                corridors.Add(corridor);
+                previous.AddPlatform(new Platform(
+                    new Rectangle(corridor.Left, previous.GroundY, corridor.Width, GroundThickness),
+                    PlatformKind.Transition,
+                    previous.Id));
+            }
+
+            x += 1200 + CorridorWidth;
         }
 
         return new DungeonMap(
             rooms,
             corridors,
-            new Rectangle(0, 0, WorldWidth, WorldHeight));
+            new Rectangle(
+                rooms[0].Bounds.Left,
+                rooms[0].Bounds.Top,
+                rooms[^1].Bounds.Right - rooms[0].Bounds.Left,
+                RoomHeight));
     }
 }

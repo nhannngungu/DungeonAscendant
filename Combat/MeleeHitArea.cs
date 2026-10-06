@@ -15,35 +15,23 @@ public static class MeleeHitArea
         float reach,
         float thickness)
     {
-        int horizontalThickness = (int)thickness;
         int verticalThickness = (int)thickness;
         int horizontalReach = (int)reach;
-        int verticalReach = (int)reach;
-        int centerX = (int)attackerPosition.X;
         int centerY = (int)attackerPosition.Y;
 
-        return facingDirection switch
+        if (facingDirection == FacingDirection.Left)
         {
-            FacingDirection.Up => new Rectangle(
-                centerX - horizontalThickness / 2,
-                (int)(attackerPosition.Y - attackerSize.Y / 2f) - verticalReach,
-                horizontalThickness,
-                verticalReach),
-            FacingDirection.Down => new Rectangle(
-                centerX - horizontalThickness / 2,
-                (int)(attackerPosition.Y + attackerSize.Y / 2f),
-                horizontalThickness,
-                verticalReach),
-            FacingDirection.Left => new Rectangle(
+            return new Rectangle(
                 (int)(attackerPosition.X - attackerSize.X / 2f) - horizontalReach,
                 centerY - verticalThickness / 2,
                 horizontalReach,
-                verticalThickness),
-            _ => new Rectangle(
-                (int)(attackerPosition.X + attackerSize.X / 2f),
-                centerY - verticalThickness / 2,
-                horizontalReach,
-                verticalThickness)
-        };
+                verticalThickness);
+        }
+
+        return new Rectangle(
+            (int)(attackerPosition.X + attackerSize.X / 2f),
+            centerY - verticalThickness / 2,
+            horizontalReach,
+            verticalThickness);
     }
 }

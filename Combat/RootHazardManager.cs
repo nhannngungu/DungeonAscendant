@@ -44,7 +44,7 @@ public sealed class RootHazardManager
             owner,
             isTerrainRoot);
 
-        if (!DungeonCollision.IsWalkable(hazard.Bounds, dungeon))
+        if (dungeon.FindRoomContaining(position) == null)
             return false;
 
         _hazards.Add(hazard);

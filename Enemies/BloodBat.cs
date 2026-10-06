@@ -18,6 +18,7 @@ public sealed class BloodBat : Enemy
         ? 3f
         : 12f + MathF.Sin(_flightTime * 5f) * 3f;
     public override float LootChanceMultiplier => 0.35f;
+    public override bool IsFlying => true;
     public override Rectangle MeleeTargetBounds => IsLowAltitude
         ? Bounds
         : new Rectangle(

@@ -124,26 +124,13 @@ public sealed class GameRenderer : IDisposable
         Rectangle visibleBounds = cameraBounds;
         visibleBounds.Inflate(80, 80);
 
-        foreach (Rectangle corridor in dungeon.Corridors)
-        {
-            if (!corridor.Intersects(visibleBounds))
-                continue;
-
-            Rectangle wall = corridor;
-            wall.Inflate(8, 8);
-            _spriteBatch.Draw(_pixel, wall, theme.Boundary);
-        }
-
         foreach (DungeonRoom room in dungeon.Rooms)
         {
             if (!room.Bounds.Intersects(visibleBounds))
                 continue;
 
-            Rectangle wall = room.Bounds;
-            wall.Inflate(10, 10);
-            _spriteBatch.Draw(_pixel, wall, theme.Boundary);
-            DrawRectangleOutline(wall, 3, theme.BoundaryAccent);
-            DrawForestBoundaryDetails(wall, visibleBounds, theme);
+            _spriteBatch.Draw(_pixel, room.Bounds, theme.GetRoomFloor(room.Type));
+            DrawRectangleOutline(room.Bounds, 5, theme.BoundaryAccent);
         }
 
         foreach (Rectangle corridor in dungeon.Corridors)
@@ -152,7 +139,29 @@ public sealed class GameRenderer : IDisposable
                 continue;
 
             _spriteBatch.Draw(_pixel, corridor, theme.CorridorFloor);
-            DrawForestGroundDetails(corridor, visibleBounds, theme);
+            DrawRectangleOutline(corridor, 3, theme.BoundaryAccent);
+        }
+
+        foreach (Platform platform in dungeon.Platforms)
+        {
+            if (!platform.Bounds.Intersects(visibleBounds))
+                continue;
+
+            Color color = platform.Kind switch
+            {
+                PlatformKind.Raised => theme.BoundaryAccent,
+                PlatformKind.Obstacle => theme.Root,
+                PlatformKind.Transition => theme.CorridorFloor,
+                _ => theme.Boundary
+            };
+            _spriteBatch.Draw(_pixel, platform.Bounds, color);
+            DrawRectangleOutline(platform.Bounds, 3, theme.BoundaryAccent);
+
+            if (platform.Kind == PlatformKind.Ground ||
+                platform.Kind == PlatformKind.Transition)
+            {
+                DrawForestGroundDetails(platform.Bounds, visibleBounds, theme);
+            }
         }
 
         foreach (DungeonRoom room in dungeon.Rooms)
@@ -160,19 +169,14 @@ public sealed class GameRenderer : IDisposable
             if (!room.Bounds.Intersects(visibleBounds))
                 continue;
 
-            Color floorColor = theme.GetRoomFloor(room.Type);
-
-            _spriteBatch.Draw(_pixel, room.Bounds, floorColor);
-            DrawForestGroundDetails(room.Bounds, visibleBounds, theme);
-
             if (room.Type == RoomType.Start)
-                DrawStartMarker(room.Center);
+                DrawStartMarker(new Vector2(room.Bounds.Left + 110f, room.GroundY - 35f));
             else if (room.Type == RoomType.Treasure)
-                DrawTreasureRoomMarker(room.Center);
+                DrawTreasureRoomMarker(gameSession.Chest.Position);
             else if (room.Type == RoomType.Boss)
-                DrawBossRoomMarker(room.Center);
+                DrawBossRoomMarker(new Vector2(room.Center.X, room.GroundY - 70f));
             else if (room.Type == RoomType.Exit)
-                DrawExitMarker(room.Center, gameSession.IsExitUnlocked);
+                DrawExitMarker(gameSession.ExitPosition, gameSession.IsExitUnlocked);
         }
     }
 
@@ -426,7 +430,6 @@ public sealed class GameRenderer : IDisposable
     private void DrawPlayer(PlayerCharacter player, bool isAttacking)
     {
         Vector2 topLeft = player.Position - player.Size / 2f;
-        int centerX = (int)player.Position.X;
         int centerY = (int)player.Position.Y;
         int swordLength = isAttacking ? 52 : 28;
         const int swordThickness = 6;
@@ -456,76 +459,41 @@ public sealed class GameRenderer : IDisposable
         Rectangle swordGuard;
         Rectangle swordHandle;
 
-        switch (player.Facing)
+        if (player.Facing == FacingDirection.Left)
         {
-            case FacingDirection.Up:
-                swordBlade = new Rectangle(
-                    centerX + 7,
-                    (int)topLeft.Y - swordLength + 3,
-                    swordThickness,
-                    swordLength);
-                swordGuard = new Rectangle(
-                    swordBlade.X - 4,
-                    swordBlade.Bottom - 3,
-                    14,
-                    6);
-                swordHandle = new Rectangle(
-                    swordBlade.X,
-                    swordGuard.Bottom - 1,
-                    swordThickness,
-                    9);
-                break;
-            case FacingDirection.Down:
-                swordBlade = new Rectangle(
-                    centerX + 7,
-                    (int)(topLeft.Y + player.Size.Y) - 3,
-                    swordThickness,
-                    swordLength);
-                swordGuard = new Rectangle(
-                    swordBlade.X - 4,
-                    swordBlade.Y - 3,
-                    14,
-                    6);
-                swordHandle = new Rectangle(
-                    swordBlade.X,
-                    swordGuard.Y - 8,
-                    swordThickness,
-                    9);
-                break;
-            case FacingDirection.Left:
-                swordBlade = new Rectangle(
-                    (int)topLeft.X - swordLength + 3,
-                    centerY + 3,
-                    swordLength,
-                    swordThickness);
-                swordGuard = new Rectangle(
-                    swordBlade.Right - 3,
-                    swordBlade.Y - 4,
-                    6,
-                    14);
-                swordHandle = new Rectangle(
-                    swordGuard.Right - 1,
-                    swordBlade.Y,
-                    9,
-                    swordThickness);
-                break;
-            default:
-                swordBlade = new Rectangle(
-                    (int)(topLeft.X + player.Size.X) - 3,
-                    centerY + 3,
-                    swordLength,
-                    swordThickness);
-                swordGuard = new Rectangle(
-                    swordBlade.X - 3,
-                    swordBlade.Y - 4,
-                    6,
-                    14);
-                swordHandle = new Rectangle(
-                    swordGuard.X - 8,
-                    swordBlade.Y,
-                    9,
-                    swordThickness);
-                break;
+            swordBlade = new Rectangle(
+                (int)topLeft.X - swordLength + 3,
+                centerY + 3,
+                swordLength,
+                swordThickness);
+            swordGuard = new Rectangle(
+                swordBlade.Right - 3,
+                swordBlade.Y - 4,
+                6,
+                14);
+            swordHandle = new Rectangle(
+                swordGuard.Right - 1,
+                swordBlade.Y,
+                9,
+                swordThickness);
+        }
+        else
+        {
+            swordBlade = new Rectangle(
+                (int)(topLeft.X + player.Size.X) - 3,
+                centerY + 3,
+                swordLength,
+                swordThickness);
+            swordGuard = new Rectangle(
+                swordBlade.X - 3,
+                swordBlade.Y - 4,
+                6,
+                14);
+            swordHandle = new Rectangle(
+                swordGuard.X - 8,
+                swordBlade.Y,
+                9,
+                swordThickness);
         }
 
         Rectangle eye = CreatePlayerEye(head, player.Facing);
@@ -539,7 +507,8 @@ public sealed class GameRenderer : IDisposable
             ? new Color(245, 238, 185)
             : new Color(205, 215, 226);
 
-        _spriteBatch.Draw(_pixel, shadow, new Color(16, 19, 22, 150));
+        if (player.IsGrounded)
+            _spriteBatch.Draw(_pixel, shadow, new Color(16, 19, 22, 150));
         _spriteBatch.Draw(_pixel, swordHandle, new Color(91, 57, 38));
         _spriteBatch.Draw(_pixel, swordBlade, bladeColor);
         _spriteBatch.Draw(_pixel, swordGuard, new Color(126, 85, 50));
@@ -585,13 +554,9 @@ public sealed class GameRenderer : IDisposable
         Rectangle head,
         FacingDirection facingDirection)
     {
-        return facingDirection switch
-        {
-            FacingDirection.Up => new Rectangle(head.Center.X - 2, head.Y + 3, 4, 4),
-            FacingDirection.Down => new Rectangle(head.Center.X - 2, head.Bottom - 7, 4, 4),
-            FacingDirection.Left => new Rectangle(head.X + 3, head.Y + 8, 4, 4),
-            _ => new Rectangle(head.Right - 7, head.Y + 8, 4, 4)
-        };
+        return facingDirection == FacingDirection.Left
+            ? new Rectangle(head.X + 3, head.Y + 8, 4, 4)
+            : new Rectangle(head.Right - 7, head.Y + 8, 4, 4);
     }
 
     private void DrawEnemy(Enemy enemy)
@@ -651,12 +616,13 @@ public sealed class GameRenderer : IDisposable
             (int)wolf.Size.X - 19,
             17);
         int muzzleExtension = wolf.Attack.IsActive ? 8 : 3;
-        Rectangle head = new(body.Right - 4, body.Y - 4, 17, 17);
-        Rectangle muzzle = new(
-            head.Right - 2,
-            head.Y + 7,
-            7 + muzzleExtension,
-            7);
+        bool facesLeft = wolf.Facing == EnemyFacingDirection.Left;
+        Rectangle head = facesLeft
+            ? new Rectangle(body.X - 13, body.Y - 4, 17, 17)
+            : new Rectangle(body.Right - 4, body.Y - 4, 17, 17);
+        Rectangle muzzle = facesLeft
+            ? new Rectangle(head.X - 5 - muzzleExtension, head.Y + 7, 7 + muzzleExtension, 7)
+            : new Rectangle(head.Right - 2, head.Y + 7, 7 + muzzleExtension, 7);
 
         _spriteBatch.Draw(
             _pixel,
@@ -665,13 +631,19 @@ public sealed class GameRenderer : IDisposable
         DrawEliteOutline(wolf, new Color(237, 190, 59));
         _spriteBatch.Draw(_pixel, new Rectangle(body.X + 4, body.Bottom - 2, 6, 10), darkFur);
         _spriteBatch.Draw(_pixel, new Rectangle(body.Right - 11, body.Bottom - 2, 6, 10), darkFur);
-        _spriteBatch.Draw(_pixel, new Rectangle(body.X - 10, body.Y + 2, 14, 5), darkFur);
+        Rectangle tail = facesLeft
+            ? new Rectangle(body.Right - 4, body.Y + 2, 14, 5)
+            : new Rectangle(body.X - 10, body.Y + 2, 14, 5);
+        _spriteBatch.Draw(_pixel, tail, darkFur);
         _spriteBatch.Draw(_pixel, body, fur);
         _spriteBatch.Draw(_pixel, head, fur);
         _spriteBatch.Draw(_pixel, new Rectangle(head.X + 2, head.Y - 7, 6, 9), darkFur);
         _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 7, head.Y - 6, 6, 8), darkFur);
         _spriteBatch.Draw(_pixel, muzzle, darkFur);
-        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 5, head.Y + 4, 4, 4), new Color(229, 66, 51));
+        Rectangle eye = facesLeft
+            ? new Rectangle(head.X + 1, head.Y + 4, 4, 4)
+            : new Rectangle(head.Right - 5, head.Y + 4, 4, 4);
+        _spriteBatch.Draw(_pixel, eye, new Color(229, 66, 51));
     }
 
     private void DrawGiantSpider(GiantSpider spider)
@@ -688,7 +660,10 @@ public sealed class GameRenderer : IDisposable
             (int)topLeft.Y + 8,
             25,
             22);
-        Rectangle head = new(abdomen.Right - 3, abdomen.Y + 5, 17, 15);
+        bool facesLeft = spider.Facing == EnemyFacingDirection.Left;
+        Rectangle head = facesLeft
+            ? new Rectangle(abdomen.X - 14, abdomen.Y + 5, 17, 15)
+            : new Rectangle(abdomen.Right - 3, abdomen.Y + 5, 17, 15);
 
         _spriteBatch.Draw(
             _pixel,
@@ -715,6 +690,10 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, new Rectangle(abdomen.X + 8, abdomen.Y + 7, 9, 7), new Color(104, 49, 93));
         _spriteBatch.Draw(_pixel, new Rectangle(head.X + 4, head.Y + 4, 3, 3), new Color(229, 58, 54));
         _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 6, head.Y + 4, 3, 3), new Color(229, 58, 54));
+        Rectangle fang = facesLeft
+            ? new Rectangle(head.X - 3, head.Bottom - 5, 5, 7)
+            : new Rectangle(head.Right - 2, head.Bottom - 5, 5, 7);
+        _spriteBatch.Draw(_pixel, fang, new Color(204, 194, 174));
     }
 
     private void DrawGoblinHunter(GoblinHunter hunter)
@@ -734,7 +713,10 @@ public sealed class GameRenderer : IDisposable
             (int)hunter.Size.X - 10,
             21);
         int bowReach = hunter.Attack.IsActive ? 13 : 8;
-        Rectangle bow = new(body.Right + bowReach, body.Y - 1, 4, 30);
+        bool facesLeft = hunter.Facing == EnemyFacingDirection.Left;
+        Rectangle bow = facesLeft
+            ? new Rectangle(body.X - bowReach - 4, body.Y - 1, 4, 30)
+            : new Rectangle(body.Right + bowReach, body.Y - 1, 4, 30);
 
         _spriteBatch.Draw(
             _pixel,
@@ -747,10 +729,15 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, new Rectangle(body.Right - 8, body.Bottom - 2, 6, 8), new Color(43, 55, 37));
         _spriteBatch.Draw(_pixel, body, new Color(57, 72, 43));
         _spriteBatch.Draw(_pixel, head, skin);
-        _spriteBatch.Draw(_pixel, new Rectangle(head.X + 5, head.Y + 7, 4, 4), new Color(225, 65, 42));
-        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 9, head.Y + 7, 4, 4), new Color(225, 65, 42));
+        Rectangle eye = facesLeft
+            ? new Rectangle(head.X + 4, head.Y + 7, 4, 4)
+            : new Rectangle(head.Right - 8, head.Y + 7, 4, 4);
+        _spriteBatch.Draw(_pixel, eye, new Color(225, 65, 42));
         _spriteBatch.Draw(_pixel, bow, new Color(139, 91, 48));
-        _spriteBatch.Draw(_pixel, new Rectangle(body.Right + 2, body.Y + 13, bowReach + 3, 2), new Color(213, 207, 178));
+        Rectangle arrow = facesLeft
+            ? new Rectangle(bow.X, body.Y + 13, body.X - bow.X - 2, 2)
+            : new Rectangle(body.Right + 2, body.Y + 13, bow.X - body.Right + 2, 2);
+        _spriteBatch.Draw(_pixel, arrow, new Color(213, 207, 178));
     }
 
     private void DrawThornCrawler(ThornCrawler crawler)
@@ -832,6 +819,9 @@ public sealed class GameRenderer : IDisposable
         int centerX = (int)bat.Position.X;
         int centerY = (int)(bat.Position.Y - bat.FlightVisualOffset);
         int wingReach = bat.State == BloodBatState.Diving ? 13 : 20;
+        bool facesLeft = bat.Facing == EnemyFacingDirection.Left;
+        int leftWingReach = wingReach + (facesLeft ? 3 : -3);
+        int rightWingReach = wingReach + (facesLeft ? -3 : 3);
         Color wing = bat.IsHitFlashing
             ? new Color(235, 220, 211)
             : new Color(91, 35, 47);
@@ -840,13 +830,19 @@ public sealed class GameRenderer : IDisposable
             new Rectangle(centerX - 15, (int)bat.Position.Y + 7, 30, 6),
             new Color(11, 14, 12, 120));
         DrawEliteOutline(bat, new Color(237, 190, 59));
-        _spriteBatch.Draw(_pixel, new Rectangle(centerX - wingReach - 8, centerY - 4, wingReach, 10), wing);
-        _spriteBatch.Draw(_pixel, new Rectangle(centerX + 8, centerY - 4, wingReach, 10), wing);
+        _spriteBatch.Draw(_pixel, new Rectangle(centerX - leftWingReach - 8, centerY - 4, leftWingReach, 10), wing);
+        _spriteBatch.Draw(_pixel, new Rectangle(centerX + 8, centerY - 4, rightWingReach, 10), wing);
         _spriteBatch.Draw(_pixel, new Rectangle(centerX - 9, centerY - 7, 18, 18), new Color(62, 37, 42));
         _spriteBatch.Draw(_pixel, new Rectangle(centerX - 6, centerY - 13, 5, 8), wing);
         _spriteBatch.Draw(_pixel, new Rectangle(centerX + 2, centerY - 13, 5, 8), wing);
-        _spriteBatch.Draw(_pixel, new Rectangle(centerX - 5, centerY - 2, 3, 3), new Color(236, 53, 53));
-        _spriteBatch.Draw(_pixel, new Rectangle(centerX + 2, centerY - 2, 3, 3), new Color(236, 53, 53));
+        Rectangle eye = facesLeft
+            ? new Rectangle(centerX - 6, centerY - 2, 3, 3)
+            : new Rectangle(centerX + 3, centerY - 2, 3, 3);
+        Rectangle snout = facesLeft
+            ? new Rectangle(centerX - 13, centerY + 2, 6, 4)
+            : new Rectangle(centerX + 7, centerY + 2, 6, 4);
+        _spriteBatch.Draw(_pixel, snout, new Color(113, 47, 50));
+        _spriteBatch.Draw(_pixel, eye, new Color(236, 53, 53));
     }
 
     private void DrawGoblinChief(GoblinChief chief)
@@ -951,34 +947,31 @@ public sealed class GameRenderer : IDisposable
             return;
         }
 
-        bool horizontal = MathF.Abs(projectile.Velocity.X) >=
-            MathF.Abs(projectile.Velocity.Y);
-        Rectangle shaft = projectile.Bounds;
-
-        if (horizontal)
-        {
-            shaft.Height = 3;
-            shaft.Y = (int)projectile.Position.Y - 1;
-        }
-        else
-        {
-            shaft.Width = 3;
-            shaft.X = (int)projectile.Position.X - 1;
-        }
-
-        _spriteBatch.Draw(_pixel, shaft, new Color(183, 139, 76));
-        Rectangle arrowHead = horizontal
-            ? new Rectangle(
-                projectile.Velocity.X >= 0f ? shaft.Right - 2 : shaft.X - 3,
-                shaft.Y - 2,
-                5,
-                7)
-            : new Rectangle(
-                shaft.X - 2,
-                projectile.Velocity.Y >= 0f ? shaft.Bottom - 2 : shaft.Y - 3,
-                7,
-                5);
-        _spriteBatch.Draw(_pixel, arrowHead, new Color(205, 210, 195));
+        Vector2 direction = projectile.Velocity;
+        direction.Normalize();
+        float rotation = MathF.Atan2(direction.Y, direction.X);
+        float shaftLength = MathF.Max(projectile.Size.X, projectile.Size.Y);
+        Vector2 shaftStart = projectile.Position - direction * (shaftLength / 2f);
+        _spriteBatch.Draw(
+            _pixel,
+            shaftStart,
+            sourceRectangle: null,
+            new Color(183, 139, 76),
+            rotation,
+            new Vector2(0f, 0.5f),
+            new Vector2(shaftLength, 3f),
+            SpriteEffects.None,
+            layerDepth: 0f);
+        _spriteBatch.Draw(
+            _pixel,
+            projectile.Position + direction * (shaftLength / 2f),
+            sourceRectangle: null,
+            new Color(205, 210, 195),
+            rotation,
+            new Vector2(0.5f, 0.5f),
+            new Vector2(6f, 7f),
+            SpriteEffects.None,
+            layerDepth: 0f);
     }
 
     private void DrawWebPatch(WebPatch patch)
@@ -1072,9 +1065,13 @@ public sealed class GameRenderer : IDisposable
             (int)topLeft.Y + 3,
             (int)goblin.Size.X - 10,
             22);
-        Rectangle leftEye = new(head.X + 5, head.Y + 7, 4, 4);
-        Rectangle rightEye = new(head.Right - 9, head.Y + 7, 4, 4);
-        Rectangle clubHandle = new(body.Right + 1, body.Y + 3, 5, clubLength);
+        bool facesLeft = goblin.Facing == EnemyFacingDirection.Left;
+        Rectangle eye = facesLeft
+            ? new Rectangle(head.X + 4, head.Y + 7, 4, 4)
+            : new Rectangle(head.Right - 8, head.Y + 7, 4, 4);
+        Rectangle clubHandle = facesLeft
+            ? new Rectangle(body.X - 6, body.Y + 3, 5, clubLength)
+            : new Rectangle(body.Right + 1, body.Y + 3, 5, clubLength);
         Rectangle clubHead = new(
             clubHandle.X - 3,
             clubHandle.Bottom - 8,
@@ -1112,8 +1109,7 @@ public sealed class GameRenderer : IDisposable
             goblin.IsElite ? new Color(214, 160, 47) : new Color(126, 85, 50));
         _spriteBatch.Draw(_pixel, body, bodyColor);
         _spriteBatch.Draw(_pixel, head, skinColor);
-        _spriteBatch.Draw(_pixel, leftEye, eyeColor);
-        _spriteBatch.Draw(_pixel, rightEye, eyeColor);
+        _spriteBatch.Draw(_pixel, eye, eyeColor);
 
         if (goblin.Variant == GoblinVariant.Fast)
         {

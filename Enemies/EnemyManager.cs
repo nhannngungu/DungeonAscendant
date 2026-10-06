@@ -18,8 +18,8 @@ public sealed class EnemyManager
     public const int MaximumGlobalSpiderlings = 8;
 
     private const float ActivationDistance = 260f;
-    private const float SpawnMargin = 52f;
-    private const float MinimumEnemySpawnDistance = 64f;
+    private const float SpawnMargin = 190f;
+    private const float MinimumEnemySpawnDistance = 96f;
     private const int SpawnAttempts = 20;
 
     private readonly List<Enemy> _enemies = new();
@@ -378,7 +378,7 @@ public sealed class EnemyManager
         int worldTier,
         bool isElite)
     {
-        Vector2 position = SelectSpawnPosition(room.Bounds);
+        Vector2 position = SelectSpawnPosition(room, type == EnemyType.BloodBat);
         var context = new EnemySpawnContext(
             position,
             enemyLevel,
@@ -389,6 +389,7 @@ public sealed class EnemyManager
                 ? SelectGoblinVariant(worldTier)
                 : GoblinVariant.Normal);
         Enemy enemy = EnemyFactory.Create(type, context);
+        enemy.SnapToGround(room);
         _enemies.Add(enemy);
 
         if (enemy is Goblin goblin)
@@ -411,13 +412,15 @@ public sealed class EnemyManager
             if (room == null)
                 continue;
 
-            Vector2 position = SelectSpawnPosition(room.Bounds);
-            _enemies.Add(new Spiderling(
+            Vector2 position = SelectSpawnPosition(room, isFlying: false);
+            var spiderling = new Spiderling(
                 position,
                 mother.Level,
                 mother.RoomId,
                 mother.WorldTier,
-                mother));
+                mother);
+            spiderling.SnapToGround(room);
+            _enemies.Add(spiderling);
         }
 
         _summonRequests.Clear();
@@ -550,9 +553,11 @@ public sealed class EnemyManager
             : EnemyType.Goblin;
     }
 
-    private Vector2 SelectSpawnPosition(Rectangle roomBounds)
+    private Vector2 SelectSpawnPosition(DungeonRoom room, bool isFlying)
     {
-        Vector2 bestCandidate = roomBounds.Center.ToVector2();
+        Rectangle roomBounds = room.Bounds;
+        float spawnY = isFlying ? room.GroundY - 180f : room.GroundY - 80f;
+        Vector2 bestCandidate = new(roomBounds.Center.X, spawnY);
         float bestNearestDistanceSquared = -1f;
 
         for (int attempt = 0; attempt < SpawnAttempts; attempt++)
@@ -562,10 +567,11 @@ public sealed class EnemyManager
                     roomBounds.Left + SpawnMargin,
                     roomBounds.Right - SpawnMargin,
                     (float)_random.NextDouble()),
-                MathHelper.Lerp(
-                    roomBounds.Top + SpawnMargin,
-                    roomBounds.Bottom - SpawnMargin,
-                    (float)_random.NextDouble()));
+                spawnY);
+
+            if (!isFlying && !IsGroundSpawnClear(candidate.X, room))
+                continue;
+
             float nearestDistanceSquared = GetNearestEnemyDistanceSquared(candidate);
 
             if (nearestDistanceSquared > bestNearestDistanceSquared)
@@ -581,8 +587,40 @@ public sealed class EnemyManager
             }
         }
 
+        if (!isFlying && !IsGroundSpawnClear(bestCandidate.X, room))
+        {
+            for (float x = roomBounds.Left + SpawnMargin;
+                x <= roomBounds.Right - SpawnMargin;
+                x += 64f)
+            {
+                if (IsGroundSpawnClear(x, room))
+                    return new Vector2(x, spawnY);
+            }
+        }
+
         return bestCandidate;
     }
+
+    private static bool IsGroundSpawnClear(float x, DungeonRoom room)
+    {
+        foreach (Platform platform in room.Platforms)
+        {
+            if (platform.Kind == PlatformKind.Ground ||
+                platform.Kind == PlatformKind.Transition)
+            {
+                continue;
+            }
+
+            if (x >= platform.Bounds.Left - 56f &&
+                x <= platform.Bounds.Right + 56f)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
 
     private float GetNearestEnemyDistanceSquared(Vector2 candidate)
     {

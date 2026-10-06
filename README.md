@@ -1,19 +1,19 @@
 # DungeonAscendant
 
-DungeonAscendant is a code-first 2D medieval fantasy progression action RPG built with C# and MonoGame.
+DungeonAscendant is a code-first 2D side-scrolling medieval fantasy action roguelike / action RPG built with C# and MonoGame.
 
 ## Overview
 
-Explore a procedurally generated dungeon, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype combines the original combat and progression loop with connected rooms, corridors, collision, and a following camera, all without external art assets.
+Explore a procedurally generated chain of side-view combat rooms, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype preserves the original combat and progression loop while replacing top-down traversal with gravity, jumping, solid platforms, horizontal transitions, and a side-follow camera, all without external art assets.
 
-## Current Version: v0.5.0 Dungeon & Progression
+## Current Version: v0.6.0 Side-Scrolling Foundation
 
-The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon, adds World Tiers, and introduces the first official content region: the corrupted Wild Forest.
+The v0.6.0 milestone converts the gameplay presentation from top-down movement to a side-scrolling foundation while preserving the dungeon progression, World Tiers, loot, equipment, Wild Forest roster, and Ancient Treant encounter.
 
 ## Current Features
 
-- Frame-rate-independent four-direction movement and facing
-- Directional, multi-target melee combat with knockback
+- Frame-rate-independent left/right movement, gravity, jumping, falling, and grounded state
+- Left/right facing with directional, multi-target melee combat and horizontal knockback
 - Player health, damage feedback, and temporary invulnerability
 - Multiple independently acting Goblins with attack cooldowns
 - Normal, Fast, and Brute Goblin variants
@@ -23,13 +23,14 @@ The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon
 - Spider web shots, temporary web patches, and non-stacking Slow
 - Ranged arrows with lifetime, Player collision, and dungeon-wall collision
 - Reusable room-aware enemy, projectile, and temporary-status foundations
-- Procedural generation of 7-10 non-overlapping rooms with connected corridors
+- Procedural generation of 7-10 ordered 1100-1700 pixel-wide side-view rooms
+- Continuous safe ground, reachable raised platforms, jumpable obstacles, and horizontal transitions
 - Distinct Start, Normal, Enemy, Treasure, Boss, and Exit rooms
 - One-shot Treasure Chest with improved 1-2 item rewards
 - Three-phase Ancient Treant Boss with root strikes and temporary terrain hazards
 - Multi-floor dungeon completion with persistent Player progression and linear depth scaling
 - Five World Tiers with deeper enemy, variant, Elite, and loot scaling
-- Dungeon-wall collision and a world-space following camera
+- Axis-separated floor/platform/wall/ceiling collision and a clamped side-follow camera
 - Room-based enemy placement and local enemy activation
 - Procedural Weapon and Armor drops with five rarity tiers
 - Manual nearby loot pickup and a 12-slot run inventory
@@ -46,8 +47,9 @@ The v0.5.0 milestone replaces the fixed arena with a playable procedural dungeon
 | Control | Action |
 |---|---|
 | Enter | Start from the start screen |
-| W/A/S/D or Arrow Keys | Move and change facing direction |
-| Space | Directional melee attack |
+| A/D or Left/Right Arrow | Move and change facing direction |
+| Space | Jump while grounded |
+| J or Left Ctrl | Left/right melee attack |
 | E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
 | W/S or Up/Down | Change inventory selection |
@@ -129,7 +131,8 @@ All health and damage values receive the existing World Tier multipliers. Elites
 - Enemy and Boss damage multiplier is `100% + 12% * (WorldTier - 1)`.
 - Goblin variant weights by Tier (Normal/Fast/Brute) are `60/25/15`, `52/28/20`, `44/31/25`, `36/34/30`, and `30/35/35`.
 - The farthest Enemy room always contains one Elite. Each other Enemy room has an additional Elite chance of 0%, 10%, 18%, 26%, or 34% by Tier.
-- Dungeon corridors are 104 pixels wide, leaving room for movement, dodging, and small encounters.
+- Rooms are 1100-1700 pixels wide and 720 pixels high. Horizontal transition spaces are 144 pixels wide.
+- Every room and transition has continuous ground. Optional ledges rise no more than 108 pixels and are never required for progression.
 - Defeating the Boss unlocks the Exit; interacting with it generates the next floor and increments Dungeon Depth.
 - Player level, experience, inventory, equipment, Dungeon Depth, and World Tier persist between floors. Game Over restart resets the complete run to depth 1 and Tier 1.
 

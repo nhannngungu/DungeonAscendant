@@ -69,7 +69,7 @@ public sealed class GoblinHunter : Enemy
         {
             projectiles.SpawnArrow(
                 Position,
-                toPlayer,
+                player.Position - Position,
                 EffectiveAttackDamage,
                 RoomId);
         }

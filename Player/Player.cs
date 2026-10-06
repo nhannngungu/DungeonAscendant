@@ -1,5 +1,7 @@
 using System;
 using DungeonAscendant.Items;
+using DungeonAscendant.Dungeon;
+using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
@@ -24,7 +26,14 @@ public sealed class Player
     private int _baseMaxHealth;
     private int _baseMeleeDamage;
 
+    public const float DefaultMovementSpeed = 260f;
+    public const float Gravity = 1800f;
+    public const float JumpVelocity = -660f;
+    public const float TerminalFallSpeed = 1000f;
+
     public Vector2 Position { get; private set; }
+    public Vector2 Velocity { get; private set; }
+    public bool IsGrounded { get; private set; }
     public float MovementSpeed { get; }
     public float EffectiveMovementSpeed => MovementSpeed *
         (IsSlowed ? _slowMovementMultiplier : 1f);
@@ -55,10 +64,19 @@ public sealed class Player
         : 1f;
     public Inventory Inventory { get; }
     public Equipment EquippedItems { get; }
+    public PlayerVisualState VisualState => !IsAlive
+        ? PlayerVisualState.Death
+        : IsHitFlashing
+            ? PlayerVisualState.Hurt
+            : !IsGrounded
+                ? Velocity.Y < 0f ? PlayerVisualState.Jump : PlayerVisualState.Fall
+                : MathF.Abs(Velocity.X) > 0.1f
+                    ? PlayerVisualState.Run
+                    : PlayerVisualState.Idle;
 
     public Player(
         Vector2 position,
-        float movementSpeed = 220f,
+        float movementSpeed = DefaultMovementSpeed,
         int maxHealth = 100,
         int meleeDamage = 25)
     {
@@ -72,7 +90,7 @@ public sealed class Player
         CurrentHealth = MaxHealth;
         Level = 1;
         CurrentExperience = 0;
-        Facing = FacingDirection.Down;
+        Facing = FacingDirection.Right;
     }
 
     public void UpdateTimers(GameTime gameTime)
@@ -92,40 +110,56 @@ public sealed class Player
             _slowMovementMultiplier = 1f;
     }
 
-    public Vector2 GetDesiredPosition(
+    public void UpdateSideScrollingMovement(
         GameTime gameTime,
-        KeyboardState keyboardState)
+        KeyboardState keyboardState,
+        bool jumpPressed,
+        DungeonMap dungeon)
     {
         if (!IsAlive)
-            return Position;
+            return;
 
-        Vector2 movement = Vector2.Zero;
-
-        if (keyboardState.IsKeyDown(Keys.W) || keyboardState.IsKeyDown(Keys.Up))
-            movement.Y -= 1f;
-
-        if (keyboardState.IsKeyDown(Keys.S) || keyboardState.IsKeyDown(Keys.Down))
-            movement.Y += 1f;
+        float horizontalInput = 0f;
 
         if (keyboardState.IsKeyDown(Keys.A) || keyboardState.IsKeyDown(Keys.Left))
-            movement.X -= 1f;
+            horizontalInput -= 1f;
 
         if (keyboardState.IsKeyDown(Keys.D) || keyboardState.IsKeyDown(Keys.Right))
-            movement.X += 1f;
+            horizontalInput += 1f;
 
-        if (movement != Vector2.Zero)
+        if (horizontalInput < 0f)
+            Facing = FacingDirection.Left;
+        else if (horizontalInput > 0f)
+            Facing = FacingDirection.Right;
+
+        if (jumpPressed && IsGrounded)
         {
-            UpdateFacingDirection(movement);
-            movement.Normalize();
+            Velocity = new Vector2(Velocity.X, JumpVelocity);
+            IsGrounded = false;
         }
 
-        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        return Position + movement * EffectiveMovementSpeed * elapsedSeconds;
+        float elapsedSeconds = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            1f / 20f);
+        Velocity = new Vector2(
+            horizontalInput * EffectiveMovementSpeed,
+            MathF.Min(TerminalFallSpeed, Velocity.Y + Gravity * elapsedSeconds));
+        MovementResult result = SideScrollingCollision.Resolve(
+            Position,
+            Velocity,
+            Size,
+            elapsedSeconds,
+            dungeon);
+        Position = result.Position;
+        Velocity = result.Velocity;
+        IsGrounded = result.IsGrounded;
     }
 
     public void MoveTo(Vector2 position)
     {
         Position = position;
+        Velocity = Vector2.Zero;
+        IsGrounded = false;
     }
 
     public bool EquipItem(EquipmentItem item)
@@ -188,18 +222,4 @@ public sealed class Player
         }
     }
 
-    private void UpdateFacingDirection(Vector2 movement)
-    {
-        if (MathF.Abs(movement.X) > MathF.Abs(movement.Y))
-        {
-            Facing = movement.X < 0f
-                ? FacingDirection.Left
-                : FacingDirection.Right;
-            return;
-        }
-
-        Facing = movement.Y < 0f
-            ? FacingDirection.Up
-            : FacingDirection.Down;
-    }
 }

@@ -14,11 +14,14 @@ namespace DungeonAscendant.Enemies;
 public abstract class Enemy
 {
     private const float HitFeedbackDurationSeconds = 0.14f;
+    private const float TargetFacingDeadzone = 2f;
+    private const float MovementFacingDeadzone = 0.5f;
 
     private float _hitFeedbackTimeRemaining;
     private float _buffTimeRemaining;
     private int _damageBuffPercent;
     private int _movementBuffPercent;
+    private float _verticalVelocity;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
@@ -44,6 +47,10 @@ public abstract class Enemy
     public virtual bool CanDropLoot => true;
     public virtual float LootChanceMultiplier => 1f;
     public int RoomId { get; protected set; }
+    public bool IsGrounded { get; private set; }
+    public virtual bool IsFlying => false;
+    public EnemyFacingDirection Facing { get; private set; } =
+        EnemyFacingDirection.Right;
     public MeleeAttack Attack { get; }
     public Rectangle Bounds => new(
         (int)(Position.X - Size.X / 2f),
@@ -109,6 +116,9 @@ public abstract class Enemy
 
         if (player.IsAlive)
         {
+            if (IsPlayerDetected(player.Position))
+                UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
+
             UpdateBehavior(
                 gameTime,
                 player,
@@ -117,6 +127,8 @@ public abstract class Enemy
                 rootHazards,
                 enemies);
         }
+
+        ApplySideViewPhysics(gameTime, dungeon);
     }
 
     internal void UpdateBehaviorOnly(
@@ -129,6 +141,9 @@ public abstract class Enemy
     {
         if (IsAlive && player.IsAlive)
         {
+            if (IsPlayerDetected(player.Position))
+                UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
+
             UpdateBehavior(
                 gameTime,
                 player,
@@ -136,6 +151,7 @@ public abstract class Enemy
                 projectiles,
                 rootHazards,
                 enemies);
+            ApplySideViewPhysics(gameTime, dungeon);
         }
     }
 
@@ -183,14 +199,8 @@ public abstract class Enemy
         if (!CanBeTargeted || distance <= 0f)
             return;
 
-        Vector2 direction = Position - sourcePosition;
-
-        if (direction == Vector2.Zero)
-            direction = Vector2.UnitX;
-        else
-            direction.Normalize();
-
-        MoveBy(direction * distance, dungeon);
+        float direction = Position.X < sourcePosition.X ? -1f : 1f;
+        MoveBy(new Vector2(direction * distance, 0f), dungeon);
     }
 
     public void ApplyTemporaryBuff(
@@ -236,21 +246,21 @@ public abstract class Enemy
         DungeonMap dungeon,
         float speedMultiplier = 1f)
     {
-        Vector2 offset = target - Position;
-        float distanceSquared = offset.LengthSquared();
+        float horizontalOffset = target.X - Position.X;
+        float distance = MathF.Abs(horizontalOffset);
 
-        if (distanceSquared <= stoppingRange * stoppingRange ||
-            distanceSquared <= 0f)
+        UpdateFacing(horizontalOffset, TargetFacingDeadzone);
+
+        if (distance <= stoppingRange || distance <= 0f)
         {
             return;
         }
 
-        float distance = MathF.Sqrt(distanceSquared);
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         float movementDistance = MathF.Min(
             EffectiveMovementSpeed * speedMultiplier * elapsedSeconds,
             distance - stoppingRange);
-        MoveBy(offset / distance * movementDistance, dungeon);
+        MoveBy(new Vector2(MathF.Sign(horizontalOffset) * movementDistance, 0f), dungeon);
     }
 
     protected void MoveAway(
@@ -259,21 +269,22 @@ public abstract class Enemy
         DungeonMap dungeon,
         float speedMultiplier = 1f)
     {
-        Vector2 direction = Position - threat;
+        float direction = Position.X < threat.X ? -1f : 1f;
 
-        if (direction == Vector2.Zero)
-            direction = Vector2.UnitX;
-        else
-            direction.Normalize();
+        UpdateFacing(direction, 0f);
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         MoveBy(
-            direction * EffectiveMovementSpeed * speedMultiplier * elapsedSeconds,
+            new Vector2(
+                direction * EffectiveMovementSpeed * speedMultiplier * elapsedSeconds,
+                0f),
             dungeon);
     }
 
     protected void MoveWithinRoom(Vector2 movement, DungeonMap dungeon)
     {
+        UpdateFacing(movement.X, MovementFacingDeadzone);
+
         DungeonRoom room = FindRoomById(dungeon, RoomId);
         Rectangle area = room?.Bounds ?? dungeon.WorldBounds;
         float halfWidth = Size.X / 2f;
@@ -292,6 +303,8 @@ public abstract class Enemy
 
     protected void MoveBy(Vector2 movement, DungeonMap dungeon)
     {
+        UpdateFacing(movement.X, MovementFacingDeadzone);
+
         Position = DungeonCollision.ResolveMovement(
             Position,
             Position + movement,
@@ -303,6 +316,41 @@ public abstract class Enemy
             RoomId = room.Id;
     }
 
+    internal void SnapToGround(DungeonRoom room)
+    {
+        if (IsFlying)
+            return;
+
+        if (room == null)
+            return;
+
+        Position = SideScrollingCollision.PlaceOnGround(Position.X, Size, room);
+        _verticalVelocity = 0f;
+        IsGrounded = true;
+    }
+
+    private void ApplySideViewPhysics(GameTime gameTime, DungeonMap dungeon)
+    {
+        if (IsFlying)
+            return;
+
+        float elapsedSeconds = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            1f / 20f);
+        _verticalVelocity = MathF.Min(
+            PlayerCharacter.TerminalFallSpeed,
+            _verticalVelocity + PlayerCharacter.Gravity * elapsedSeconds);
+        MovementResult result = SideScrollingCollision.Resolve(
+            Position,
+            new Vector2(0f, _verticalVelocity),
+            Size,
+            elapsedSeconds,
+            dungeon);
+        Position = result.Position;
+        _verticalVelocity = result.Velocity.Y;
+        IsGrounded = result.IsGrounded;
+    }
+
     private static DungeonRoom FindRoomById(DungeonMap dungeon, int roomId)
     {
         foreach (DungeonRoom room in dungeon.Rooms)
@@ -312,5 +360,15 @@ public abstract class Enemy
         }
 
         return null;
+    }
+
+    private void UpdateFacing(float horizontalAmount, float deadzone)
+    {
+        if (MathF.Abs(horizontalAmount) <= deadzone)
+            return;
+
+        Facing = horizontalAmount < 0f
+            ? EnemyFacingDirection.Left
+            : EnemyFacingDirection.Right;
     }
 }

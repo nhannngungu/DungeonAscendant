@@ -26,6 +26,7 @@ public sealed class GameSession
     private readonly List<Enemy> _defeatedEnemies = new();
     private KeyboardState _previousKeyboardState;
     private float _worldTierTransitionTimeRemaining;
+    private Vector2 _lastSafePlayerPosition;
 
     public PlayerCharacter Player { get; private set; }
     public MeleeAttack PlayerAttack { get; private set; }
@@ -44,6 +45,10 @@ public sealed class GameSession
     public RegionType CurrentRegion => Region.Type;
     public bool BossDefeated { get; private set; }
     public bool IsExitUnlocked => BossDefeated;
+    public Vector2 ExitPosition => SideScrollingCollision.PlaceOnGround(
+        CurrentDungeon.ExitRoom.Bounds.Center.X,
+        new Vector2(40f, 56f),
+        CurrentDungeon.ExitRoom);
     public float WorldTierTransitionProgress =>
         _worldTierTransitionTimeRemaining /
         WorldTierTransitionDurationSeconds;
@@ -156,14 +161,21 @@ public sealed class GameSession
             0f,
             _worldTierTransitionTimeRemaining - elapsedSeconds);
         Player.UpdateTimers(gameTime);
-        Vector2 desiredPosition = Player.GetDesiredPosition(
+        bool jumpPressed = keyboardState.IsKeyDown(Keys.Space) &&
+            !_previousKeyboardState.IsKeyDown(Keys.Space);
+        Player.UpdateSideScrollingMovement(
             gameTime,
-            keyboardState);
-        Player.MoveTo(DungeonCollision.ResolveMovement(
-            Player.Position,
-            desiredPosition,
-            Player.Size,
-            CurrentDungeon));
+            keyboardState,
+            jumpPressed,
+            CurrentDungeon);
+
+        RecoverPlayerFromFallIfNeeded();
+
+        if (Player.IsGrounded &&
+            CurrentDungeon.WorldBounds.Contains(Player.Bounds))
+        {
+            _lastSafePlayerPosition = Player.Position;
+        }
 
         bool interactPressed = keyboardState.IsKeyDown(Keys.E) &&
             !_previousKeyboardState.IsKeyDown(Keys.E);
@@ -177,8 +189,10 @@ public sealed class GameSession
         PlayerAttack.Update(gameTime);
         UpdatePlayerAttackArea();
 
-        bool attackPressed = keyboardState.IsKeyDown(Keys.Space) &&
-            !_previousKeyboardState.IsKeyDown(Keys.Space);
+        bool attackPressed = (keyboardState.IsKeyDown(Keys.J) ||
+            keyboardState.IsKeyDown(Keys.LeftControl)) &&
+            !(_previousKeyboardState.IsKeyDown(Keys.J) ||
+              _previousKeyboardState.IsKeyDown(Keys.LeftControl));
 
         if (attackPressed && PlayerAttack.TryStart())
         {
@@ -234,7 +248,11 @@ public sealed class GameSession
             State = GameState.GameOver;
         }
 
-        Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
+        Camera.Follow(
+            Player.Position,
+            Player.Facing,
+            CurrentDungeon.WorldBounds,
+            elapsedSeconds);
         _previousKeyboardState = keyboardState;
     }
 
@@ -274,7 +292,8 @@ public sealed class GameSession
         Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
         CurrentDungeon = _dungeonGenerator.Generate();
-        Player = new PlayerCharacter(CurrentDungeon.StartRoom.Center);
+        Player = new PlayerCharacter(GetRoomEntranceSpawn(CurrentDungeon.StartRoom));
+        _lastSafePlayerPosition = Player.Position;
         KillCount = 0;
         IsInventoryOpen = false;
         SelectedInventoryIndex = 0;
@@ -294,7 +313,8 @@ public sealed class GameSession
         }
 
         CurrentDungeon = _dungeonGenerator.Generate();
-        Player.MoveTo(CurrentDungeon.StartRoom.Center);
+        Player.MoveTo(GetRoomEntranceSpawn(CurrentDungeon.StartRoom));
+        _lastSafePlayerPosition = Player.Position;
         IsInventoryOpen = false;
         ClampInventorySelection();
         InitializeDungeonState();
@@ -317,12 +337,18 @@ public sealed class GameSession
             WorldTier,
             CurrentRegion);
         Chest = new TreasureChest(
-            CurrentDungeon.TreasureRoom.Center,
+            SideScrollingCollision.PlaceOnGround(
+                CurrentDungeon.TreasureRoom.Bounds.Center.X,
+                new Vector2(56f, 40f),
+                CurrentDungeon.TreasureRoom),
             CurrentDungeon.TreasureRoom.Id);
         Boss = CreateRegionBoss();
         BossDefeated = false;
         UpdatePlayerAttackArea();
-        Camera.Follow(Player.Position, CurrentDungeon.WorldBounds);
+        Camera.Snap(
+            Player.Position,
+            Player.Facing,
+            CurrentDungeon.WorldBounds);
     }
 
     private AncientTreant CreateRegionBoss()
@@ -331,7 +357,10 @@ public sealed class GameSession
             throw new System.NotSupportedException("Region Boss is not implemented.");
 
         return new AncientTreant(
-            CurrentDungeon.BossRoom.Center,
+            SideScrollingCollision.PlaceOnGround(
+                CurrentDungeon.BossRoom.Bounds.Center.X,
+                new Vector2(110f, 126f),
+                CurrentDungeon.BossRoom),
             CurrentDungeon.BossRoom.Id,
             Player.Level,
             DungeonDepth,
@@ -365,8 +394,27 @@ public sealed class GameSession
     {
         return Vector2.DistanceSquared(
             Player.Position,
-            CurrentDungeon.ExitRoom.Center) <=
+            ExitPosition) <=
             ExitInteractionRadius * ExitInteractionRadius;
+    }
+
+    private Vector2 GetRoomEntranceSpawn(DungeonRoom room)
+    {
+        return SideScrollingCollision.PlaceOnGround(
+            room.Bounds.Left + 120f,
+            Player?.Size ?? new Vector2(40f, 56f),
+            room);
+    }
+
+    private void RecoverPlayerFromFallIfNeeded()
+    {
+        Rectangle world = CurrentDungeon.WorldBounds;
+
+        if (Player.Position.Y <= world.Bottom + Player.Size.Y)
+            return;
+
+        Player.ReceiveDamage(System.Math.Max(1, Player.MaxHealth / 5));
+        Player.MoveTo(_lastSafePlayerPosition);
     }
 
     private void ProcessBossDefeat()
