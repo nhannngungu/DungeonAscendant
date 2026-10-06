@@ -40,6 +40,7 @@ public sealed class GameRenderer : IDisposable
     private readonly GraphicsDevice _graphicsDevice;
     private readonly SpriteBatch _spriteBatch;
     private readonly Texture2D _pixel;
+    private readonly PlayerSpriteRenderer _playerSpriteRenderer;
 
     public GameRenderer(GraphicsDevice graphicsDevice)
     {
@@ -47,9 +48,10 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch = new SpriteBatch(graphicsDevice);
         _pixel = new Texture2D(graphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
+        _playerSpriteRenderer = new PlayerSpriteRenderer(_spriteBatch, _pixel);
     }
 
-    public void Draw(GameSession gameSession)
+    public void Draw(GameSession gameSession, GameTime gameTime)
     {
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         _graphicsDevice.Clear(theme.Background);
@@ -93,7 +95,7 @@ public sealed class GameRenderer : IDisposable
             gameSession.Player.Combat.IsAttackActive)
             DrawAttackArea(gameSession.PlayerAttackArea);
 
-        DrawPlayer(gameSession.Player);
+        _playerSpriteRenderer.Draw(gameSession.Player, gameTime);
 
         foreach (Enemy enemy in gameSession.Enemies.Enemies)
         {
@@ -115,6 +117,12 @@ public sealed class GameRenderer : IDisposable
         {
             DrawAncientTreant(gameSession.Boss);
         }
+
+        _playerSpriteRenderer.DrawHitImpact(
+            gameSession.Player,
+            gameTime,
+            gameSession.PlayerHitEffectId,
+            gameSession.PlayerHitEffectPosition);
 
         if (gameSession.ShowCombatDebug)
             DrawCombatDebug(gameSession);
@@ -538,7 +546,7 @@ public sealed class GameRenderer : IDisposable
         DrawRectangleOutline(bounds, 2, outlineColor);
     }
 
-    private void DrawPlayer(PlayerCharacter player)
+    private void DrawLegacyPlayer(PlayerCharacter player)
     {
         Vector2 topLeft = player.Position - player.Size / 2f;
         int centerY = (int)player.Position.Y;

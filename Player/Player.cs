@@ -76,15 +76,33 @@ public sealed class Player
     public PlayerCombat Combat { get; }
     public float CurrentStamina => Combat.Stamina.Current;
     public float MaxStamina => Combat.Stamina.Maximum;
-    public PlayerVisualState VisualState => !IsAlive
-        ? PlayerVisualState.Death
-        : IsHitFlashing
-            ? PlayerVisualState.Hurt
-            : !IsGrounded
-                ? Velocity.Y < 0f ? PlayerVisualState.Jump : PlayerVisualState.Fall
-                : MathF.Abs(Velocity.X) > 0.1f
-                    ? PlayerVisualState.Run
-                    : PlayerVisualState.Idle;
+    public PlayerVisualState VisualState => !IsAlive ||
+        Combat.State == CombatState.Dead
+            ? PlayerVisualState.Dead
+            : Combat.State == CombatState.Hurt
+                ? PlayerVisualState.Hurt
+                : Combat.State == CombatState.Staggered
+                    ? PlayerVisualState.GuardBreak
+                    : Combat.State == CombatState.Dodging
+                        ? PlayerVisualState.Dodge
+                        : Combat.State == CombatState.HeavyAttack
+                            ? PlayerVisualState.HeavyAttack
+                            : Combat.State == CombatState.LightAttack
+                                ? Combat.CurrentAttack?.Kind switch
+                                {
+                                    AttackKind.LightTwo => PlayerVisualState.LightAttack2,
+                                    AttackKind.LightThree => PlayerVisualState.LightAttack3,
+                                    _ => PlayerVisualState.LightAttack1
+                                }
+                                : Combat.State == CombatState.Blocking
+                                    ? PlayerVisualState.Block
+                                    : !IsGrounded
+                                        ? Velocity.Y < 0f
+                                            ? PlayerVisualState.Jump
+                                            : PlayerVisualState.Fall
+                                        : MathF.Abs(Velocity.X) > 0.1f
+                                            ? PlayerVisualState.Run
+                                            : PlayerVisualState.Idle;
 
     public Player(
         Vector2 position,

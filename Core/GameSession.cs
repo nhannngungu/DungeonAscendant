@@ -56,6 +56,8 @@ public sealed class GameSession
         _worldTierTransitionTimeRemaining /
         WorldTierTransitionDurationSeconds;
     public Rectangle PlayerAttackArea { get; private set; }
+    public int PlayerHitEffectId { get; private set; }
+    public Vector2 PlayerHitEffectPosition { get; private set; }
     public GameState State { get; private set; }
     public bool IsInventoryOpen { get; private set; }
     public bool ShowCombatDebug { get; private set; } = DebugCombatHitboxes;
@@ -430,6 +432,17 @@ public sealed class GameSession
             attack.Thickness);
     }
 
+    private void RegisterPlayerHitEffect(Rectangle targetBounds)
+    {
+        Rectangle overlap = Rectangle.Intersect(
+            PlayerAttackArea,
+            targetBounds);
+        PlayerHitEffectPosition = overlap.Width > 0 && overlap.Height > 0
+            ? overlap.Center.ToVector2()
+            : targetBounds.Center.ToVector2();
+        PlayerHitEffectId++;
+    }
+
     private void ProcessPlayerAttack()
     {
         if (_trackedPlayerAttackId != Player.Combat.AttackId)
@@ -458,6 +471,7 @@ public sealed class GameSession
             }
 
             _playerAttackHits.Add(enemy);
+            RegisterPlayerHitEffect(enemy.MeleeTargetBounds);
             enemy.ReceiveDamage(damage, attack.PoiseDamage);
             enemy.ApplyKnockback(
                 Player.Position,
@@ -469,6 +483,7 @@ public sealed class GameSession
             PlayerAttackArea.Intersects(Boss.Bounds))
         {
             _bossHitByPlayerAttack = true;
+            RegisterPlayerHitEffect(Boss.Bounds);
             Boss.ReceiveDamage(damage, attack.PoiseDamage);
             Boss.ApplyKnockback(
                 Player.Position,

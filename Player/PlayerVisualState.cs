@@ -1,8 +1,8 @@
 namespace DungeonAscendant.Player;
 
 /// <summary>
-/// Minimal presentation contract for primitive rendering now and sprite
-/// animation later. Combat state remains owned by the attack system.
+/// Presentation-only states consumed by the player sprite renderer. Combat
+/// remains authoritative; this enum never drives gameplay transitions.
 /// </summary>
 public enum PlayerVisualState
 {
@@ -10,6 +10,14 @@ public enum PlayerVisualState
     Run,
     Jump,
     Fall,
+    LightAttack1,
+    LightAttack2,
+    LightAttack3,
+    HeavyAttack,
+    Dodge,
+    Block,
+    GuardBreak,
     Hurt,
-    Death
+    Dead,
+    PotionUse
 }

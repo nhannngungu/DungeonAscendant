@@ -48,7 +48,7 @@ public class Game1 : Game
 
     protected override void Draw(GameTime gameTime)
     {
-        _renderer.Draw(_gameSession);
+        _renderer.Draw(_gameSession, gameTime);
 
         base.Draw(gameTime);
     }

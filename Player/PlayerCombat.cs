@@ -33,6 +33,7 @@ public sealed class PlayerCombat
     public AttackDefinition CurrentAttack { get; private set; }
     public PlayerStamina Stamina { get; } = new();
     public int AttackId { get; private set; }
+    public float StateElapsed => _stateElapsed;
     public float DodgeDirection { get; private set; } = 1f;
     public bool IsBlocking => State == CombatState.Blocking;
     public bool IsBlockInputHeld { get; private set; }
