@@ -94,8 +94,7 @@ public sealed class ThornCrawler : Enemy
             case ThornCrawlerState.Attacking:
                 if (distanceSquared <= Attack.Range * Attack.Range)
                 {
-                    if (Attack.TryStart())
-                        player.ReceiveDamage(EffectiveAttackDamage);
+                    TryMeleeAttack(player);
                 }
                 else
                 {

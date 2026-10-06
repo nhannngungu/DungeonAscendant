@@ -86,8 +86,7 @@ public sealed class MotherSpider : Enemy
 
         if (distance <= Attack.Range)
         {
-            if (Attack.TryStart())
-                player.ReceiveDamage(EffectiveAttackDamage);
+            TryMeleeAttack(player);
         }
         else if (distance < 95f)
         {

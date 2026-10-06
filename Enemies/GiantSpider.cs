@@ -87,8 +87,7 @@ public sealed class GiantSpider : Enemy
 
         if (distance <= Attack.Range)
         {
-            if (Attack.TryStart())
-                player.ReceiveDamage(EffectiveAttackDamage);
+            TryMeleeAttack(player);
 
             return;
         }

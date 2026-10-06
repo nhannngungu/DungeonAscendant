@@ -22,6 +22,9 @@ public abstract class Enemy
     private int _damageBuffPercent;
     private int _movementBuffPercent;
     private float _verticalVelocity;
+    private float _poiseRecoveryDelayRemaining;
+    private float _staggerTimeRemaining;
+    private EnemyFacingDirection _attackFacing = EnemyFacingDirection.Right;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
@@ -34,6 +37,9 @@ public abstract class Enemy
     public int CurrentHealth { get; private set; }
     public bool IsAlive => CurrentHealth > 0;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
+    public float MaxPoise { get; }
+    public float CurrentPoise { get; private set; }
+    public bool IsStaggered => _staggerTimeRemaining > 0f;
     public int Level { get; }
     public int WorldTier { get; }
     public int AttackDamage { get; protected set; }
@@ -52,6 +58,7 @@ public abstract class Enemy
     public EnemyFacingDirection Facing { get; private set; } =
         EnemyFacingDirection.Right;
     public MeleeAttack Attack { get; }
+    public Rectangle AttackArea => CreateAttackArea(_attackFacing);
     public Rectangle Bounds => new(
         (int)(Position.X - Size.X / 2f),
         (int)(Position.Y - Size.Y / 2f),
@@ -98,7 +105,9 @@ public abstract class Enemy
         }
 
         CurrentHealth = MaxHealth;
-        Attack = new MeleeAttack(attackRange, attackCooldownSeconds);
+        MaxPoise = GetMaximumPoise(type) * (IsElite ? 1.35f : 1f);
+        CurrentPoise = MaxPoise;
+        Attack = CreateAttack(type, attackRange, attackCooldownSeconds);
     }
 
     public void Update(
@@ -114,7 +123,7 @@ public abstract class Enemy
 
         UpdateTimers(gameTime);
 
-        if (player.IsAlive)
+        if (player.IsAlive && !IsStaggered)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -126,6 +135,9 @@ public abstract class Enemy
                 projectiles,
                 rootHazards,
                 enemies);
+
+            if (Type != EnemyType.GoblinHunter && Attack.IsActive)
+                TryResolveMeleeContact(player);
         }
 
         ApplySideViewPhysics(gameTime, dungeon);
@@ -139,7 +151,7 @@ public abstract class Enemy
         RootHazardManager rootHazards = null,
         EnemyManager enemies = null)
     {
-        if (IsAlive && player.IsAlive)
+        if (IsAlive && player.IsAlive && !IsStaggered)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -151,6 +163,9 @@ public abstract class Enemy
                 projectiles,
                 rootHazards,
                 enemies);
+
+            if (Type != EnemyType.GoblinHunter && Attack.IsActive)
+                TryResolveMeleeContact(player);
             ApplySideViewPhysics(gameTime, dungeon);
         }
     }
@@ -159,12 +174,29 @@ public abstract class Enemy
     {
         Attack.Update(gameTime);
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        bool wasStaggered = IsStaggered;
         _hitFeedbackTimeRemaining = MathF.Max(
             0f,
             _hitFeedbackTimeRemaining - elapsedSeconds);
         _buffTimeRemaining = MathF.Max(
             0f,
             _buffTimeRemaining - elapsedSeconds);
+        _staggerTimeRemaining = MathF.Max(
+            0f,
+            _staggerTimeRemaining - elapsedSeconds);
+        _poiseRecoveryDelayRemaining = MathF.Max(
+            0f,
+            _poiseRecoveryDelayRemaining - elapsedSeconds);
+
+        if (wasStaggered && !IsStaggered)
+            CurrentPoise = MaxPoise;
+
+        if (!IsStaggered && _poiseRecoveryDelayRemaining <= 0f)
+        {
+            CurrentPoise = MathF.Min(
+                MaxPoise,
+                CurrentPoise + MaxPoise * 0.35f * elapsedSeconds);
+        }
 
         if (_buffTimeRemaining <= 0f)
         {
@@ -183,12 +215,38 @@ public abstract class Enemy
 
     public virtual void ReceiveDamage(int damage)
     {
+        ReceiveDamage(damage, poiseDamage: 0f);
+    }
+
+    public virtual void ReceiveDamage(int damage, float poiseDamage)
+    {
         if (!CanBeTargeted || damage <= 0)
             return;
 
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
-        _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
+        _hitFeedbackTimeRemaining = poiseDamage >= 45f
+            ? HitFeedbackDurationSeconds * 1.55f
+            : HitFeedbackDurationSeconds;
+        ApplyPoiseDamage(poiseDamage);
         OnDamaged();
+    }
+
+    public void ApplyPoiseDamage(float amount)
+    {
+        if (!CanBeTargeted || IsStaggered || amount <= 0f)
+            return;
+
+        CurrentPoise = MathF.Max(0f, CurrentPoise - amount);
+        _poiseRecoveryDelayRemaining = 1.2f;
+        _hitFeedbackTimeRemaining = MathF.Max(
+            _hitFeedbackTimeRemaining,
+            HitFeedbackDurationSeconds);
+
+        if (CurrentPoise > 0f)
+            return;
+
+        _staggerTimeRemaining = GetStaggerDuration(Type);
+        Attack.Cancel();
     }
 
     public virtual void ApplyKnockback(
@@ -231,6 +289,59 @@ public abstract class Enemy
 
     protected virtual void OnDamaged()
     {
+    }
+
+    protected bool TryMeleeAttack(PlayerCharacter player)
+    {
+        if (Attack.IsReady)
+        {
+            _attackFacing = Facing;
+            Attack.StartIfReady();
+            return false;
+        }
+
+        return TryResolveMeleeContact(player);
+    }
+
+    private bool TryResolveMeleeContact(PlayerCharacter player)
+    {
+        if (!Attack.IsActive)
+            return false;
+
+        Rectangle attackArea = AttackArea;
+        bool canContact = attackArea.Intersects(player.Bounds) ||
+            (player.Combat.IsBlocking &&
+             attackArea.Intersects(player.DefenseBounds));
+
+        if (!canContact || !Attack.TryConsumeActiveHit())
+            return false;
+
+        player.ReceiveMeleeAttack(
+            new AttackContact(
+                EffectiveAttackDamage,
+                Position,
+                Attack.IsBlockable,
+                Attack.IsUnblockable,
+                attackArea));
+        return true;
+    }
+
+    private Rectangle CreateAttackArea(EnemyFacingDirection facing)
+    {
+        int reach = (int)MathF.Ceiling(Attack.Range);
+        int height = (int)MathF.Ceiling(MathF.Max(Size.Y * 1.15f, 52f));
+        int y = (int)Position.Y - height / 2;
+
+        if (facing == EnemyFacingDirection.Left)
+        {
+            return new Rectangle(
+                Bounds.Left - reach,
+                y,
+                reach,
+                height);
+        }
+
+        return new Rectangle(Bounds.Right, y, reach, height);
     }
 
     protected bool IsPlayerDetected(Vector2 playerPosition)
@@ -370,5 +481,68 @@ public abstract class Enemy
         Facing = horizontalAmount < 0f
             ? EnemyFacingDirection.Left
             : EnemyFacingDirection.Right;
+    }
+
+    private static float GetMaximumPoise(EnemyType type)
+    {
+        return type switch
+        {
+            EnemyType.Spiderling => 22f,
+            EnemyType.BloodBat => 34f,
+            EnemyType.Goblin => 42f,
+            EnemyType.GoblinHunter => 46f,
+            EnemyType.DireWolf => 60f,
+            EnemyType.ThornCrawler => 66f,
+            EnemyType.GiantSpider => 72f,
+            EnemyType.GoblinChief => 110f,
+            EnemyType.CorruptedTreant => 135f,
+            EnemyType.MotherSpider => 165f,
+            _ => 60f
+        };
+    }
+
+    private static MeleeAttack CreateAttack(
+        EnemyType type,
+        float range,
+        float cooldownSeconds)
+    {
+        return type switch
+        {
+            EnemyType.DireWolf => new MeleeAttack(
+                range, cooldownSeconds, 0.10f, 0.07f, 0.14f),
+            EnemyType.BloodBat => new MeleeAttack(
+                range, cooldownSeconds, 0.11f, 0.07f, 0.15f),
+            EnemyType.Goblin => new MeleeAttack(
+                range, cooldownSeconds, 0.48f, 0.17f, 0.40f),
+            EnemyType.CorruptedTreant => new MeleeAttack(
+                range, cooldownSeconds, 0.38f, 0.13f, 0.38f),
+            EnemyType.GoblinChief => new MeleeAttack(
+                range, cooldownSeconds, 0.24f, 0.10f, 0.26f),
+            EnemyType.MotherSpider => new MeleeAttack(
+                range, cooldownSeconds, 0.28f, 0.11f, 0.30f),
+            EnemyType.GoblinHunter => new MeleeAttack(
+                range, cooldownSeconds, 0.26f, 0.06f, 0.18f,
+                isBlockable: false),
+            EnemyType.GiantSpider => new MeleeAttack(
+                range, cooldownSeconds, 0.18f, 0.09f, 0.22f),
+            EnemyType.ThornCrawler => new MeleeAttack(
+                range, cooldownSeconds, 0.22f, 0.09f, 0.24f),
+            _ => new MeleeAttack(
+                range, cooldownSeconds, 0.23f, 0.08f, 0.19f)
+        };
+    }
+
+    private static float GetStaggerDuration(EnemyType type)
+    {
+        return type switch
+        {
+            EnemyType.CorruptedTreant => 0.42f,
+            EnemyType.MotherSpider => 0.46f,
+            EnemyType.GoblinChief => 0.52f,
+            EnemyType.DireWolf => 0.58f,
+            EnemyType.GiantSpider => 0.65f,
+            EnemyType.Goblin => 0.82f,
+            _ => 0.68f
+        };
     }
 }

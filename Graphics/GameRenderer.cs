@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DungeonAscendant.Bosses;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Core;
@@ -18,6 +19,24 @@ namespace DungeonAscendant.Graphics;
 /// </summary>
 public sealed class GameRenderer : IDisposable
 {
+    private static readonly IReadOnlyDictionary<char, byte[]> DebugGlyphs =
+        new Dictionary<char, byte[]>
+        {
+            ['A'] = new byte[] { 14, 17, 17, 31, 17, 17, 17 },
+            ['B'] = new byte[] { 30, 17, 17, 30, 17, 17, 30 },
+            ['C'] = new byte[] { 15, 16, 16, 16, 16, 16, 15 },
+            ['D'] = new byte[] { 30, 17, 17, 17, 17, 17, 30 },
+            ['E'] = new byte[] { 31, 16, 16, 30, 16, 16, 31 },
+            ['H'] = new byte[] { 17, 17, 17, 31, 17, 17, 17 },
+            ['I'] = new byte[] { 31, 4, 4, 4, 4, 4, 31 },
+            ['K'] = new byte[] { 17, 18, 20, 24, 20, 18, 17 },
+            ['L'] = new byte[] { 16, 16, 16, 16, 16, 16, 31 },
+            ['O'] = new byte[] { 14, 17, 17, 17, 17, 17, 14 },
+            ['R'] = new byte[] { 30, 17, 17, 30, 20, 18, 17 },
+            ['T'] = new byte[] { 31, 4, 4, 4, 4, 4, 4 },
+            ['V'] = new byte[] { 17, 17, 17, 17, 17, 10, 4 }
+        };
+
     private readonly GraphicsDevice _graphicsDevice;
     private readonly SpriteBatch _spriteBatch;
     private readonly Texture2D _pixel;
@@ -70,10 +89,11 @@ public sealed class GameRenderer : IDisposable
                 DrawWorldLoot(loot);
         }
 
-        if (gameSession.PlayerAttack.IsActive)
+        if (gameSession.ShowCombatDebug &&
+            gameSession.Player.Combat.IsAttackActive)
             DrawAttackArea(gameSession.PlayerAttackArea);
 
-        DrawPlayer(gameSession.Player, gameSession.PlayerAttack.IsActive);
+        DrawPlayer(gameSession.Player);
 
         foreach (Enemy enemy in gameSession.Enemies.Enemies)
         {
@@ -96,13 +116,20 @@ public sealed class GameRenderer : IDisposable
             DrawAncientTreant(gameSession.Boss);
         }
 
+        if (gameSession.ShowCombatDebug)
+            DrawCombatDebug(gameSession);
+
         _spriteBatch.End();
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
         DrawHudPanel();
         DrawPlayerHealth(gameSession.Player);
+        DrawPlayerStamina(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
         DrawDungeonStatus(gameSession);
+
+        if (gameSession.ShowCombatDebug)
+            DrawCombatStateDebug(gameSession.Player);
 
         if (gameSession.WorldTierTransitionProgress > 0f)
             DrawWorldTierTransition(gameSession);
@@ -427,11 +454,112 @@ public sealed class GameRenderer : IDisposable
         DrawRectangleOutline(attackArea, 2, new Color(250, 225, 125, 150));
     }
 
-    private void DrawPlayer(PlayerCharacter player, bool isAttacking)
+    private void DrawCombatDebug(GameSession gameSession)
+    {
+        DrawDebugZone(
+            gameSession.Player.Bounds,
+            new Color(86, 220, 112, 35),
+            new Color(86, 220, 112, 220));
+        DrawDebugZone(
+            gameSession.Player.DefenseBounds,
+            new Color(76, 145, 230, 30),
+            new Color(76, 170, 245, 220));
+
+        foreach (Enemy enemy in gameSession.Enemies.Enemies)
+        {
+            if (!enemy.IsAlive ||
+                !enemy.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                continue;
+
+            DrawDebugZone(
+                enemy.Bounds,
+                new Color(225, 77, 181, 25),
+                new Color(225, 77, 181, 190));
+
+            if (enemy.Type != EnemyType.GoblinHunter &&
+                (enemy.Attack.IsTelegraphing || enemy.Attack.IsActive))
+            {
+                Color attackColor = enemy.Attack.IsActive
+                    ? new Color(237, 73, 64, 230)
+                    : new Color(225, 151, 61, 190);
+                DrawDebugZone(
+                    enemy.AttackArea,
+                    new Color(
+                        attackColor.R,
+                        attackColor.G,
+                        attackColor.B,
+                        (byte)(enemy.Attack.IsActive ? 42 : 20)),
+                    attackColor);
+            }
+        }
+
+        foreach (Projectile projectile in gameSession.Projectiles.Projectiles)
+        {
+            if (!projectile.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                continue;
+
+            DrawDebugZone(
+                projectile.Bounds,
+                new Color(252, 224, 82, 45),
+                new Color(252, 224, 82, 235));
+        }
+
+        if (gameSession.Boss.IsAlive)
+        {
+            DrawDebugZone(
+                gameSession.Boss.Bounds,
+                new Color(225, 77, 181, 25),
+                new Color(225, 77, 181, 190));
+
+            if (gameSession.Boss.Attack.IsTelegraphing ||
+                gameSession.Boss.Attack.IsActive)
+            {
+                Color attackColor = gameSession.Boss.Attack.IsActive
+                    ? new Color(237, 73, 64, 230)
+                    : new Color(225, 151, 61, 190);
+                DrawDebugZone(
+                    gameSession.Boss.AttackArea,
+                    new Color(
+                        attackColor.R,
+                        attackColor.G,
+                        attackColor.B,
+                        (byte)(gameSession.Boss.Attack.IsActive ? 42 : 20)),
+                    attackColor);
+            }
+        }
+    }
+
+    private void DrawDebugZone(
+        Rectangle bounds,
+        Color fillColor,
+        Color outlineColor)
+    {
+        _spriteBatch.Draw(_pixel, bounds, fillColor);
+        DrawRectangleOutline(bounds, 2, outlineColor);
+    }
+
+    private void DrawPlayer(PlayerCharacter player)
     {
         Vector2 topLeft = player.Position - player.Size / 2f;
         int centerY = (int)player.Position.Y;
-        int swordLength = isAttacking ? 52 : 28;
+        bool isAttacking = player.Combat.CurrentAttack != null &&
+            (player.Combat.State == CombatState.LightAttack ||
+             player.Combat.State == CombatState.HeavyAttack);
+        int swordLength = player.Combat.CurrentAttack?.Kind switch
+        {
+            AttackKind.LightTwo => 55,
+            AttackKind.LightThree => 64,
+            AttackKind.Heavy => 76,
+            AttackKind.LightOne => 49,
+            _ => 28
+        };
+        int swordOffsetY = player.Combat.CurrentAttack?.Kind switch
+        {
+            AttackKind.LightTwo => -9,
+            AttackKind.LightThree => 8,
+            AttackKind.Heavy => 11,
+            _ => 3
+        };
         const int swordThickness = 6;
 
         Rectangle shadow = new(
@@ -463,7 +591,7 @@ public sealed class GameRenderer : IDisposable
         {
             swordBlade = new Rectangle(
                 (int)topLeft.X - swordLength + 3,
-                centerY + 3,
+                centerY + swordOffsetY,
                 swordLength,
                 swordThickness);
             swordGuard = new Rectangle(
@@ -481,7 +609,7 @@ public sealed class GameRenderer : IDisposable
         {
             swordBlade = new Rectangle(
                 (int)(topLeft.X + player.Size.X) - 3,
-                centerY + 3,
+                centerY + swordOffsetY,
                 swordLength,
                 swordThickness);
             swordGuard = new Rectangle(
@@ -499,13 +627,23 @@ public sealed class GameRenderer : IDisposable
         Rectangle eye = CreatePlayerEye(head, player.Facing);
         Color bodyColor = player.IsHitFlashing
             ? new Color(220, 75, 76)
-            : new Color(48, 112, 168);
+            : player.Combat.IsGuardBroken
+                ? new Color(201, 103, 58)
+                : player.Combat.IsBlockFeedbackActive
+                    ? new Color(105, 174, 211)
+                    : player.Combat.IsDodgeInvulnerable
+                        ? new Color(105, 157, 196)
+                        : new Color(48, 112, 168);
         Color headColor = player.IsHitFlashing
             ? new Color(255, 220, 205)
-            : new Color(232, 185, 137);
-        Color bladeColor = isAttacking
-            ? new Color(245, 238, 185)
-            : new Color(205, 215, 226);
+            : player.Combat.IsGuardBroken
+                ? new Color(237, 167, 112)
+                : new Color(232, 185, 137);
+        Color bladeColor = player.Combat.IsAttackWindingUp
+            ? new Color(224, 151, 69)
+            : isAttacking
+                ? new Color(245, 238, 185)
+                : new Color(205, 215, 226);
 
         if (player.IsGrounded)
             _spriteBatch.Draw(_pixel, shadow, new Color(16, 19, 22, 150));
@@ -521,14 +659,39 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, head, headColor);
         _spriteBatch.Draw(_pixel, eye, new Color(30, 25, 27));
 
-        if (player.IsInvulnerable)
+        if (player.Combat.IsBlocking)
         {
-            Rectangle outline = new(
-                (int)topLeft.X - 2,
-                (int)topLeft.Y - 2,
-                (int)player.Size.X + 4,
-                (int)player.Size.Y + 4);
-            DrawRectangleOutline(outline, 2, new Color(245, 115, 115, 150));
+            int shieldX = player.Facing == FacingDirection.Left
+                ? (int)topLeft.X - 10
+                : (int)(topLeft.X + player.Size.X) + 2;
+            var shield = new Rectangle(shieldX, centerY - 17, 8, 34);
+            Color shieldFill = player.Combat.IsBlockFeedbackActive
+                ? new Color(178, 218, 235)
+                : new Color(92, 129, 155);
+            Color shieldEdge = player.Combat.IsBlockFeedbackActive
+                ? new Color(244, 249, 238)
+                : new Color(190, 204, 212);
+            _spriteBatch.Draw(_pixel, shield, shieldFill);
+            DrawRectangleOutline(shield, 2, shieldEdge);
+
+            if (player.Combat.IsBlockFeedbackActive)
+            {
+                int impactX = player.Facing == FacingDirection.Left
+                    ? shield.Left - 8
+                    : shield.Right + 3;
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(impactX, centerY - 3, 6, 6),
+                    new Color(244, 237, 172));
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(impactX + 2, centerY - 11, 3, 5),
+                    new Color(232, 247, 250));
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(impactX + 2, centerY + 7, 3, 5),
+                    new Color(232, 247, 250));
+            }
         }
 
         if (player.IsSlowed)
@@ -597,6 +760,14 @@ public sealed class GameRenderer : IDisposable
 
         if (enemy.IsBuffed)
             DrawEnemyBuff(enemy);
+
+        if (enemy.IsStaggered)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(enemy.Bounds.Center.X - 8, enemy.Bounds.Y - 9, 16, 4),
+                new Color(225, 183, 244, 220));
+        }
     }
 
     private void DrawDireWolf(DireWolf wolf)
@@ -1038,7 +1209,9 @@ public sealed class GameRenderer : IDisposable
     private void DrawGoblin(Goblin goblin)
     {
         Vector2 topLeft = goblin.Position - goblin.Size / 2f;
-        int clubLength = goblin.Attack.IsActive ? 39 : 25;
+        int clubLength = goblin.Attack.IsActive
+            ? 39
+            : goblin.Attack.IsTelegraphing ? 31 : 25;
 
         Rectangle shadow = new(
             (int)topLeft.X + 3,
@@ -1066,12 +1239,15 @@ public sealed class GameRenderer : IDisposable
             (int)goblin.Size.X - 10,
             22);
         bool facesLeft = goblin.Facing == EnemyFacingDirection.Left;
+        int clubY = goblin.Attack.IsTelegraphing
+            ? body.Y - 8
+            : body.Y + 3;
         Rectangle eye = facesLeft
             ? new Rectangle(head.X + 4, head.Y + 7, 4, 4)
             : new Rectangle(head.Right - 8, head.Y + 7, 4, 4);
         Rectangle clubHandle = facesLeft
-            ? new Rectangle(body.X - 6, body.Y + 3, 5, clubLength)
-            : new Rectangle(body.Right + 1, body.Y + 3, 5, clubLength);
+            ? new Rectangle(body.X - 6, clubY, 5, clubLength)
+            : new Rectangle(body.Right + 1, clubY, 5, clubLength);
         Rectangle clubHead = new(
             clubHandle.X - 3,
             clubHandle.Bottom - 8,
@@ -1261,6 +1437,14 @@ public sealed class GameRenderer : IDisposable
                 new Color(112, 72, 42));
         }
 
+        if (boss.IsStaggered)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.Center.X - 12, bounds.Y - 10, 24, 5),
+                new Color(225, 183, 244, 220));
+        }
+
         int barWidth = 126;
         int healthWidth = (int)((barWidth - 4) *
             (boss.CurrentHealth / (float)boss.MaxHealth));
@@ -1284,6 +1468,23 @@ public sealed class GameRenderer : IDisposable
                 _pixel,
                 new Rectangle(healthBorder.X + 2, healthBorder.Y + 2, healthWidth, 7),
                 healthColor);
+        }
+
+        int poiseWidth = (int)((barWidth - 4) *
+            (boss.CurrentPoise / boss.MaxPoise));
+        Rectangle poiseBorder = new(
+            healthBorder.X,
+            healthBorder.Bottom + 2,
+            barWidth,
+            7);
+        _spriteBatch.Draw(_pixel, poiseBorder, new Color(25, 20, 31));
+
+        if (poiseWidth > 0)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(poiseBorder.X + 2, poiseBorder.Y + 2, poiseWidth, 3),
+                new Color(166, 111, 196));
         }
     }
 
@@ -1728,9 +1929,111 @@ public sealed class GameRenderer : IDisposable
 
     private void DrawHudPanel()
     {
-        var panel = new Rectangle(12, 12, 238, 78);
+        var panel = new Rectangle(12, 12, 238, 94);
         _spriteBatch.Draw(_pixel, panel, new Color(17, 21, 28, 220));
         DrawRectangleOutline(panel, 2, new Color(112, 119, 126, 230));
+    }
+
+    private void DrawCombatStateDebug(PlayerCharacter player)
+    {
+        const int x = 270;
+        int y = 16;
+
+        if (player.Combat.IsBlockInputHeld)
+        {
+            DrawDebugLabel("CTRL HELD", x, y, new Color(208, 220, 235));
+            y += 22;
+        }
+
+        if (player.Combat.IsBlocking)
+        {
+            DrawDebugLabel("BLOCK ACTIVE", x, y, new Color(99, 191, 247));
+        }
+    }
+
+    private void DrawDebugLabel(
+        string text,
+        int x,
+        int y,
+        Color color)
+    {
+        const int scale = 2;
+        int width = text.Length * 6 * scale + 8;
+        var background = new Rectangle(x - 4, y - 4, width, 22);
+        _spriteBatch.Draw(_pixel, background, new Color(12, 17, 25, 215));
+        DrawRectangleOutline(
+            background,
+            1,
+            new Color(color.R, color.G, color.B, (byte)155));
+        DrawDebugText(text, x, y, color, scale);
+    }
+
+    private void DrawDebugText(
+        string text,
+        int x,
+        int y,
+        Color color,
+        int scale)
+    {
+        int cursorX = x;
+
+        foreach (char character in text)
+        {
+            if (DebugGlyphs.TryGetValue(character, out byte[] rows))
+            {
+                for (int row = 0; row < rows.Length; row++)
+                {
+                    for (int column = 0; column < 5; column++)
+                    {
+                        if ((rows[row] & (1 << (4 - column))) == 0)
+                            continue;
+
+                        _spriteBatch.Draw(
+                            _pixel,
+                            new Rectangle(
+                                cursorX + column * scale,
+                                y + row * scale,
+                                scale,
+                                scale),
+                            color);
+                    }
+                }
+            }
+
+            cursorX += 6 * scale;
+        }
+    }
+
+    private void DrawPlayerStamina(PlayerCharacter player)
+    {
+        const int barX = 42;
+        const int barY = 44;
+        const int barWidth = 198;
+        const int barHeight = 10;
+        const int borderWidth = 2;
+        int fillWidth = (int)((barWidth - borderWidth * 2) *
+            (player.CurrentStamina / player.MaxStamina));
+        var border = new Rectangle(barX, barY, barWidth, barHeight);
+        var background = new Rectangle(
+            barX + borderWidth,
+            barY + borderWidth,
+            barWidth - borderWidth * 2,
+            barHeight - borderWidth * 2);
+
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(21, barY + 1, 11, 7),
+            new Color(94, 192, 118));
+        _spriteBatch.Draw(_pixel, border, new Color(177, 187, 181));
+        _spriteBatch.Draw(_pixel, background, new Color(24, 54, 35));
+
+        if (fillWidth > 0)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(background.X, background.Y, fillWidth, background.Height),
+                new Color(83, 190, 112));
+        }
     }
 
     private void DrawPlayerHealth(PlayerCharacter player)
@@ -1769,14 +2072,14 @@ public sealed class GameRenderer : IDisposable
     private void DrawPlayerProgression(PlayerCharacter player, int killCount)
     {
         const int barX = 42;
-        const int barY = 46;
+        const int barY = 59;
         const int barWidth = 198;
         const int barHeight = 10;
         const int borderWidth = 2;
-        const int levelIndicatorY = 62;
+        const int levelIndicatorY = 75;
         const int levelIndicatorSize = 8;
         const int levelIndicatorSpacing = 4;
-        const int killIndicatorY = 76;
+        const int killIndicatorY = 89;
         const int killIndicatorSize = 6;
         const int killIndicatorSpacing = 3;
 
@@ -1796,7 +2099,7 @@ public sealed class GameRenderer : IDisposable
             fillWidth,
             background.Height);
 
-        _spriteBatch.Draw(_pixel, new Rectangle(22, 47, 10, 8), new Color(87, 132, 222));
+        _spriteBatch.Draw(_pixel, new Rectangle(22, barY + 1, 10, 8), new Color(87, 132, 222));
         _spriteBatch.Draw(_pixel, border, new Color(185, 190, 194));
         _spriteBatch.Draw(_pixel, background, new Color(28, 35, 66));
 

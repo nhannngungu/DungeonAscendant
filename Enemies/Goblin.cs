@@ -63,8 +63,7 @@ public sealed class Goblin : Enemy
 
         if (distanceSquared <= Attack.Range * Attack.Range)
         {
-            if (Attack.TryStart())
-                player.ReceiveDamage(EffectiveAttackDamage);
+            TryMeleeAttack(player);
 
             return;
         }

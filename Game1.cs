@@ -36,11 +36,12 @@ public class Game1 : Game
     protected override void Update(GameTime gameTime)
     {
         KeyboardState keyboardState = Keyboard.GetState();
+        MouseState mouseState = Mouse.GetState();
 
         if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed)
             Exit();
 
-        _gameSession.Update(gameTime, keyboardState);
+        _gameSession.Update(gameTime, keyboardState, mouseState);
 
         base.Update(gameTime);
     }

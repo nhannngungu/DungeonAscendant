@@ -17,19 +17,22 @@ namespace DungeonAscendant.Core;
 /// </summary>
 public sealed class GameSession
 {
-    private const float PlayerAttackThickness = 48f;
-    private const float PlayerKnockbackDistance = 24f;
+    public const bool DebugCombatHitboxes = false;
+
     private const float ExitInteractionRadius = 72f;
     private const float WorldTierTransitionDurationSeconds = 1.4f;
 
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
+    private readonly HashSet<Enemy> _playerAttackHits = new();
     private KeyboardState _previousKeyboardState;
+    private MouseState _previousMouseState;
     private float _worldTierTransitionTimeRemaining;
     private Vector2 _lastSafePlayerPosition;
+    private int _trackedPlayerAttackId = -1;
+    private bool _bossHitByPlayerAttack;
 
     public PlayerCharacter Player { get; private set; }
-    public MeleeAttack PlayerAttack { get; private set; }
     public EnemyManager Enemies { get; }
     public ProjectileManager Projectiles { get; }
     public RootHazardManager RootHazards { get; }
@@ -55,6 +58,7 @@ public sealed class GameSession
     public Rectangle PlayerAttackArea { get; private set; }
     public GameState State { get; private set; }
     public bool IsInventoryOpen { get; private set; }
+    public bool ShowCombatDebug { get; private set; } = DebugCombatHitboxes;
     public int SelectedInventoryIndex { get; private set; }
     public EquipmentItem SelectedInventoryItem =>
         Player.Inventory.GetItem(SelectedInventoryIndex);
@@ -68,13 +72,15 @@ public sealed class GameSession
         Loot = new LootManager(randomSeed);
         Camera = new Camera2D(viewportBounds.Width, viewportBounds.Height);
         Player = new PlayerCharacter(viewportBounds.Center.ToVector2());
-        PlayerAttack = new MeleeAttack();
         Region = RegionDefinition.WildForest;
         UpdatePlayerAttackArea();
         State = GameState.Start;
     }
 
-    public void Update(GameTime gameTime, KeyboardState keyboardState)
+    public void Update(
+        GameTime gameTime,
+        KeyboardState keyboardState,
+        MouseState mouseState)
     {
         bool startPressed = keyboardState.IsKeyDown(Keys.Enter) &&
             !_previousKeyboardState.IsKeyDown(Keys.Enter);
@@ -84,6 +90,10 @@ public sealed class GameSession
             !_previousKeyboardState.IsKeyDown(Keys.R);
         bool inventoryPressed = keyboardState.IsKeyDown(Keys.I) &&
             !_previousKeyboardState.IsKeyDown(Keys.I);
+        bool debugPressed = WasKeyPressed(keyboardState, Keys.F3);
+
+        if (debugPressed)
+            ShowCombatDebug = !ShowCombatDebug;
 
         if (State == GameState.Start)
         {
@@ -93,7 +103,7 @@ public sealed class GameSession
                 State = GameState.Playing;
             }
 
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
@@ -102,7 +112,7 @@ public sealed class GameSession
             if (pausePressed)
                 State = GameState.Playing;
 
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
@@ -114,7 +124,7 @@ public sealed class GameSession
                 State = GameState.Playing;
             }
 
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
@@ -125,34 +135,33 @@ public sealed class GameSession
             else
                 UpdateInventoryInput(keyboardState, startPressed);
 
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
         if (inventoryPressed)
         {
             IsInventoryOpen = true;
-            PlayerAttack.Cancel();
+            Player.Combat.CancelActions();
             ClampInventorySelection();
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
         if (pausePressed)
         {
             State = GameState.Paused;
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
         if (!Player.IsAlive)
         {
-            PlayerAttack.Cancel();
             Projectiles.Clear();
             RootHazards.Clear();
             Player.ClearTemporaryStatus();
             State = GameState.GameOver;
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
@@ -161,6 +170,9 @@ public sealed class GameSession
             0f,
             _worldTierTransitionTimeRemaining - elapsedSeconds);
         Player.UpdateTimers(gameTime);
+        Player.UpdateCombat(
+            gameTime,
+            CreateCombatInput(keyboardState, mouseState));
         bool jumpPressed = keyboardState.IsKeyDown(Keys.Space) &&
             !_previousKeyboardState.IsKeyDown(Keys.Space);
         Player.UpdateSideScrollingMovement(
@@ -182,44 +194,12 @@ public sealed class GameSession
 
         if (interactPressed && HandleWorldInteraction())
         {
-            _previousKeyboardState = keyboardState;
+            StoreInputStates(keyboardState, mouseState);
             return;
         }
 
-        PlayerAttack.Update(gameTime);
         UpdatePlayerAttackArea();
-
-        bool attackPressed = (keyboardState.IsKeyDown(Keys.J) ||
-            keyboardState.IsKeyDown(Keys.LeftControl)) &&
-            !(_previousKeyboardState.IsKeyDown(Keys.J) ||
-              _previousKeyboardState.IsKeyDown(Keys.LeftControl));
-
-        if (attackPressed && PlayerAttack.TryStart())
-        {
-            foreach (Enemy enemy in Enemies.Enemies)
-            {
-                if (!enemy.CanBeTargeted ||
-                    !PlayerAttackArea.Intersects(enemy.MeleeTargetBounds))
-                {
-                    continue;
-                }
-
-                enemy.ReceiveDamage(Player.MeleeDamage);
-                enemy.ApplyKnockback(
-                    Player.Position,
-                    PlayerKnockbackDistance,
-                    CurrentDungeon);
-            }
-
-            if (Boss.IsAlive && PlayerAttackArea.Intersects(Boss.Bounds))
-            {
-                Boss.ReceiveDamage(Player.MeleeDamage);
-                Boss.ApplyKnockback(
-                    Player.Position,
-                    PlayerKnockbackDistance,
-                    CurrentDungeon);
-            }
-        }
+        ProcessPlayerAttack();
 
         ProcessDefeatedEnemies();
         ProcessBossDefeat();
@@ -240,7 +220,6 @@ public sealed class GameSession
 
         if (!Player.IsAlive)
         {
-            PlayerAttack.Cancel();
             Projectiles.Clear();
             RootHazards.Clear();
             Player.ClearTemporaryStatus();
@@ -253,7 +232,7 @@ public sealed class GameSession
             Player.Facing,
             CurrentDungeon.WorldBounds,
             elapsedSeconds);
-        _previousKeyboardState = keyboardState;
+        StoreInputStates(keyboardState, mouseState);
     }
 
     private void ProcessDefeatedEnemies()
@@ -296,6 +275,7 @@ public sealed class GameSession
         _lastSafePlayerPosition = Player.Position;
         KillCount = 0;
         IsInventoryOpen = false;
+        ShowCombatDebug = DebugCombatHitboxes;
         SelectedInventoryIndex = 0;
         InitializeDungeonState();
     }
@@ -322,8 +302,10 @@ public sealed class GameSession
 
     private void InitializeDungeonState()
     {
-        PlayerAttack = new MeleeAttack();
         Player.ClearTemporaryStatus();
+        _playerAttackHits.Clear();
+        _trackedPlayerAttackId = -1;
+        _bossHitByPlayerAttack = false;
         Projectiles.Clear();
         RootHazards.Clear();
         Loot.Reset();
@@ -335,7 +317,8 @@ public sealed class GameSession
             CurrentDungeon,
             enemyLevel,
             WorldTier,
-            CurrentRegion);
+            CurrentRegion,
+            isFirstDungeonOfRun: DungeonDepth == 1);
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
                 CurrentDungeon.TreasureRoom.Bounds.Center.X,
@@ -437,12 +420,104 @@ public sealed class GameSession
 
     private void UpdatePlayerAttackArea()
     {
+        AttackDefinition attack = Player.Combat.CurrentAttack ??
+            SwordAttackSet.LightOne;
         PlayerAttackArea = MeleeHitArea.Create(
             Player.Position,
             Player.Size,
             Player.Facing,
-            PlayerAttack.Range,
-            PlayerAttackThickness);
+            attack.Range,
+            attack.Thickness);
+    }
+
+    private void ProcessPlayerAttack()
+    {
+        if (_trackedPlayerAttackId != Player.Combat.AttackId)
+        {
+            _trackedPlayerAttackId = Player.Combat.AttackId;
+            _playerAttackHits.Clear();
+            _bossHitByPlayerAttack = false;
+        }
+
+        if (!Player.Combat.IsAttackActive ||
+            Player.Combat.CurrentAttack == null)
+        {
+            return;
+        }
+
+        AttackDefinition attack = Player.Combat.CurrentAttack;
+        int damage = attack.CalculateDamage(Player.MeleeDamage);
+
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (!enemy.CanBeTargeted ||
+                _playerAttackHits.Contains(enemy) ||
+                !PlayerAttackArea.Intersects(enemy.MeleeTargetBounds))
+            {
+                continue;
+            }
+
+            _playerAttackHits.Add(enemy);
+            enemy.ReceiveDamage(damage, attack.PoiseDamage);
+            enemy.ApplyKnockback(
+                Player.Position,
+                attack.Knockback,
+                CurrentDungeon);
+        }
+
+        if (!_bossHitByPlayerAttack && Boss.IsAlive &&
+            PlayerAttackArea.Intersects(Boss.Bounds))
+        {
+            _bossHitByPlayerAttack = true;
+            Boss.ReceiveDamage(damage, attack.PoiseDamage);
+            Boss.ApplyKnockback(
+                Player.Position,
+                attack.Knockback,
+                CurrentDungeon);
+        }
+    }
+
+    private CombatInput CreateCombatInput(
+        KeyboardState keyboardState,
+        MouseState mouseState)
+    {
+        bool lightPressed = WasKeyPressed(keyboardState, Keys.J) ||
+            (mouseState.LeftButton == ButtonState.Pressed &&
+             _previousMouseState.LeftButton == ButtonState.Released);
+        bool heavyPressed = WasKeyPressed(keyboardState, Keys.K) ||
+            (mouseState.RightButton == ButtonState.Pressed &&
+             _previousMouseState.RightButton == ButtonState.Released);
+        bool dodgePressed = WasKeyPressed(keyboardState, Keys.LeftShift) ||
+            WasKeyPressed(keyboardState, Keys.RightShift);
+        bool blockHeld = keyboardState.IsKeyDown(Keys.LeftControl);
+        float horizontalDirection = 0f;
+
+        if (keyboardState.IsKeyDown(Keys.A) || keyboardState.IsKeyDown(Keys.Left))
+            horizontalDirection -= 1f;
+
+        if (keyboardState.IsKeyDown(Keys.D) || keyboardState.IsKeyDown(Keys.Right))
+            horizontalDirection += 1f;
+
+        return new CombatInput(
+            lightPressed,
+            heavyPressed,
+            dodgePressed,
+            blockHeld,
+            horizontalDirection);
+    }
+
+    private bool WasKeyPressed(KeyboardState keyboardState, Keys key)
+    {
+        return keyboardState.IsKeyDown(key) &&
+            !_previousKeyboardState.IsKeyDown(key);
+    }
+
+    private void StoreInputStates(
+        KeyboardState keyboardState,
+        MouseState mouseState)
+    {
+        _previousKeyboardState = keyboardState;
+        _previousMouseState = mouseState;
     }
 
     private void UpdateInventoryInput(

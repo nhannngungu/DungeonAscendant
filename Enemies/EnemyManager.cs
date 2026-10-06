@@ -16,10 +16,13 @@ namespace DungeonAscendant.Enemies;
 public sealed class EnemyManager
 {
     public const int MaximumGlobalSpiderlings = 8;
+    // Temporary Combat 2.0 test override. Disable to restore normal first-room spawning.
+    public static bool DebugForceFirstEnemyGoblinHunter { get; set; } = true;
 
     private const float ActivationDistance = 260f;
     private const float SpawnMargin = 190f;
     private const float MinimumEnemySpawnDistance = 96f;
+    private const float DebugHunterDistanceFromRoomEntrance = 650f;
     private const int SpawnAttempts = 20;
 
     private readonly List<Enemy> _enemies = new();
@@ -54,7 +57,8 @@ public sealed class EnemyManager
         DungeonMap dungeon,
         int enemyLevel,
         int worldTier,
-        RegionType region)
+        RegionType region,
+        bool isFirstDungeonOfRun = false)
     {
         _enemies.Clear();
         _goblins.Clear();
@@ -63,12 +67,44 @@ public sealed class EnemyManager
         _compatibilityRootHazards.Clear();
         int safeWorldTier = WorldProgression.ClampWorldTier(worldTier);
         DungeonRoom primaryEliteRoom = FindEliteRoom(dungeon);
+        DungeonRoom debugHunterRoom =
+            DebugForceFirstEnemyGoblinHunter && isFirstDungeonOfRun
+                ? FindFirstEnemyRoom(dungeon)
+                : null;
+        DungeonRoom debugMeleeGoblinRoom = debugHunterRoom != null
+            ? FindNextCombatRoom(dungeon, debugHunterRoom)
+            : null;
         int additionalEliteChance = GetAdditionalEliteRoomChance(safeWorldTier);
 
         foreach (DungeonRoom room in dungeon.Rooms)
         {
             if (room.Type != RoomType.Enemy && room.Type != RoomType.Normal)
                 continue;
+
+            if (debugHunterRoom != null)
+            {
+                if (room == debugHunterRoom)
+                {
+                    SpawnDebugFirstHunter(
+                        dungeon,
+                        room,
+                        enemyLevel,
+                        safeWorldTier);
+                    continue;
+                }
+
+                if (room == debugMeleeGoblinRoom)
+                {
+                    SpawnDebugMeleeGoblin(
+                        room,
+                        enemyLevel,
+                        safeWorldTier);
+                    continue;
+                }
+
+                if (room.Bounds.Left < debugHunterRoom.Bounds.Left)
+                    continue;
+            }
 
             int budget = GetSpawnBudget(room.Type);
 
@@ -396,6 +432,63 @@ public sealed class EnemyManager
             _goblins.Add(goblin);
     }
 
+    private void SpawnDebugFirstHunter(
+        DungeonMap dungeon,
+        DungeonRoom room,
+        int enemyLevel,
+        int worldTier)
+    {
+        Vector2 hunterSize = new(36f, 46f);
+        float desiredX = room.Entrance.X +
+            DebugHunterDistanceFromRoomEntrance;
+        float spawnX = MathHelper.Clamp(
+            desiredX,
+            room.Bounds.Left + SpawnMargin,
+            room.Bounds.Right - SpawnMargin);
+        Vector2 position = SideScrollingCollision.PlaceOnGround(
+            spawnX,
+            hunterSize,
+            room);
+
+        if (!SideScrollingCollision.IsPositionFree(position, hunterSize, dungeon))
+        {
+            position = SideScrollingCollision.PlaceOnGround(
+                room.Bounds.Center.X,
+                hunterSize,
+                room);
+        }
+
+        var context = new EnemySpawnContext(
+            position,
+            enemyLevel,
+            worldTier,
+            room.Id,
+            isElite: false,
+            GoblinVariant.Normal);
+        Enemy hunter = EnemyFactory.Create(EnemyType.GoblinHunter, context);
+        hunter.SnapToGround(room);
+        _enemies.Add(hunter);
+    }
+
+    private void SpawnDebugMeleeGoblin(
+        DungeonRoom room,
+        int enemyLevel,
+        int worldTier)
+    {
+        Vector2 position = SelectSpawnPosition(room, isFlying: false);
+        var context = new EnemySpawnContext(
+            position,
+            enemyLevel,
+            worldTier,
+            room.Id,
+            isElite: false,
+            GoblinVariant.Normal);
+        Enemy goblin = EnemyFactory.Create(EnemyType.Goblin, context);
+        goblin.SnapToGround(room);
+        _enemies.Add(goblin);
+        _goblins.Add((Goblin)goblin);
+    }
+
     private void ProcessSummonRequests(DungeonMap dungeon)
     {
         foreach (MotherSpider mother in _summonRequests)
@@ -720,6 +813,43 @@ public sealed class EnemyManager
                 result = room;
                 farthestDistanceSquared = distanceSquared;
             }
+        }
+
+        return result;
+    }
+
+    private static DungeonRoom FindFirstEnemyRoom(DungeonMap dungeon)
+    {
+        DungeonRoom result = null;
+
+        foreach (DungeonRoom room in dungeon.Rooms)
+        {
+            if (room.Type == RoomType.Enemy &&
+                (result == null || room.Bounds.Left < result.Bounds.Left))
+            {
+                result = room;
+            }
+        }
+
+        return result;
+    }
+
+    private static DungeonRoom FindNextCombatRoom(
+        DungeonMap dungeon,
+        DungeonRoom previousRoom)
+    {
+        DungeonRoom result = null;
+
+        foreach (DungeonRoom room in dungeon.Rooms)
+        {
+            bool supportsCombat = room.Type == RoomType.Enemy ||
+                room.Type == RoomType.Normal;
+
+            if (!supportsCombat || room.Bounds.Left <= previousRoom.Bounds.Left)
+                continue;
+
+            if (result == null || room.Bounds.Left < result.Bounds.Left)
+                result = room;
         }
 
         return result;

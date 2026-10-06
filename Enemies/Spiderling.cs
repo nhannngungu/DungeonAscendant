@@ -52,8 +52,7 @@ public sealed class Spiderling : Enemy
 
         if (distanceSquared <= Attack.Range * Attack.Range)
         {
-            if (Attack.TryStart())
-                player.ReceiveDamage(EffectiveAttackDamage);
+            TryMeleeAttack(player);
         }
         else
         {

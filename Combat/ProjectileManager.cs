@@ -36,6 +36,8 @@ public sealed class ProjectileManager
             new Vector2(16f, 7f),
             lifetimeSeconds: 2.4f,
             damage,
+            blockable: true,
+            unblockable: false,
             slowDurationSeconds: 0f,
             slowMovementMultiplier: 1f,
             roomId));
@@ -53,6 +55,8 @@ public sealed class ProjectileManager
             new Vector2(14f, 14f),
             lifetimeSeconds: 2.2f,
             damage: 0,
+            blockable: false,
+            unblockable: false,
             WebShotSlowDurationSeconds,
             WebSlowMultiplier,
             roomId));
@@ -113,13 +117,35 @@ public sealed class ProjectileManager
 
             projectile.Position = resolvedPosition;
 
-            if (!projectile.Bounds.Intersects(player.Bounds))
+            bool intersectsBody = projectile.Bounds.Intersects(
+                player.BodyHurtbox);
+            bool intersectsDefense = projectile.Blockable &&
+                player.Combat.IsBlocking &&
+                projectile.Bounds.Intersects(player.DefenseBounds);
+
+            if (!intersectsBody && !intersectsDefense)
                 continue;
 
-            if (projectile.Damage > 0)
-                player.ReceiveDamage(projectile.Damage);
+            AttackResolution resolution = AttackResolution.Ignored;
 
-            if (projectile.SlowDurationSeconds > 0f)
+            if (projectile.Damage > 0)
+            {
+                resolution = player.ReceiveProjectileAttack(
+                    new AttackContact(
+                        projectile.Damage,
+                        projectile.SourcePosition,
+                        projectile.Blockable,
+                        projectile.Unblockable,
+                        projectile.Bounds));
+
+                if (resolution == AttackResolution.Ignored &&
+                    !intersectsBody)
+                {
+                    continue;
+                }
+            }
+
+            if (intersectsBody && projectile.SlowDurationSeconds > 0f)
             {
                 player.ApplySlow(
                     projectile.SlowMovementMultiplier,

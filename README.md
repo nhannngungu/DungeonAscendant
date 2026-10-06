@@ -4,15 +4,19 @@ DungeonAscendant is a code-first 2D side-scrolling medieval fantasy action rogue
 
 ## Overview
 
-Explore a procedurally generated chain of side-view combat rooms, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype preserves the original combat and progression loop while replacing top-down traversal with gravity, jumping, solid platforms, horizontal transitions, and a side-follow camera, all without external art assets.
+Explore a procedurally generated chain of side-view combat rooms, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype combines gravity, jumping, solid platforms, horizontal transitions, and a side-follow camera with timing-based sword combat, stamina defense, and enemy stagger, all without external art assets.
 
-## Current Version: v0.6.0 Side-Scrolling Foundation
+## Current Version: Combat 2.0 Foundation
 
-The v0.6.0 milestone converts the gameplay presentation from top-down movement to a side-scrolling foundation while preserving the dungeon progression, World Tiers, loot, equipment, Wild Forest roster, and Ancient Treant encounter.
+The Combat 2.0 milestone builds skill-based action combat on the stable side-scrolling foundation while preserving dungeon progression, World Tiers, loot, equipment, the Wild Forest roster, and the Ancient Treant encounter.
 
 ## Current Features
 
 - Frame-rate-independent left/right movement, gravity, jumping, falling, and grounded state
+- Data-driven three-hit light combo with one-input buffering and distinct finisher timing
+- Heavy sword attack with higher damage, knockback, poise damage, and stamina cost
+- Stamina-powered dodge, directional block, and guard break
+- Enemy windup/active/recovery phases with shared poise recovery and stagger
 - Left/right facing with directional, multi-target melee combat and horizontal knockback
 - Player health, damage feedback, and temporary invulnerability
 - Multiple independently acting Goblins with attack cooldowns
@@ -49,13 +53,25 @@ The v0.6.0 milestone converts the gameplay presentation from top-down movement t
 | Enter | Start from the start screen |
 | A/D or Left/Right Arrow | Move and change facing direction |
 | Space | Jump while grounded |
-| J or Left Ctrl | Left/right melee attack |
+| Left Mouse or J | Light attack / continue the three-hit combo |
+| Right Mouse or K | Heavy attack |
+| Left or Right Shift | Dodge in the held movement direction, or facing direction |
+| Left Ctrl (hold) | Directional block |
+| F3 | Toggle combat hitbox debugging |
 | E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
 | W/S or Up/Down | Change inventory selection |
 | Enter | Equip the selected inventory item |
 | Escape | Pause or resume during gameplay |
 | R | Restart after Game Over |
+
+## Combat 2.0
+
+The default sword uses three light attacks with progressively stronger damage, poise damage, reach, and recovery. One late light input can be buffered into the next strike; waiting more than 0.55 seconds after a strike resets the chain. Heavy attacks consume 30 stamina and have a visible 0.32-second startup.
+
+The Player has 100 stamina. Dodge costs 24 stamina, lasts 0.34 seconds, and is invulnerable from 0.05 through 0.22 seconds. Stamina begins regenerating after a 0.8-second delay at 30 points per second. Blocking uses an invisible 80-by-90 forward defense zone, only protects the facing side, and consumes one stamina per incoming damage, with a minimum cost of 10. An exhausted guard breaks for 0.7 seconds and allows half damage through. Goblin Hunter arrows are blockable from the front and are consumed on contact with an active guard.
+
+Common melee attacks and arrows are blockable. Web projectiles and root hazards remain outside defensive handling. F3 toggles the developer combat overlay, which defaults off and can show body, defense, melee-attack, and projectile zones plus block-state labels. Every enemy has regenerating poise; low-poise enemies such as Goblins and Blood Bats stagger quickly, while Corrupted Treants, named Elites, and the Ancient Treant require heavier pressure. The boss restores its poise on stagger and gains 2.5 seconds of stagger resistance to prevent stun locking.
 
 ## Progression Loop
 

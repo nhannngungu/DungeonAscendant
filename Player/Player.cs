@@ -1,4 +1,5 @@
 using System;
+using DungeonAscendant.Combat;
 using DungeonAscendant.Items;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.World;
@@ -30,6 +31,11 @@ public sealed class Player
     public const float Gravity = 1800f;
     public const float JumpVelocity = -660f;
     public const float TerminalFallSpeed = 1000f;
+    public const float BodyHurtboxWidth = 40f;
+    public const float BodyHurtboxHeight = 56f;
+    public const float DefenseZoneWidth = 80f;
+    public const float DefenseZoneHeight = 90f;
+    public const float DefenseZoneCenterOffset = 32f;
 
     public Vector2 Position { get; private set; }
     public Vector2 Velocity { get; private set; }
@@ -43,6 +49,8 @@ public sealed class Player
         (int)(Position.Y - Size.Y / 2f),
         (int)MathF.Ceiling(Size.X),
         (int)MathF.Ceiling(Size.Y));
+    public Rectangle BodyHurtbox => Bounds;
+    public Rectangle DefenseBounds => CreateDefenseBounds(Position, Facing);
     public int BaseMaxHealth => _baseMaxHealth;
     public int BaseMeleeDamage => _baseMeleeDamage;
     public int MaxHealth => _baseMaxHealth +
@@ -56,7 +64,8 @@ public sealed class Player
     public int ExperienceToNextLevel =>
         BaseExperienceRequirement + (Level - 1) * ExperienceRequirementPerLevel;
     public FacingDirection Facing { get; private set; }
-    public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f;
+    public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f ||
+        Combat.IsDodgeInvulnerable;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
     public bool IsSlowed => _slowTimeRemaining > 0f;
     public float SlowMovementMultiplier => IsSlowed
@@ -64,6 +73,9 @@ public sealed class Player
         : 1f;
     public Inventory Inventory { get; }
     public Equipment EquippedItems { get; }
+    public PlayerCombat Combat { get; }
+    public float CurrentStamina => Combat.Stamina.Current;
+    public float MaxStamina => Combat.Stamina.Maximum;
     public PlayerVisualState VisualState => !IsAlive
         ? PlayerVisualState.Death
         : IsHitFlashing
@@ -87,6 +99,7 @@ public sealed class Player
         _baseMeleeDamage = meleeDamage;
         Inventory = new Inventory();
         EquippedItems = new Equipment();
+        Combat = new PlayerCombat();
         CurrentHealth = MaxHealth;
         Level = 1;
         CurrentExperience = 0;
@@ -127,12 +140,12 @@ public sealed class Player
         if (keyboardState.IsKeyDown(Keys.D) || keyboardState.IsKeyDown(Keys.Right))
             horizontalInput += 1f;
 
-        if (horizontalInput < 0f)
+        if (Combat.CanJump && horizontalInput < 0f)
             Facing = FacingDirection.Left;
-        else if (horizontalInput > 0f)
+        else if (Combat.CanJump && horizontalInput > 0f)
             Facing = FacingDirection.Right;
 
-        if (jumpPressed && IsGrounded)
+        if (jumpPressed && IsGrounded && Combat.CanJump)
         {
             Velocity = new Vector2(Velocity.X, JumpVelocity);
             IsGrounded = false;
@@ -141,8 +154,11 @@ public sealed class Player
         float elapsedSeconds = MathF.Min(
             (float)gameTime.ElapsedGameTime.TotalSeconds,
             1f / 20f);
+        float horizontalVelocity = Combat.IsDodging
+            ? Combat.DodgeDirection * PlayerCombat.DodgeSpeed
+            : horizontalInput * EffectiveMovementSpeed * Combat.MovementMultiplier;
         Velocity = new Vector2(
-            horizontalInput * EffectiveMovementSpeed,
+            horizontalVelocity,
             MathF.Min(TerminalFallSpeed, Velocity.Y + Gravity * elapsedSeconds));
         MovementResult result = SideScrollingCollision.Resolve(
             Position,
@@ -153,6 +169,24 @@ public sealed class Player
         Position = result.Position;
         Velocity = result.Velocity;
         IsGrounded = result.IsGrounded;
+        Combat.SetLocomotion(
+            IsGrounded,
+            MathF.Abs(Velocity.X) > 0.1f);
+    }
+
+    public void UpdateCombat(GameTime gameTime, CombatInput input)
+    {
+        if (!IsAlive)
+            return;
+
+        Combat.Update(gameTime, input, IsGrounded, Facing);
+
+        if (Combat.IsDodging)
+        {
+            Facing = Combat.DodgeDirection < 0f
+                ? FacingDirection.Left
+                : FacingDirection.Right;
+        }
     }
 
     public void MoveTo(Vector2 position)
@@ -176,10 +210,43 @@ public sealed class Player
         if (!IsAlive || IsInvulnerable || damage <= 0)
             return false;
 
-        CurrentHealth = Math.Max(0, CurrentHealth - damage);
-        _invulnerabilityTimeRemaining = InvulnerabilityDurationSeconds;
-        _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
+        ApplyHealthDamage(damage);
         return true;
+    }
+
+    public AttackResolution ReceiveMeleeAttack(AttackContact contact)
+    {
+        return ReceiveAttack(contact);
+    }
+
+    public AttackResolution ReceiveProjectileAttack(AttackContact contact)
+    {
+        return ReceiveAttack(contact);
+    }
+
+    private AttackResolution ReceiveAttack(AttackContact contact)
+    {
+        if (!IsAlive || contact.Damage <= 0)
+            return AttackResolution.Ignored;
+
+        AttackResolution resolution = Combat.ResolveIncomingAttack(
+            contact,
+            Position,
+            Facing);
+
+        if (resolution == AttackResolution.Damaged)
+        {
+            if (IsInvulnerable)
+                return AttackResolution.Ignored;
+
+            ApplyHealthDamage(contact.Damage);
+        }
+        else if (resolution == AttackResolution.GuardBroken)
+        {
+            ApplyHealthDamage(Math.Max(1, contact.Damage / 2), triggerHurt: false);
+        }
+
+        return resolution;
     }
 
     public void ApplySlow(float movementMultiplier, float durationSeconds)
@@ -203,6 +270,10 @@ public sealed class Player
     {
         _slowTimeRemaining = 0f;
         _slowMovementMultiplier = 1f;
+        if (IsAlive)
+            Combat.CancelActions(restoreStamina: true);
+        else
+            Combat.OnDamaged(isAlive: false);
     }
 
     public void GainExperience(int experience)
@@ -220,6 +291,34 @@ public sealed class Player
             _baseMeleeDamage += DamageIncreasePerLevel;
             CurrentHealth = MaxHealth;
         }
+    }
+
+    private void ApplyHealthDamage(int damage, bool triggerHurt = true)
+    {
+        CurrentHealth = Math.Max(0, CurrentHealth - damage);
+        _invulnerabilityTimeRemaining = InvulnerabilityDurationSeconds;
+        _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
+
+        if (triggerHurt || !IsAlive)
+            Combat.OnDamaged(IsAlive);
+    }
+
+    public static Rectangle CreateDefenseBounds(
+        Vector2 position,
+        FacingDirection facing)
+    {
+        int width = (int)DefenseZoneWidth;
+        int height = (int)DefenseZoneHeight;
+        int y = (int)position.Y - height / 2;
+        int centerOffset = facing == FacingDirection.Left
+            ? -(int)DefenseZoneCenterOffset
+            : (int)DefenseZoneCenterOffset;
+
+        return new Rectangle(
+            (int)position.X + centerOffset - width / 2,
+            y,
+            width,
+            height);
     }
 
 }

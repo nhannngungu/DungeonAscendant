@@ -102,9 +102,8 @@ public sealed class BloodBat : Enemy
                 radial * EffectiveMovementSpeed * 1.4f * elapsedSeconds,
                 dungeon);
 
-            if (distance <= Attack.Range && Attack.TryStart())
+            if (distance <= Attack.Range && TryMeleeAttack(player))
             {
-                player.ReceiveDamage(EffectiveAttackDamage);
                 EnterState(BloodBatState.Retreating, 0.8f);
             }
             else if (_stateTimeRemaining <= 0f)

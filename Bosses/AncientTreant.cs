@@ -16,6 +16,10 @@ public sealed class AncientTreant
     private float _hitFeedbackTimeRemaining;
     private float _rootStrikeCooldownRemaining = 1.6f;
     private float _terrainRootCooldownRemaining = 4f;
+    private float _staggerTimeRemaining;
+    private float _staggerResistanceTimeRemaining;
+    private float _poiseRecoveryDelayRemaining;
+    private float _attackDirection = 1f;
 
     public Vector2 Position { get; private set; }
     public Vector2 Size { get; } = new(110f, 126f);
@@ -30,6 +34,9 @@ public sealed class AncientTreant
     public bool IsAlive => CurrentHealth > 0;
     public bool IsActivated { get; private set; }
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
+    public float MaxPoise { get; }
+    public float CurrentPoise { get; private set; }
+    public bool IsStaggered => _staggerTimeRemaining > 0f;
     public AncientTreantPhase Phase => CurrentHealth * 100 > MaxHealth * 65
         ? AncientTreantPhase.PhaseOne
         : CurrentHealth * 100 > MaxHealth * 30
@@ -37,7 +44,11 @@ public sealed class AncientTreant
             : AncientTreantPhase.PhaseThree;
     public MeleeAttack Attack { get; } = new(
         range: 92f,
-        cooldownSeconds: 1.35f);
+        cooldownSeconds: 1.35f,
+        windupSeconds: 0.44f,
+        activeSeconds: 0.14f,
+        recoverySeconds: 0.42f);
+    public Rectangle AttackArea => CreateAttackArea();
     public Rectangle Bounds => new(
         (int)(Position.X - Size.X / 2f),
         (int)(Position.Y - Size.Y / 2f),
@@ -63,6 +74,8 @@ public sealed class AncientTreant
             900 + (Level - 1) * 180,
             WorldProgression.GetHealthMultiplierPercent(WorldTier));
         CurrentHealth = MaxHealth;
+        MaxPoise = 360f + Level * 20f;
+        CurrentPoise = MaxPoise;
         AttackDamage = WorldProgression.ApplyPercent(
             28 + (Level - 1) * 4,
             WorldProgression.GetDamageMultiplierPercent(WorldTier));
@@ -91,6 +104,7 @@ public sealed class AncientTreant
         }
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        bool wasStaggered = IsStaggered;
         Attack.Update(gameTime);
         _hitFeedbackTimeRemaining = MathF.Max(
             0f,
@@ -101,8 +115,27 @@ public sealed class AncientTreant
         _terrainRootCooldownRemaining = MathF.Max(
             0f,
             _terrainRootCooldownRemaining - elapsedSeconds);
+        _staggerTimeRemaining = MathF.Max(
+            0f,
+            _staggerTimeRemaining - elapsedSeconds);
+        _staggerResistanceTimeRemaining = MathF.Max(
+            0f,
+            _staggerResistanceTimeRemaining - elapsedSeconds);
+        _poiseRecoveryDelayRemaining = MathF.Max(
+            0f,
+            _poiseRecoveryDelayRemaining - elapsedSeconds);
 
-        if (!player.IsAlive)
+        if (wasStaggered && !IsStaggered)
+            CurrentPoise = MaxPoise;
+
+        if (!IsStaggered && _poiseRecoveryDelayRemaining <= 0f)
+        {
+            CurrentPoise = MathF.Min(
+                MaxPoise,
+                CurrentPoise + MaxPoise * 0.28f * elapsedSeconds);
+        }
+
+        if (!player.IsAlive || IsStaggered)
             return;
 
         if (_rootStrikeCooldownRemaining <= 0f)
@@ -130,11 +163,19 @@ public sealed class AncientTreant
         Vector2 toPlayer = player.Position - Position;
         float horizontalDistance = MathF.Abs(toPlayer.X);
 
+        if (Attack.IsActive)
+            TryResolveMeleeContact(player);
+
         if (horizontalDistance <= Attack.Range &&
             MathF.Abs(toPlayer.Y) <= Size.Y)
         {
-            if (Attack.TryStart())
-                player.ReceiveDamage(AttackDamage);
+            if (Attack.IsReady)
+            {
+                _attackDirection = toPlayer.X < 0f ? -1f : 1f;
+                Attack.StartIfReady();
+            }
+            else if (Attack.IsActive)
+                TryResolveMeleeContact(player);
 
             return;
         }
@@ -162,12 +203,40 @@ public sealed class AncientTreant
 
     public void ReceiveDamage(int damage)
     {
+        ReceiveDamage(damage, poiseDamage: 0f);
+    }
+
+    public void ReceiveDamage(int damage, float poiseDamage)
+    {
         if (!IsAlive || damage <= 0)
             return;
 
         IsActivated = true;
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
         _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
+        ApplyPoiseDamage(poiseDamage);
+    }
+
+    public void ApplyPoiseDamage(float amount)
+    {
+        if (!IsAlive || IsStaggered ||
+            _staggerResistanceTimeRemaining > 0f || amount <= 0f)
+        {
+            return;
+        }
+
+        CurrentPoise = MathF.Max(0f, CurrentPoise - amount);
+        _poiseRecoveryDelayRemaining = 1.4f;
+        _hitFeedbackTimeRemaining = MathF.Max(
+            _hitFeedbackTimeRemaining,
+            HitFeedbackDurationSeconds);
+
+        if (CurrentPoise > 0f)
+            return;
+
+        _staggerTimeRemaining = 0.55f;
+        _staggerResistanceTimeRemaining = 2.5f;
+        Attack.Cancel();
     }
 
     public void ApplyKnockback(
@@ -216,6 +285,38 @@ public sealed class AncientTreant
                 isTerrainRoot: false,
                 dungeon);
         }
+    }
+
+    private bool TryResolveMeleeContact(PlayerCharacter player)
+    {
+        Rectangle attackArea = AttackArea;
+        bool canContact = attackArea.Intersects(player.Bounds) ||
+            (player.Combat.IsBlocking &&
+             attackArea.Intersects(player.DefenseBounds));
+
+        if (!canContact || !Attack.TryConsumeActiveHit())
+            return false;
+
+        player.ReceiveMeleeAttack(
+            new AttackContact(
+                AttackDamage,
+                Position,
+                Attack.IsBlockable,
+                Attack.IsUnblockable,
+                attackArea));
+        return true;
+    }
+
+    private Rectangle CreateAttackArea()
+    {
+        int reach = (int)MathF.Ceiling(Attack.Range);
+        int height = (int)MathF.Ceiling(Size.Y * 0.9f);
+        int y = (int)Position.Y - height / 2;
+
+        if (_attackDirection < 0f)
+            return new Rectangle(Bounds.Left - reach, y, reach, height);
+
+        return new Rectangle(Bounds.Right, y, reach, height);
     }
 
     private void CreateTerrainRoots(

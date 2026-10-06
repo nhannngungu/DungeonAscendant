@@ -81,8 +81,7 @@ public sealed class DireWolf : Enemy
 
         if (distanceSquared <= Attack.Range * Attack.Range)
         {
-            if (Attack.TryStart())
-                player.ReceiveDamage(EffectiveAttackDamage);
+            TryMeleeAttack(player);
 
             return;
         }
