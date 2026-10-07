@@ -11,15 +11,29 @@ public sealed class ThornCrawler : Enemy
     public const float WarningDurationSeconds = 0.65f;
 
     private float _stateTimeRemaining;
+    private float _stateDuration;
 
     public ThornCrawlerState State { get; private set; } =
         ThornCrawlerState.Hidden;
+    public float StateProgress => _stateDuration <= 0f
+        ? 0f
+        : Math.Clamp(
+            1f - _stateTimeRemaining / _stateDuration,
+            0f,
+            1f);
     public bool IsUnderground =>
         State == ThornCrawlerState.Hidden ||
         State == ThornCrawlerState.TrackingUnderground ||
         State == ThornCrawlerState.Warning ||
         State == ThornCrawlerState.Burrowing;
     public override bool CanBeTargeted => IsAlive && !IsUnderground;
+    public override Rectangle MeleeTargetBounds => IsUnderground
+        ? Bounds
+        : new Rectangle(
+            (int)Position.X - 27,
+            Bounds.Bottom - 30,
+            54,
+            30);
 
     public ThornCrawler(
         Vector2 position,
@@ -129,5 +143,6 @@ public sealed class ThornCrawler : Enemy
     {
         State = state;
         _stateTimeRemaining = durationSeconds;
+        _stateDuration = durationSeconds;
     }
 }

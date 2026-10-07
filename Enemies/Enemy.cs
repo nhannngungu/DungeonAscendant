@@ -14,6 +14,7 @@ namespace DungeonAscendant.Enemies;
 public abstract class Enemy
 {
     private const float HitFeedbackDurationSeconds = 0.14f;
+    private const float DeathPresentationDurationSeconds = 0.57f;
     private const float TargetFacingDeadzone = 2f;
     private const float MovementFacingDeadzone = 0.5f;
 
@@ -25,6 +26,7 @@ public abstract class Enemy
     private float _poiseRecoveryDelayRemaining;
     private float _staggerTimeRemaining;
     private EnemyFacingDirection _attackFacing = EnemyFacingDirection.Right;
+    private float _deathPresentationTimeRemaining;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
@@ -37,6 +39,9 @@ public abstract class Enemy
     public int CurrentHealth { get; private set; }
     public bool IsAlive => CurrentHealth > 0;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
+    public bool IsDeathPresentationComplete =>
+        _deathPresentationTimeRemaining <= 0f;
+    public float VisualVelocityX { get; private set; }
     public float MaxPoise { get; }
     public float CurrentPoise { get; private set; }
     public bool IsStaggered => _staggerTimeRemaining > 0f;
@@ -121,6 +126,8 @@ public abstract class Enemy
         if (!IsAlive)
             return;
 
+        float startingX = Position.X;
+
         UpdateTimers(gameTime);
 
         if (player.IsAlive && !IsStaggered)
@@ -141,6 +148,7 @@ public abstract class Enemy
         }
 
         ApplySideViewPhysics(gameTime, dungeon);
+        UpdateVisualVelocity(gameTime, startingX);
     }
 
     internal void UpdateBehaviorOnly(
@@ -151,6 +159,8 @@ public abstract class Enemy
         RootHazardManager rootHazards = null,
         EnemyManager enemies = null)
     {
+        float startingX = Position.X;
+
         if (IsAlive && player.IsAlive && !IsStaggered)
         {
             if (IsPlayerDetected(player.Position))
@@ -168,6 +178,8 @@ public abstract class Enemy
                 TryResolveMeleeContact(player);
             ApplySideViewPhysics(gameTime, dungeon);
         }
+
+        UpdateVisualVelocity(gameTime, startingX);
     }
 
     public virtual void UpdateTimers(GameTime gameTime)
@@ -223,12 +235,32 @@ public abstract class Enemy
         if (!CanBeTargeted || damage <= 0)
             return;
 
+        bool wasAlive = IsAlive;
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
         _hitFeedbackTimeRemaining = poiseDamage >= 45f
             ? HitFeedbackDurationSeconds * 1.55f
             : HitFeedbackDurationSeconds;
         ApplyPoiseDamage(poiseDamage);
         OnDamaged();
+
+        if (wasAlive && !IsAlive)
+        {
+            Attack.Cancel();
+            VisualVelocityX = 0f;
+            _deathPresentationTimeRemaining =
+                DeathPresentationDurationSeconds;
+        }
+    }
+
+    internal void UpdateDeathPresentation(GameTime gameTime)
+    {
+        if (IsAlive || IsDeathPresentationComplete)
+            return;
+
+        _deathPresentationTimeRemaining = MathF.Max(
+            0f,
+            _deathPresentationTimeRemaining -
+                (float)gameTime.ElapsedGameTime.TotalSeconds);
     }
 
     public void ApplyPoiseDamage(float amount)
@@ -483,6 +515,14 @@ public abstract class Enemy
             : EnemyFacingDirection.Right;
     }
 
+    private void UpdateVisualVelocity(GameTime gameTime, float startingX)
+    {
+        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        VisualVelocityX = elapsedSeconds > 0f
+            ? (Position.X - startingX) / elapsedSeconds
+            : 0f;
+    }
+
     private static float GetMaximumPoise(EnemyType type)
     {
         return type switch
@@ -509,7 +549,7 @@ public abstract class Enemy
         return type switch
         {
             EnemyType.DireWolf => new MeleeAttack(
-                range, cooldownSeconds, 0.10f, 0.07f, 0.14f),
+                range, cooldownSeconds, 0.24f, 0.10f, 0.20f),
             EnemyType.BloodBat => new MeleeAttack(
                 range, cooldownSeconds, 0.11f, 0.07f, 0.15f),
             EnemyType.Goblin => new MeleeAttack(
@@ -524,7 +564,7 @@ public abstract class Enemy
                 range, cooldownSeconds, 0.26f, 0.06f, 0.18f,
                 isBlockable: false),
             EnemyType.GiantSpider => new MeleeAttack(
-                range, cooldownSeconds, 0.18f, 0.09f, 0.22f),
+                range, cooldownSeconds, 0.26f, 0.10f, 0.24f),
             EnemyType.ThornCrawler => new MeleeAttack(
                 range, cooldownSeconds, 0.22f, 0.09f, 0.24f),
             _ => new MeleeAttack(

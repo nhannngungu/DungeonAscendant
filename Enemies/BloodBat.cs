@@ -9,10 +9,19 @@ namespace DungeonAscendant.Enemies;
 public sealed class BloodBat : Enemy
 {
     private float _stateTimeRemaining = 1.1f;
+    private float _stateDuration = 1.1f;
     private float _flightTime;
     private readonly float _circleDirection;
+    private float _lastKnownGroundY = float.NaN;
 
     public BloodBatState State { get; private set; } = BloodBatState.Circling;
+    public float StateProgress => _stateDuration <= 0f
+        ? 0f
+        : Math.Clamp(
+            1f - _stateTimeRemaining / _stateDuration,
+            0f,
+            1f);
+    public float DeathLandingY { get; private set; } = float.NaN;
     public bool IsLowAltitude => State == BloodBatState.Diving;
     public float FlightVisualOffset => IsLowAltitude
         ? 3f
@@ -72,6 +81,11 @@ public sealed class BloodBat : Enemy
         RootHazardManager rootHazards,
         EnemyManager enemies)
     {
+        DungeonRoom room = dungeon.FindRoomContaining(Position);
+
+        if (room != null)
+            _lastKnownGroundY = room.GroundY;
+
         if (!IsPlayerDetected(player.Position))
             return;
 
@@ -126,5 +140,16 @@ public sealed class BloodBat : Enemy
     {
         State = state;
         _stateTimeRemaining = durationSeconds;
+        _stateDuration = durationSeconds;
+    }
+
+    protected override void OnDamaged()
+    {
+        if (!IsAlive)
+        {
+            DeathLandingY = float.IsNaN(_lastKnownGroundY)
+                ? Position.Y + 72f
+                : _lastKnownGroundY;
+        }
     }
 }

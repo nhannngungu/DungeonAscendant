@@ -99,6 +99,7 @@ public sealed class DireWolf : Enemy
 
         _hasRetreated = true;
         _retreatTimeRemaining = RetreatDurationSeconds;
+        Attack.Cancel();
     }
 
     private static int GetScaledStat(

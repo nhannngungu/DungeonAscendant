@@ -12,6 +12,10 @@ public sealed class AncientTreant
 {
     private const float ActivationDistance = 190f;
     private const float HitFeedbackDurationSeconds = 0.18f;
+    public const float PhaseTransitionSeconds = 0.78f;
+    public const float RootStrikeVisualSeconds = 0.20f;
+    public const float RootStrikeRecoverySeconds = 0.48f;
+    public const float DeathPresentationSeconds = 1.20f;
 
     private float _hitFeedbackTimeRemaining;
     private float _rootStrikeCooldownRemaining = 1.6f;
@@ -20,6 +24,10 @@ public sealed class AncientTreant
     private float _staggerResistanceTimeRemaining;
     private float _poiseRecoveryDelayRemaining;
     private float _attackDirection = 1f;
+    private float _phaseTransitionTimeRemaining;
+    private float _rootVisualTimeRemaining;
+    private float _rootVisualDuration;
+    private float _deathPresentationElapsed;
 
     public Vector2 Position { get; private set; }
     public Vector2 Size { get; } = new(110f, 126f);
@@ -37,6 +45,24 @@ public sealed class AncientTreant
     public float MaxPoise { get; }
     public float CurrentPoise { get; private set; }
     public bool IsStaggered => _staggerTimeRemaining > 0f;
+    public bool FacesLeft => _attackDirection < 0f;
+    public float VisualVelocityX { get; private set; }
+    public bool IsPhaseTransitioning => _phaseTransitionTimeRemaining > 0f;
+    public float PhaseTransitionProgress => MathHelper.Clamp(
+        1f - _phaseTransitionTimeRemaining / PhaseTransitionSeconds,
+        0f,
+        1f);
+    public AncientTreantRootVisualState RootVisualState { get; private set; }
+    public float RootVisualProgress => _rootVisualDuration <= 0f
+        ? 0f
+        : MathHelper.Clamp(
+            1f - _rootVisualTimeRemaining / _rootVisualDuration,
+            0f,
+            1f);
+    public float DeathPresentationProgress => MathHelper.Clamp(
+        _deathPresentationElapsed / DeathPresentationSeconds,
+        0f,
+        1f);
     public AncientTreantPhase Phase => CurrentHealth * 100 > MaxHealth * 65
         ? AncientTreantPhase.PhaseOne
         : CurrentHealth * 100 > MaxHealth * 30
@@ -90,20 +116,39 @@ public sealed class AncientTreant
         PlayerCharacter player,
         DungeonMap dungeon,
         DungeonRoom bossRoom,
-        RootHazardManager rootHazards)
+        RootHazardManager rootHazards,
+        float? proximityActivationDistance = null)
     {
+        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+
         if (!IsAlive)
+        {
+            _deathPresentationElapsed = MathF.Min(
+                DeathPresentationSeconds,
+                _deathPresentationElapsed + elapsedSeconds);
             return;
+        }
+
+        VisualVelocityX = 0f;
+        float startingX = Position.X;
+
+        if (proximityActivationDistance.HasValue &&
+            Vector2.DistanceSquared(player.Position, Position) >
+                proximityActivationDistance.Value *
+                proximityActivationDistance.Value)
+        {
+            return;
+        }
 
         if (!IsActivated)
         {
-            IsActivated = IsPlayerNearBossRoom(player.Position, dungeon, bossRoom);
+            IsActivated = proximityActivationDistance.HasValue ||
+                IsPlayerNearBossRoom(player.Position, dungeon, bossRoom);
 
             if (!IsActivated)
                 return;
         }
 
-        float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         bool wasStaggered = IsStaggered;
         Attack.Update(gameTime);
         _hitFeedbackTimeRemaining = MathF.Max(
@@ -124,6 +169,10 @@ public sealed class AncientTreant
         _poiseRecoveryDelayRemaining = MathF.Max(
             0f,
             _poiseRecoveryDelayRemaining - elapsedSeconds);
+        _phaseTransitionTimeRemaining = MathF.Max(
+            0f,
+            _phaseTransitionTimeRemaining - elapsedSeconds);
+        UpdateRootVisualState(elapsedSeconds);
 
         if (wasStaggered && !IsStaggered)
             CurrentPoise = MaxPoise;
@@ -135,7 +184,7 @@ public sealed class AncientTreant
                 CurrentPoise + MaxPoise * 0.28f * elapsedSeconds);
         }
 
-        if (!player.IsAlive || IsStaggered)
+        if (!player.IsAlive || IsStaggered || IsPhaseTransitioning)
             return;
 
         if (_rootStrikeCooldownRemaining <= 0f)
@@ -162,6 +211,9 @@ public sealed class AncientTreant
 
         Vector2 toPlayer = player.Position - Position;
         float horizontalDistance = MathF.Abs(toPlayer.X);
+
+        if (MathF.Abs(toPlayer.X) > 1f)
+            _attackDirection = toPlayer.X < 0f ? -1f : 1f;
 
         if (Attack.IsActive)
             TryResolveMeleeContact(player);
@@ -199,6 +251,9 @@ public sealed class AncientTreant
             desiredPosition,
             Size,
             dungeon);
+        VisualVelocityX = elapsedSeconds > 0f
+            ? (Position.X - startingX) / elapsedSeconds
+            : 0f;
     }
 
     public void ReceiveDamage(int damage)
@@ -211,10 +266,27 @@ public sealed class AncientTreant
         if (!IsAlive || damage <= 0)
             return;
 
+        AncientTreantPhase previousPhase = Phase;
         IsActivated = true;
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
         _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
         ApplyPoiseDamage(poiseDamage);
+
+        if (!IsAlive)
+        {
+            Attack.Cancel();
+            VisualVelocityX = 0f;
+            _phaseTransitionTimeRemaining = 0f;
+            RootVisualState = AncientTreantRootVisualState.Ready;
+            _rootVisualTimeRemaining = 0f;
+            return;
+        }
+
+        if (Phase != previousPhase)
+        {
+            _phaseTransitionTimeRemaining = PhaseTransitionSeconds;
+            Attack.Cancel();
+        }
     }
 
     public void ApplyPoiseDamage(float amount)
@@ -267,12 +339,13 @@ public sealed class AncientTreant
         int zoneCount = (int)Phase;
         float radius = Phase == AncientTreantPhase.PhaseOne ? 0f : 48f;
         float telegraph = Phase == AncientTreantPhase.PhaseThree ? 0.7f : 0.9f;
+        bool added = false;
 
         for (int index = 0; index < zoneCount; index++)
         {
             float angle = MathHelper.TwoPi * index / zoneCount;
             Vector2 offset = new(MathF.Cos(angle), MathF.Sin(angle));
-            rootHazards.TryAdd(
+            added |= rootHazards.TryAdd(
                 playerPosition + offset * radius,
                 new Vector2(64f, 64f),
                 telegraph,
@@ -285,6 +358,50 @@ public sealed class AncientTreant
                 isTerrainRoot: false,
                 dungeon);
         }
+
+        if (added)
+        {
+            EnterRootVisualState(
+                AncientTreantRootVisualState.Windup,
+                telegraph);
+        }
+    }
+
+    private void UpdateRootVisualState(float elapsedSeconds)
+    {
+        if (RootVisualState == AncientTreantRootVisualState.Ready)
+            return;
+
+        _rootVisualTimeRemaining -= elapsedSeconds;
+
+        if (_rootVisualTimeRemaining > 0f)
+            return;
+
+        switch (RootVisualState)
+        {
+            case AncientTreantRootVisualState.Windup:
+                EnterRootVisualState(
+                    AncientTreantRootVisualState.Strike,
+                    RootStrikeVisualSeconds);
+                break;
+            case AncientTreantRootVisualState.Strike:
+                EnterRootVisualState(
+                    AncientTreantRootVisualState.Recovery,
+                    RootStrikeRecoverySeconds);
+                break;
+            default:
+                EnterRootVisualState(AncientTreantRootVisualState.Ready, 0f);
+                break;
+        }
+    }
+
+    private void EnterRootVisualState(
+        AncientTreantRootVisualState state,
+        float durationSeconds)
+    {
+        RootVisualState = state;
+        _rootVisualTimeRemaining = durationSeconds;
+        _rootVisualDuration = durationSeconds;
     }
 
     private bool TryResolveMeleeContact(PlayerCharacter player)
@@ -374,4 +491,12 @@ public sealed class AncientTreant
         return horizontal * horizontal + vertical * vertical <=
             ActivationDistance * ActivationDistance;
     }
+}
+
+public enum AncientTreantRootVisualState
+{
+    Ready,
+    Windup,
+    Strike,
+    Recovery
 }

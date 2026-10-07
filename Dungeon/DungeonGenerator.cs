@@ -11,6 +11,7 @@ namespace DungeonAscendant.Dungeon;
 /// </summary>
 public sealed class DungeonGenerator
 {
+    public const int WildForestShowcaseRoomWidth = 9600;
     public const int MinimumRoomWidth = 1100;
     public const int MaximumRoomWidth = 1700;
     public const int RoomHeight = 720;
@@ -43,6 +44,82 @@ public sealed class DungeonGenerator
         }
 
         return CreateFallbackDungeon();
+    }
+
+    /// <summary>
+    /// Creates a deterministic, obstacle-free room for the Wild Forest enemy
+    /// showcase. The remaining utility rooms keep the normal DungeonMap
+    /// contract intact, but all showcase combat happens in the first room.
+    /// </summary>
+    public DungeonMap GenerateWildForestShowcase()
+    {
+        int[] widths =
+        {
+            WildForestShowcaseRoomWidth,
+            MinimumRoomWidth,
+            MaximumRoomWidth,
+            MinimumRoomWidth
+        };
+        RoomType[] types =
+        {
+            RoomType.Start,
+            RoomType.Treasure,
+            RoomType.Boss,
+            RoomType.Exit
+        };
+        var rooms = new List<DungeonRoom>(widths.Length);
+        var corridors = new List<Rectangle>(widths.Length - 1);
+        int x = WorldMargin;
+
+        for (int index = 0; index < widths.Length; index++)
+        {
+            var room = new DungeonRoom(
+                index,
+                new Rectangle(x, WorldMargin, widths[index], RoomHeight),
+                types[index]);
+            room.GroundY = room.Bounds.Bottom - GroundThickness;
+            room.AddPlatform(new Platform(
+                new Rectangle(
+                    room.Bounds.Left,
+                    room.GroundY,
+                    room.Bounds.Width,
+                    GroundThickness),
+                PlatformKind.Ground,
+                room.Id));
+            rooms.Add(room);
+
+            if (index > 0)
+            {
+                DungeonRoom previous = rooms[index - 1];
+                previous.ConnectTo(room.Id);
+                room.ConnectTo(previous.Id);
+                var corridor = new Rectangle(
+                    previous.Bounds.Right,
+                    WorldMargin,
+                    CorridorWidth,
+                    RoomHeight);
+                corridors.Add(corridor);
+                previous.AddPlatform(new Platform(
+                    new Rectangle(
+                        corridor.Left,
+                        previous.GroundY,
+                        corridor.Width,
+                        GroundThickness),
+                    PlatformKind.Transition,
+                    previous.Id));
+            }
+
+            x += widths[index] + CorridorWidth;
+        }
+
+        return new DungeonMap(
+            rooms,
+            corridors,
+            new Rectangle(
+                rooms[0].Bounds.Left,
+                rooms[0].Bounds.Top,
+                rooms[^1].Bounds.Right - rooms[0].Bounds.Left,
+                RoomHeight));
     }
 
     public bool Validate(DungeonMap dungeon)

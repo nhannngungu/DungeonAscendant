@@ -19,9 +19,54 @@ namespace DungeonAscendant.Core;
 public sealed class GameSession
 {
     public const bool DebugCombatHitboxes = false;
+    public static bool DebugWildForestShowcase { get; set; } = true;
 
     private const float ExitInteractionRadius = 72f;
     private const float WorldTierTransitionDurationSeconds = 1.4f;
+    public const float WildForestShowcasePlayerStartDistance = 400f;
+    public const float WildForestShowcaseBloodBatHeight = 180f;
+
+    private static readonly EnemyType[] WildForestShowcaseEnemyTypes =
+    {
+        EnemyType.Goblin,
+        EnemyType.GoblinHunter,
+        EnemyType.DireWolf,
+        EnemyType.GiantSpider,
+        EnemyType.BloodBat,
+        EnemyType.ThornCrawler,
+        EnemyType.CorruptedTreant,
+        EnemyType.GoblinChief,
+        EnemyType.MotherSpider
+    };
+
+    private static readonly string[] WildForestShowcaseEnemyNames =
+    {
+        "GOBLIN",
+        "GOBLIN HUNTER",
+        "DIRE WOLF",
+        "GIANT SPIDER",
+        "BLOOD BAT",
+        "THORN CRAWLER",
+        "CORRUPTED TREANT",
+        "GOBLIN CHIEF",
+        "MOTHER SPIDER",
+        "ANCIENT TREANT"
+    };
+
+    private static readonly float[] WildForestShowcaseOffsets =
+    {
+        400f,
+        1200f,
+        2000f,
+        2850f,
+        3700f,
+        4550f,
+        5550f,
+        6550f,
+        7600f
+    };
+
+    private const float WildForestShowcaseBossOffset = 8900f;
 
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
@@ -42,6 +87,12 @@ public sealed class GameSession
     private readonly List<EquipmentItem> _activeInventoryItems = new();
     private int _selectedWeaponIndex;
     private int _selectedEquipmentIndex;
+    private DungeonRoom _sequentialTestRoom;
+    private Enemy _sequentialTestEnemy;
+    private int _sequentialTestIndex;
+    private bool _sequentialBossActive;
+    private bool _sequentialTestComplete;
+    private readonly List<Enemy> _wildForestShowcaseEnemies = new();
 
     public PlayerCharacter Player { get; private set; }
     public EnemyManager Enemies { get; }
@@ -94,6 +145,35 @@ public sealed class GameSession
     public EquipmentItem LastFusionSource => _lastFusionSource;
     public EquipmentItem LastFusionResult => _lastFusionResult;
     public bool IsFusionFeedbackVisible => _fusionFeedbackTimeRemaining > 0f;
+    public bool IsWildForestShowcaseMode =>
+        DebugWildForestShowcase &&
+        CurrentRegion == RegionType.WildForest &&
+        DungeonDepth == 1;
+    public bool IsSequentialEnemyTestMode => IsWildForestShowcaseMode;
+    public bool ShouldRenderBoss => true;
+    public IReadOnlyList<Enemy> WildForestShowcaseEnemies =>
+        _wildForestShowcaseEnemies;
+    public bool IsSequentialEnemyTestComplete => _sequentialTestComplete;
+    public Enemy SequentialTestEnemy => _sequentialTestEnemy;
+    public int SequentialTestIndex => _sequentialTestIndex;
+    public string SequentialTestEnemyName => _sequentialTestComplete
+        ? "WILD FOREST TEST COMPLETE"
+        : WildForestShowcaseEnemyNames[
+            System.Math.Clamp(
+                _sequentialTestIndex,
+                0,
+                WildForestShowcaseEnemyNames.Length - 1)];
+
+    public static string GetWildForestShowcaseLabel(EnemyType type)
+    {
+        for (int index = 0; index < WildForestShowcaseEnemyTypes.Length; index++)
+        {
+            if (WildForestShowcaseEnemyTypes[index] == type)
+                return WildForestShowcaseEnemyNames[index];
+        }
+
+        return type == EnemyType.Spiderling ? null : type.ToString().ToUpperInvariant();
+    }
 
     public GameSession(Rectangle viewportBounds, int? randomSeed = null)
     {
@@ -129,7 +209,10 @@ public sealed class GameSession
             !_previousKeyboardState.IsKeyDown(Keys.I);
         bool debugPressed = WasKeyPressed(keyboardState, Keys.F3);
         bool debugWeaponPressed = WasKeyPressed(keyboardState, Keys.F5);
-        bool debugArmorPressed = WasKeyPressed(keyboardState, Keys.F6);
+        bool restartWildForestShowcasePressed = WasKeyPressed(
+            keyboardState,
+            Keys.F6);
+        bool debugArmorPressed = WasKeyPressed(keyboardState, Keys.F7);
         bool fusePressed = WasKeyPressed(keyboardState, Keys.F);
         bool previousTabPressed = WasKeyPressed(keyboardState, Keys.Q);
         bool nextTabPressed = WasKeyPressed(keyboardState, Keys.E);
@@ -228,6 +311,9 @@ public sealed class GameSession
             return;
         }
 
+        if (IsWildForestShowcaseMode && restartWildForestShowcasePressed)
+            RestartWildForestShowcase();
+
         if (debugWeaponPressed)
         {
             _debugWeaponIndex =
@@ -291,12 +377,20 @@ public sealed class GameSession
         Projectiles.Update(gameTime, Player, CurrentDungeon);
         ProcessPlayerProjectileHits();
         RootHazards.Update(gameTime, Player);
-        Boss.Update(
-            gameTime,
-            Player,
-            CurrentDungeon,
-            CurrentDungeon.BossRoom,
-            RootHazards);
+        if (ShouldRenderBoss)
+        {
+            Boss.Update(
+                gameTime,
+                Player,
+                CurrentDungeon,
+                IsWildForestShowcaseMode
+                    ? _sequentialTestRoom
+                    : CurrentDungeon.BossRoom,
+                RootHazards,
+                IsWildForestShowcaseMode
+                    ? EnemyManager.WildForestShowcaseActivationDistance
+                    : null);
+        }
 
         if (!Player.IsAlive)
         {
@@ -323,6 +417,14 @@ public sealed class GameSession
 
         if (defeatedCount == 0)
             return;
+
+        if (IsWildForestShowcaseMode)
+        {
+            foreach (Enemy enemy in _defeatedEnemies)
+                RootHazards.RemoveOwnedBy(enemy);
+
+            return;
+        }
 
         Player.GainExperience(experienceReward);
 
@@ -351,7 +453,9 @@ public sealed class GameSession
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
-        CurrentDungeon = _dungeonGenerator.Generate();
+        CurrentDungeon = IsWildForestShowcaseMode
+            ? _dungeonGenerator.GenerateWildForestShowcase()
+            : _dungeonGenerator.Generate();
         Player = new PlayerCharacter(GetRoomEntranceSpawn(CurrentDungeon.StartRoom));
         _lastSafePlayerPosition = Player.Position;
         KillCount = 0;
@@ -409,7 +513,8 @@ public sealed class GameSession
             enemyLevel,
             WorldTier,
             CurrentRegion,
-            isFirstDungeonOfRun: DungeonDepth == 1);
+            isFirstDungeonOfRun: DungeonDepth == 1,
+            suppressProceduralSpawns: IsWildForestShowcaseMode);
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
                 CurrentDungeon.TreasureRoom.Bounds.Center.X,
@@ -418,6 +523,12 @@ public sealed class GameSession
             CurrentDungeon.TreasureRoom.Id);
         Boss = CreateRegionBoss();
         BossDefeated = false;
+
+        if (IsWildForestShowcaseMode)
+            RestartWildForestShowcase();
+        else
+            ClearSequentialEnemyTestState();
+
         UpdatePlayerAttackArea();
         Camera.Snap(
             Player.Position,
@@ -441,8 +552,129 @@ public sealed class GameSession
             WorldTier);
     }
 
+    private void RestartWildForestShowcase()
+    {
+        if (!IsWildForestShowcaseMode || CurrentDungeon == null)
+            return;
+
+        Enemies.ClearSequentialTestEnemies();
+        Projectiles.Clear();
+        RootHazards.Clear();
+        Loot.Reset();
+        _wildForestShowcaseEnemies.Clear();
+        _sequentialTestRoom = CurrentDungeon.StartRoom;
+        _sequentialTestIndex = 0;
+        _sequentialBossActive = true;
+        _sequentialTestComplete = false;
+        BossDefeated = false;
+        Player.ClearTemporaryStatus();
+        Player.MoveTo(GetRoomEntranceSpawn(_sequentialTestRoom));
+        _lastSafePlayerPosition = Player.Position;
+
+        int enemyLevel = WorldProgression.GetEnemyLevel(
+            Player.Level,
+            DungeonDepth,
+            WorldTier);
+
+        for (int index = 0;
+             index < WildForestShowcaseEnemyTypes.Length;
+             index++)
+        {
+            Enemy enemy = Enemies.SpawnWildForestShowcaseEnemy(
+                WildForestShowcaseEnemyTypes[index],
+                _sequentialTestRoom,
+                Player.Position.X + WildForestShowcaseOffsets[index],
+                enemyLevel,
+                WorldTier);
+            _wildForestShowcaseEnemies.Add(enemy);
+        }
+
+        _sequentialTestEnemy = _wildForestShowcaseEnemies[0];
+        Boss = new AncientTreant(
+            SideScrollingCollision.PlaceOnGround(
+                Player.Position.X + WildForestShowcaseBossOffset,
+                new Vector2(110f, 126f),
+                _sequentialTestRoom),
+            _sequentialTestRoom.Id,
+            Player.Level,
+            DungeonDepth,
+            WorldTier);
+        Camera.Snap(
+            Player.Position,
+            Player.Facing,
+            CurrentDungeon.WorldBounds);
+    }
+
+    private void ClearSequentialEnemyTestState()
+    {
+        _sequentialTestRoom = null;
+        _sequentialTestEnemy = null;
+        _sequentialTestIndex = 0;
+        _sequentialBossActive = false;
+        _sequentialTestComplete = false;
+        _wildForestShowcaseEnemies.Clear();
+    }
+
+    private DungeonRoom FindSequentialTestRoom()
+    {
+        DungeonRoom result = null;
+
+        foreach (DungeonRoom room in CurrentDungeon.Rooms)
+        {
+            if (room.Type == RoomType.Enemy &&
+                (result == null || room.Bounds.Left < result.Bounds.Left))
+            {
+                result = room;
+            }
+        }
+
+        return result ?? CurrentDungeon.StartRoom;
+    }
+
+    private Vector2 FindSequentialBossPosition()
+    {
+        Vector2 bossSize = new(110f, 126f);
+        float minimumX = _sequentialTestRoom.Bounds.Left + 190f;
+        float maximumX = _sequentialTestRoom.Bounds.Right - 190f;
+        float preferredDirection = maximumX - Player.Position.X >= 600f
+            ? 1f
+            : -1f;
+
+        for (int step = 0; step <= 8; step++)
+        {
+            float distance = 600f - step * 50f;
+            float direction = step % 2 == 0
+                ? preferredDirection
+                : -preferredDirection;
+            float x = MathHelper.Clamp(
+                Player.Position.X + direction * distance,
+                minimumX,
+                maximumX);
+            Vector2 candidate = SideScrollingCollision.PlaceOnGround(
+                x,
+                bossSize,
+                _sequentialTestRoom);
+
+            if (SideScrollingCollision.IsPositionFree(
+                candidate,
+                bossSize,
+                CurrentDungeon))
+            {
+                return candidate;
+            }
+        }
+
+        return SideScrollingCollision.PlaceOnGround(
+            _sequentialTestRoom.Bounds.Center.X,
+            bossSize,
+            _sequentialTestRoom);
+    }
+
     private bool HandleWorldInteraction()
     {
+        if (IsWildForestShowcaseMode)
+            return false;
+
         if (Chest.TryOpen(
             Player.Position,
             Loot,
@@ -494,6 +726,18 @@ public sealed class GameSession
 
     private void ProcessBossDefeat()
     {
+        if (IsWildForestShowcaseMode)
+        {
+            if (!_sequentialBossActive || Boss.IsAlive)
+                return;
+
+            _sequentialBossActive = false;
+            _sequentialTestComplete = true;
+            Projectiles.Clear();
+            RootHazards.Clear();
+            return;
+        }
+
         if (BossDefeated || Boss.IsAlive)
             return;
 
@@ -583,7 +827,7 @@ public sealed class GameSession
                 CurrentDungeon);
         }
 
-        if (!_bossHitByPlayerAttack && Boss.IsAlive &&
+        if (!_bossHitByPlayerAttack && ShouldRenderBoss && Boss.IsAlive &&
             PlayerAttackArea.Intersects(Boss.Bounds))
         {
             _bossHitByPlayerAttack = true;
@@ -643,7 +887,7 @@ public sealed class GameSession
                 break;
             }
 
-            if (!consumed && Boss.IsAlive &&
+            if (!consumed && ShouldRenderBoss && Boss.IsAlive &&
                 projectile.Bounds.Intersects(Boss.Bounds))
             {
                 RegisterPlayerHitEffect(projectile.Bounds, Boss.Bounds);

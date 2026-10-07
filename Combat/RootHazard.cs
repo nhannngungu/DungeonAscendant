@@ -15,7 +15,20 @@ public sealed class RootHazard
     public bool IsTerrainRoot { get; }
     public RootHazardState State { get; internal set; }
     public float TimeRemaining { get; internal set; }
+    public float TelegraphDurationSeconds { get; }
     public float ActiveDurationSeconds { get; }
+    public float PhaseProgress
+    {
+        get
+        {
+            float duration = State == RootHazardState.Telegraph
+                ? TelegraphDurationSeconds
+                : ActiveDurationSeconds;
+            return duration <= 0f
+                ? 1f
+                : MathHelper.Clamp(1f - TimeRemaining / duration, 0f, 1f);
+        }
+    }
     public bool HasDamagedPlayer { get; internal set; }
     public Rectangle Bounds => DungeonCollision.CreateBounds(Position, Size);
 
@@ -41,6 +54,7 @@ public sealed class RootHazard
         IsTerrainRoot = isTerrainRoot;
         State = RootHazardState.Telegraph;
         TimeRemaining = telegraphSeconds;
+        TelegraphDurationSeconds = telegraphSeconds;
         ActiveDurationSeconds = activeSeconds;
     }
 }

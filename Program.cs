@@ -18,5 +18,23 @@ if (System.Array.Exists(
     return;
 }
 
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-enemy-sequence"))
+{
+    DungeonAscendant.Core.SequentialEnemyTestValidation.ValidateOrThrow();
+    System.Console.WriteLine("Wild Forest showcase validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-enemy-visuals"))
+{
+    DungeonAscendant.Core.EnemyVisualValidation.ValidateOrThrow();
+    System.Console.WriteLine("Enemy visual validation passed.");
+    return;
+}
+
 using var game = new DungeonAscendant.Game1();
 game.Run();

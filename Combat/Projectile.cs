@@ -20,6 +20,7 @@ public sealed class Projectile
     public bool IsPlayerOwned { get; }
     public float PoiseDamage { get; }
     public float Knockback { get; }
+    public bool EmpoweredVisual { get; }
     public Rectangle Bounds => DungeonCollision.CreateBounds(Position, Size);
 
     public Projectile(
@@ -36,7 +37,8 @@ public sealed class Projectile
         int roomId,
         bool isPlayerOwned = false,
         float poiseDamage = 0f,
-        float knockback = 0f)
+        float knockback = 0f,
+        bool empoweredVisual = false)
     {
         Type = type;
         SourcePosition = position;
@@ -53,5 +55,6 @@ public sealed class Projectile
         IsPlayerOwned = isPlayerOwned;
         PoiseDamage = poiseDamage;
         Knockback = knockback;
+        EmpoweredVisual = empoweredVisual;
     }
 }

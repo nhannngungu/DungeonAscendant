@@ -16,6 +16,8 @@ namespace DungeonAscendant.Enemies;
 public sealed class EnemyManager
 {
     public const int MaximumGlobalSpiderlings = 8;
+    public const float WildForestShowcaseActivationDistance = 650f;
+    public const float WildForestShowcaseSummonRadius = 180f;
     // Temporary Combat 2.0 test override. Disable to restore normal first-room spawning.
     public static bool DebugForceFirstEnemyGoblinHunter { get; set; } = true;
 
@@ -27,14 +29,18 @@ public sealed class EnemyManager
 
     private readonly List<Enemy> _enemies = new();
     private readonly List<Goblin> _goblins = new();
+    private readonly List<Enemy> _defeatPresentations = new(8);
     private readonly List<MotherSpider> _summonRequests = new(4);
     private readonly List<Enemy> _compatibilityDefeatedEnemies = new();
     private readonly ProjectileManager _compatibilityProjectiles = new();
     private readonly RootHazardManager _compatibilityRootHazards = new();
     private readonly Random _random;
+    private bool _wildForestShowcaseMode;
 
     public IReadOnlyList<Enemy> Enemies => _enemies;
     public IReadOnlyList<Goblin> Goblins => _goblins;
+    public IReadOnlyList<Enemy> DefeatPresentations => _defeatPresentations;
+    public bool IsWildForestShowcaseMode => _wildForestShowcaseMode;
 
     public EnemyManager(int? randomSeed = null)
     {
@@ -58,13 +64,20 @@ public sealed class EnemyManager
         int enemyLevel,
         int worldTier,
         RegionType region,
-        bool isFirstDungeonOfRun = false)
+        bool isFirstDungeonOfRun = false,
+        bool suppressProceduralSpawns = false)
     {
         _enemies.Clear();
         _goblins.Clear();
+        _defeatPresentations.Clear();
         _summonRequests.Clear();
         _compatibilityProjectiles.Clear();
         _compatibilityRootHazards.Clear();
+        _wildForestShowcaseMode = suppressProceduralSpawns;
+
+        if (suppressProceduralSpawns)
+            return;
+
         int safeWorldTier = WorldProgression.ClampWorldTier(worldTier);
         DungeonRoom primaryEliteRoom = FindEliteRoom(dungeon);
         DungeonRoom debugHunterRoom =
@@ -125,6 +138,109 @@ public sealed class EnemyManager
         }
     }
 
+    public Enemy SpawnSequentialTestEnemy(
+        EnemyType type,
+        DungeonRoom room,
+        Vector2 playerPosition,
+        int enemyLevel,
+        int worldTier,
+        DungeonMap dungeon)
+    {
+        if (room == null || dungeon == null || type == EnemyType.Spiderling)
+            return null;
+
+        bool isFlying = type == EnemyType.BloodBat;
+        bool isRanged = type == EnemyType.GoblinHunter;
+        float desiredDistance = type switch
+        {
+            EnemyType.GoblinHunter => 650f,
+            EnemyType.MotherSpider => 550f,
+            EnemyType.BloodBat => 500f,
+            EnemyType.CorruptedTreant => 500f,
+            EnemyType.ThornCrawler => 475f,
+            _ => 425f
+        };
+        Vector2 safeSize = isFlying
+            ? new Vector2(48f, 36f)
+            : new Vector2(110f, 126f);
+        Vector2 position = FindSequentialTestPosition(
+            room,
+            playerPosition,
+            desiredDistance,
+            isRanged ? 500f : 350f,
+            isFlying,
+            safeSize,
+            dungeon);
+        bool isNamedElite = type == EnemyType.GoblinChief ||
+            type == EnemyType.MotherSpider;
+        var context = new EnemySpawnContext(
+            position,
+            enemyLevel,
+            worldTier,
+            room.Id,
+            isNamedElite,
+            GoblinVariant.Normal);
+        Enemy enemy = EnemyFactory.Create(type, context);
+        enemy.SnapToGround(room);
+        _enemies.Add(enemy);
+
+        if (enemy is Goblin goblin)
+            _goblins.Add(goblin);
+
+        return enemy;
+    }
+
+    public Enemy SpawnWildForestShowcaseEnemy(
+        EnemyType type,
+        DungeonRoom room,
+        float x,
+        int enemyLevel,
+        int worldTier)
+    {
+        if (room == null || type == EnemyType.Spiderling)
+            return null;
+
+        bool isFlying = type == EnemyType.BloodBat;
+        Vector2 position = new(
+            MathHelper.Clamp(
+                x,
+                room.Bounds.Left + SpawnMargin,
+                room.Bounds.Right - SpawnMargin),
+            isFlying ? room.GroundY - 180f : room.GroundY - 80f);
+        bool isNamedElite = type == EnemyType.GoblinChief ||
+            type == EnemyType.MotherSpider;
+        var context = new EnemySpawnContext(
+            position,
+            enemyLevel,
+            worldTier,
+            room.Id,
+            isNamedElite,
+            GoblinVariant.Normal);
+        Enemy enemy = EnemyFactory.Create(type, context);
+
+        if (!isFlying)
+            enemy.SnapToGround(room);
+
+        _enemies.Add(enemy);
+
+        if (enemy is Goblin goblin)
+            _goblins.Add(goblin);
+
+        return enemy;
+    }
+
+    public void ClearSequentialTestEnemies(
+        bool clearDefeatPresentations = true)
+    {
+        _enemies.Clear();
+        _goblins.Clear();
+
+        if (clearDefeatPresentations)
+            _defeatPresentations.Clear();
+
+        _summonRequests.Clear();
+    }
+
     public void UpdateCombatAndAi(
         GameTime gameTime,
         PlayerCharacter player,
@@ -155,6 +271,7 @@ public sealed class EnemyManager
         }
 
         ProcessSummonRequests(dungeon);
+        UpdateDeathPresentations(gameTime);
     }
 
     public void UpdateTimers(
@@ -191,6 +308,7 @@ public sealed class EnemyManager
         ProcessSummonRequests(dungeon);
         _compatibilityProjectiles.Update(gameTime, player, dungeon);
         _compatibilityRootHazards.Update(gameTime, player);
+        UpdateDeathPresentations(gameTime);
     }
 
     public bool RequestSpiderlingSummon(MotherSpider mother)
@@ -225,6 +343,19 @@ public sealed class EnemyManager
 
             _enemies.RemoveAt(index);
 
+            if (enemy.Type == EnemyType.Goblin ||
+                enemy.Type == EnemyType.GoblinHunter ||
+                enemy.Type == EnemyType.DireWolf ||
+                enemy.Type == EnemyType.GiantSpider ||
+                enemy.Type == EnemyType.BloodBat ||
+                enemy.Type == EnemyType.ThornCrawler ||
+                enemy.Type == EnemyType.CorruptedTreant ||
+                enemy.Type == EnemyType.GoblinChief ||
+                enemy.Type == EnemyType.MotherSpider)
+            {
+                _defeatPresentations.Add(enemy);
+            }
+
             if (enemy is Goblin goblin)
                 _goblins.Remove(goblin);
 
@@ -241,6 +372,20 @@ public sealed class EnemyManager
 
         RemoveOrphanedSpiderlings();
         return defeatedCount;
+    }
+
+    private void UpdateDeathPresentations(GameTime gameTime)
+    {
+        for (int index = _defeatPresentations.Count - 1;
+             index >= 0;
+             index--)
+        {
+            Enemy enemy = _defeatPresentations[index];
+            enemy.UpdateDeathPresentation(gameTime);
+
+            if (enemy.IsDeathPresentationComplete)
+                _defeatPresentations.RemoveAt(index);
+        }
     }
 
     public int RemoveDefeated(
@@ -266,6 +411,13 @@ public sealed class EnemyManager
         Vector2 playerPosition,
         DungeonMap dungeon)
     {
+        if (_wildForestShowcaseMode)
+        {
+            return Vector2.DistanceSquared(playerPosition, enemy.Position) <=
+                WildForestShowcaseActivationDistance *
+                WildForestShowcaseActivationDistance;
+        }
+
         DungeonRoom playerRoom = dungeon.FindRoomContaining(playerPosition);
 
         if (playerRoom != null && playerRoom.Id == enemy.RoomId)
@@ -505,7 +657,9 @@ public sealed class EnemyManager
             if (room == null)
                 continue;
 
-            Vector2 position = SelectSpawnPosition(room, isFlying: false);
+            Vector2 position = _wildForestShowcaseMode
+                ? SelectShowcaseSummonPosition(room, mother.Position, dungeon)
+                : SelectSpawnPosition(room, isFlying: false);
             var spiderling = new Spiderling(
                 position,
                 mother.Level,
@@ -517,6 +671,41 @@ public sealed class EnemyManager
         }
 
         _summonRequests.Clear();
+    }
+
+    private static Vector2 SelectShowcaseSummonPosition(
+        DungeonRoom room,
+        Vector2 motherPosition,
+        DungeonMap dungeon)
+    {
+        Vector2 spiderlingSize = new(28f, 20f);
+
+        for (int step = 1; step <= 6; step++)
+        {
+            float direction = step % 2 == 1 ? -1f : 1f;
+            float distance = 60f + ((step - 1) / 2) * 48f;
+            float x = MathHelper.Clamp(
+                motherPosition.X + direction * distance,
+                motherPosition.X - WildForestShowcaseSummonRadius,
+                motherPosition.X + WildForestShowcaseSummonRadius);
+            Vector2 candidate = SideScrollingCollision.PlaceOnGround(
+                x,
+                spiderlingSize,
+                room);
+
+            if (SideScrollingCollision.IsPositionFree(
+                candidate,
+                spiderlingSize,
+                dungeon))
+            {
+                return candidate;
+            }
+        }
+
+        return SideScrollingCollision.PlaceOnGround(
+            motherPosition.X,
+            spiderlingSize,
+            room);
     }
 
     private void RemoveOrphanedSpiderlings()
@@ -712,6 +901,71 @@ public sealed class EnemyManager
         }
 
         return true;
+    }
+
+    private static Vector2 FindSequentialTestPosition(
+        DungeonRoom room,
+        Vector2 playerPosition,
+        float desiredDistance,
+        float minimumDistance,
+        bool isFlying,
+        Vector2 safeSize,
+        DungeonMap dungeon)
+    {
+        float minimumX = room.Bounds.Left + SpawnMargin;
+        float maximumX = room.Bounds.Right - SpawnMargin;
+        float rightSpace = maximumX - playerPosition.X;
+        float leftSpace = playerPosition.X - minimumX;
+        float direction = rightSpace >= desiredDistance
+            ? 1f
+            : leftSpace >= desiredDistance
+                ? -1f
+                : rightSpace >= leftSpace ? 1f : -1f;
+        float desiredX = MathHelper.Clamp(
+            playerPosition.X + direction * desiredDistance,
+            minimumX,
+            maximumX);
+        float bestX = desiredX;
+        float bestDistance = MathF.Abs(desiredX - playerPosition.X);
+
+        for (int step = 0; step <= 8; step++)
+        {
+            float offset = step == 0
+                ? 0f
+                : ((step + 1) / 2) * 64f * (step % 2 == 1 ? 1f : -1f);
+            float candidateX = MathHelper.Clamp(
+                desiredX + offset,
+                minimumX,
+                maximumX);
+
+            if (!isFlying && !IsGroundSpawnClear(candidateX, room))
+                continue;
+
+            Vector2 candidate = isFlying
+                ? new Vector2(candidateX, room.GroundY - 180f)
+                : SideScrollingCollision.PlaceOnGround(
+                    candidateX,
+                    safeSize,
+                    room);
+
+            if (!SideScrollingCollision.IsPositionFree(candidate, safeSize, dungeon))
+                continue;
+
+            float distance = MathF.Abs(candidateX - playerPosition.X);
+
+            if (distance >= minimumDistance)
+                return candidate;
+
+            if (distance > bestDistance)
+            {
+                bestX = candidateX;
+                bestDistance = distance;
+            }
+        }
+
+        return isFlying
+            ? new Vector2(bestX, room.GroundY - 180f)
+            : SideScrollingCollision.PlaceOnGround(bestX, safeSize, room);
     }
 
 

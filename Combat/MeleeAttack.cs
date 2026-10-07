@@ -24,6 +24,24 @@ public sealed class MeleeAttack
     public bool IsTelegraphing => Phase == EnemyAttackPhase.Windup;
     public bool IsRecovering => Phase == EnemyAttackPhase.Recovery;
     public bool IsReady => Phase == EnemyAttackPhase.Ready;
+    public float PhaseProgress
+    {
+        get
+        {
+            float duration = Phase switch
+            {
+                EnemyAttackPhase.Windup => WindupSeconds,
+                EnemyAttackPhase.Active => ActiveSeconds,
+                EnemyAttackPhase.Recovery => RecoverySeconds,
+                EnemyAttackPhase.Cooldown => CooldownSeconds,
+                _ => 0f
+            };
+
+            return duration <= 0f
+                ? 0f
+                : Math.Clamp(1f - _phaseTimeRemaining / duration, 0f, 1f);
+        }
+    }
 
     public MeleeAttack(
         float range = 75f,

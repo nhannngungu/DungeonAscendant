@@ -71,6 +71,11 @@ public sealed class GameRenderer : IDisposable
     private readonly SpriteBatch _spriteBatch;
     private readonly Texture2D _pixel;
     private readonly PlayerSpriteRenderer _playerSpriteRenderer;
+    private readonly GoblinFamilySpriteRenderer _goblinFamilySpriteRenderer;
+    private readonly CorruptedBeastSpriteRenderer _corruptedBeastSpriteRenderer;
+    private readonly WildForestAmbushSpriteRenderer _wildForestAmbushSpriteRenderer;
+    private readonly WildForestHeavySpriteRenderer _wildForestHeavySpriteRenderer;
+    private readonly WildForestApexSpriteRenderer _wildForestApexSpriteRenderer;
 
     public GameRenderer(GraphicsDevice graphicsDevice)
     {
@@ -79,6 +84,21 @@ public sealed class GameRenderer : IDisposable
         _pixel = new Texture2D(graphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
         _playerSpriteRenderer = new PlayerSpriteRenderer(_spriteBatch, _pixel);
+        _goblinFamilySpriteRenderer = new GoblinFamilySpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _corruptedBeastSpriteRenderer = new CorruptedBeastSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _wildForestAmbushSpriteRenderer = new WildForestAmbushSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _wildForestHeavySpriteRenderer = new WildForestHeavySpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _wildForestApexSpriteRenderer = new WildForestApexSpriteRenderer(
+            _spriteBatch,
+            _pixel);
     }
 
     public void Draw(GameSession gameSession, GameTime gameTime)
@@ -128,12 +148,26 @@ public sealed class GameRenderer : IDisposable
 
         _playerSpriteRenderer.Draw(gameSession.Player, gameTime);
 
+        foreach (Enemy enemy in gameSession.Enemies.DefeatPresentations)
+        {
+            if (enemy.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                DrawEnemy(enemy, gameTime);
+        }
+
         foreach (Enemy enemy in gameSession.Enemies.Enemies)
         {
             if (enemy.IsAlive &&
                 enemy.Bounds.Intersects(gameSession.Camera.ViewBounds))
             {
-                DrawEnemy(enemy);
+                DrawEnemy(enemy, gameTime);
+
+                if (gameSession.IsWildForestShowcaseMode &&
+                    enemy.Type != EnemyType.Spiderling)
+                {
+                    DrawWildForestShowcaseLabel(
+                        GameSession.GetWildForestShowcaseLabel(enemy.Type),
+                        GetEnemyVisualBounds(enemy));
+                }
             }
         }
 
@@ -143,10 +177,25 @@ public sealed class GameRenderer : IDisposable
                 DrawProjectile(projectile);
         }
 
-        if (gameSession.Boss.IsAlive &&
+        if (gameSession.ShouldRenderBoss &&
+            (gameSession.Boss.IsAlive ||
+             gameSession.Boss.DeathPresentationProgress < 1f) &&
             gameSession.Boss.Bounds.Intersects(gameSession.Camera.ViewBounds))
         {
-            DrawAncientTreant(gameSession.Boss);
+            DrawAncientTreant(gameSession.Boss, gameTime);
+
+            if (gameSession.IsWildForestShowcaseMode)
+            {
+                DrawWildForestShowcaseLabel(
+                    "ANCIENT TREANT",
+                    new Rectangle(
+                        (int)MathF.Round(gameSession.Boss.Position.X -
+                            WildForestApexSpriteRenderer.AncientTreantVisualSize.X / 2f),
+                        gameSession.Boss.Bounds.Bottom -
+                            (int)WildForestApexSpriteRenderer.AncientTreantVisualSize.Y,
+                        (int)WildForestApexSpriteRenderer.AncientTreantVisualSize.X,
+                        (int)WildForestApexSpriteRenderer.AncientTreantVisualSize.Y));
+            }
         }
 
         _playerSpriteRenderer.DrawHitImpact(
@@ -166,6 +215,9 @@ public sealed class GameRenderer : IDisposable
         DrawPlayerStamina(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
         DrawDungeonStatus(gameSession);
+
+        if (gameSession.IsWildForestShowcaseMode)
+            DrawSequentialEnemyTestStatus(gameSession);
 
         if (gameSession.ShowCombatDebug)
             DrawCombatStateDebug(gameSession.Player);
@@ -546,7 +598,7 @@ public sealed class GameRenderer : IDisposable
                 new Color(252, 224, 82, 235));
         }
 
-        if (gameSession.Boss.IsAlive)
+        if (gameSession.ShouldRenderBoss && gameSession.Boss.IsAlive)
         {
             DrawDebugZone(
                 gameSession.Boss.Bounds,
@@ -764,39 +816,39 @@ public sealed class GameRenderer : IDisposable
             : new Rectangle(head.Right - 7, head.Y + 8, 4, 4);
     }
 
-    private void DrawEnemy(Enemy enemy)
+    private void DrawEnemy(Enemy enemy, GameTime gameTime)
     {
         switch (enemy)
         {
             case Goblin goblin:
-                DrawGoblin(goblin);
+                _goblinFamilySpriteRenderer.Draw(goblin, gameTime);
                 break;
             case DireWolf direWolf:
-                DrawDireWolf(direWolf);
+                _corruptedBeastSpriteRenderer.Draw(direWolf, gameTime);
                 break;
             case GiantSpider giantSpider:
-                DrawGiantSpider(giantSpider);
+                _corruptedBeastSpriteRenderer.Draw(giantSpider, gameTime);
                 break;
             case GoblinHunter goblinHunter:
-                DrawGoblinHunter(goblinHunter);
+                _goblinFamilySpriteRenderer.Draw(goblinHunter, gameTime);
                 break;
             case ThornCrawler thornCrawler:
-                DrawThornCrawler(thornCrawler);
+                _wildForestAmbushSpriteRenderer.Draw(thornCrawler, gameTime);
                 break;
             case CorruptedTreant corruptedTreant:
-                DrawCorruptedTreant(corruptedTreant);
+                _wildForestHeavySpriteRenderer.Draw(corruptedTreant, gameTime);
                 break;
             case BloodBat bloodBat:
-                DrawBloodBat(bloodBat);
+                _wildForestAmbushSpriteRenderer.Draw(bloodBat, gameTime);
                 break;
             case GoblinChief goblinChief:
-                DrawGoblinChief(goblinChief);
+                _wildForestHeavySpriteRenderer.Draw(goblinChief, gameTime);
                 break;
             case MotherSpider motherSpider:
-                DrawMotherSpider(motherSpider);
+                _wildForestApexSpriteRenderer.Draw(motherSpider, gameTime);
                 break;
             case Spiderling spiderling:
-                DrawSpiderling(spiderling);
+                _wildForestApexSpriteRenderer.Draw(spiderling, gameTime);
                 break;
         }
 
@@ -907,50 +959,6 @@ public sealed class GameRenderer : IDisposable
             ? new Rectangle(head.X - 3, head.Bottom - 5, 5, 7)
             : new Rectangle(head.Right - 2, head.Bottom - 5, 5, 7);
         _spriteBatch.Draw(_pixel, fang, new Color(204, 194, 174));
-    }
-
-    private void DrawGoblinHunter(GoblinHunter hunter)
-    {
-        Vector2 topLeft = hunter.Position - hunter.Size / 2f;
-        Color skin = hunter.IsHitFlashing
-            ? new Color(239, 237, 214)
-            : new Color(106, 148, 69);
-        Rectangle body = new(
-            (int)topLeft.X + 8,
-            (int)topLeft.Y + 20,
-            (int)hunter.Size.X - 16,
-            (int)hunter.Size.Y - 20);
-        Rectangle head = new(
-            (int)topLeft.X + 5,
-            (int)topLeft.Y + 3,
-            (int)hunter.Size.X - 10,
-            21);
-        int bowReach = hunter.Attack.IsActive ? 13 : 8;
-        bool facesLeft = hunter.Facing == EnemyFacingDirection.Left;
-        Rectangle bow = facesLeft
-            ? new Rectangle(body.X - bowReach - 4, body.Y - 1, 4, 30)
-            : new Rectangle(body.Right + bowReach, body.Y - 1, 4, 30);
-
-        _spriteBatch.Draw(
-            _pixel,
-            new Rectangle(body.X - 2, body.Bottom - 3, body.Width + 4, 7),
-            new Color(12, 16, 14, 145));
-        DrawEliteOutline(hunter, new Color(237, 190, 59));
-        _spriteBatch.Draw(_pixel, new Rectangle(head.X - 6, head.Y + 7, 8, 8), skin);
-        _spriteBatch.Draw(_pixel, new Rectangle(head.Right - 2, head.Y + 7, 8, 8), skin);
-        _spriteBatch.Draw(_pixel, new Rectangle(body.X + 2, body.Bottom - 2, 6, 8), new Color(43, 55, 37));
-        _spriteBatch.Draw(_pixel, new Rectangle(body.Right - 8, body.Bottom - 2, 6, 8), new Color(43, 55, 37));
-        _spriteBatch.Draw(_pixel, body, new Color(57, 72, 43));
-        _spriteBatch.Draw(_pixel, head, skin);
-        Rectangle eye = facesLeft
-            ? new Rectangle(head.X + 4, head.Y + 7, 4, 4)
-            : new Rectangle(head.Right - 8, head.Y + 7, 4, 4);
-        _spriteBatch.Draw(_pixel, eye, new Color(225, 65, 42));
-        _spriteBatch.Draw(_pixel, bow, new Color(139, 91, 48));
-        Rectangle arrow = facesLeft
-            ? new Rectangle(bow.X, body.Y + 13, body.X - bow.X - 2, 2)
-            : new Rectangle(body.Right + 2, body.Y + 13, bow.X - body.Right + 2, 2);
-        _spriteBatch.Draw(_pixel, arrow, new Color(213, 207, 178));
     }
 
     private void DrawThornCrawler(ThornCrawler crawler)
@@ -1126,11 +1134,17 @@ public sealed class GameRenderer : IDisposable
 
     private void DrawEnemyBuff(Enemy enemy)
     {
-        Rectangle bounds = enemy.Bounds;
-        Color color = new(239, 171, 53, 165);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X - 4, bounds.Y - 9, 4, 9), color);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.Center.X - 2, bounds.Y - 13, 4, 11), color);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.Right, bounds.Y - 9, 4, 9), color);
+        Rectangle bounds = GetEnemyVisualBounds(enemy);
+        Color color = new(186, 65, 42, 145);
+        Rectangle aura = bounds;
+        aura.Inflate(4, 3);
+        DrawRectangleOutline(aura, 2, new Color(151, 48, 38, 90));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X - 3, bounds.Y + 7, 3, 10), color);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.Center.X - 1, bounds.Y - 7, 3, 12), color);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.Right, bounds.Y + 7, 3, 10), color);
     }
 
     private void DrawEliteOutline(Enemy enemy, Color color)
@@ -1148,15 +1162,33 @@ public sealed class GameRenderer : IDisposable
         if (projectile.Type == ProjectileType.WebShot)
         {
             Rectangle bounds = projectile.Bounds;
-            _spriteBatch.Draw(_pixel, bounds, new Color(202, 218, 207, 205));
+            Vector2 center = bounds.Center.ToVector2();
+            int coreSize = projectile.EmpoweredVisual ? 12 : 8;
             _spriteBatch.Draw(
                 _pixel,
-                new Rectangle(bounds.X - 4, bounds.Center.Y - 1, bounds.Width + 8, 3),
-                new Color(232, 239, 233, 180));
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(bounds.Center.X - 1, bounds.Y - 4, 3, bounds.Height + 8),
-                new Color(232, 239, 233, 180));
+                new Rectangle(bounds.Center.X - coreSize / 2,
+                    bounds.Center.Y - coreSize / 2, coreSize, coreSize),
+                projectile.EmpoweredVisual
+                    ? new Color(174, 170, 181, 235)
+                    : new Color(205, 216, 207, 225));
+            DrawWorldLine(center + new Vector2(-10f, -3f),
+                center + new Vector2(10f, 4f), 2f,
+                new Color(235, 240, 233, 205));
+            DrawWorldLine(center + new Vector2(-8f, 7f),
+                center + new Vector2(7f, -9f), 2f,
+                new Color(225, 233, 226, 190));
+            DrawWorldLine(center + new Vector2(-11f, 2f),
+                center + new Vector2(8f, -1f), 1f,
+                new Color(178, 195, 184, 190));
+            if (projectile.EmpoweredVisual)
+            {
+                DrawWorldLine(center + new Vector2(-13f, -7f),
+                    center + new Vector2(13f, 7f), 2f,
+                    new Color(155, 135, 159, 205));
+                DrawWorldLine(center + new Vector2(-13f, 7f),
+                    center + new Vector2(13f, -7f), 2f,
+                    new Color(205, 197, 203, 210));
+            }
             return;
         }
 
@@ -1188,7 +1220,7 @@ public sealed class GameRenderer : IDisposable
             _pixel,
             shaftStart,
             sourceRectangle: null,
-            new Color(183, 139, 76),
+            new Color(105, 74, 42),
             rotation,
             new Vector2(0f, 0.5f),
             new Vector2(shaftLength, 3f),
@@ -1198,10 +1230,20 @@ public sealed class GameRenderer : IDisposable
             _pixel,
             projectile.Position + direction * (shaftLength / 2f),
             sourceRectangle: null,
-            new Color(205, 210, 195),
+            new Color(67, 73, 68),
             rotation,
             new Vector2(0.5f, 0.5f),
             new Vector2(6f, 7f),
+            SpriteEffects.None,
+            layerDepth: 0f);
+        _spriteBatch.Draw(
+            _pixel,
+            shaftStart + direction * 2f,
+            sourceRectangle: null,
+            new Color(91, 63, 47),
+            rotation + 0.55f,
+            new Vector2(0f, 0.5f),
+            new Vector2(6f, 2f),
             SpriteEffects.None,
             layerDepth: 0f);
     }
@@ -1209,25 +1251,66 @@ public sealed class GameRenderer : IDisposable
     private void DrawWebPatch(WebPatch patch)
     {
         Rectangle bounds = patch.Bounds;
-        _spriteBatch.Draw(_pixel, bounds, new Color(190, 207, 192, 38));
-        DrawRectangleOutline(bounds, 2, new Color(208, 220, 210, 105));
+        Vector2 center = bounds.Center.ToVector2();
+        Color faint = new(190, 207, 192, 30);
+        Color strand = new(218, 228, 220, 115);
+        _spriteBatch.Draw(_pixel, bounds, faint);
+        DrawWorldLine(new Vector2(bounds.Left + 3, bounds.Bottom - 3),
+            new Vector2(bounds.Right - 3, bounds.Top + 4), 1.5f, strand);
+        DrawWorldLine(new Vector2(bounds.Left + 3, bounds.Top + 5),
+            new Vector2(bounds.Right - 3, bounds.Bottom - 3), 1.5f, strand);
+        DrawWorldLine(new Vector2(bounds.Left + 2, center.Y),
+            new Vector2(bounds.Right - 2, center.Y), 2f, strand);
+        DrawWorldLine(center,
+            new Vector2(bounds.Left + 12, bounds.Top + 2), 1f, strand);
+        DrawWorldLine(center,
+            new Vector2(bounds.Right - 12, bounds.Top + 2), 1f, strand);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.Left + 12, bounds.Top + 4,
+                bounds.Width - 24, 2),
+            new Color(230, 236, 229, 90));
+    }
 
-        for (int offset = 10; offset < bounds.Width; offset += 14)
-        {
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(bounds.X + offset, bounds.Y + 5, 2, bounds.Height - 10),
-                new Color(218, 228, 220, 90));
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(bounds.X + 5, bounds.Y + offset, bounds.Width - 10, 2),
-                new Color(218, 228, 220, 90));
-        }
+    private void DrawWorldLine(
+        Vector2 from,
+        Vector2 to,
+        float thickness,
+        Color color)
+    {
+        Vector2 delta = to - from;
+        float length = delta.Length();
+
+        if (length <= 0.01f)
+            return;
+
+        _spriteBatch.Draw(
+            _pixel,
+            from,
+            sourceRectangle: null,
+            color,
+            MathF.Atan2(delta.Y, delta.X),
+            new Vector2(0f, 0.5f),
+            new Vector2(length, thickness),
+            SpriteEffects.None,
+            layerDepth: 0f);
     }
 
     private void DrawRootHazard(RootHazard hazard)
     {
         Rectangle bounds = hazard.Bounds;
+
+        if (hazard.Owner is AncientTreant)
+        {
+            DrawAncientTreantRootHazard(hazard, bounds);
+            return;
+        }
+
+        if (hazard.Owner is CorruptedTreant && !hazard.IsTerrainRoot)
+        {
+            DrawCorruptedTreantRootHazard(hazard, bounds);
+            return;
+        }
 
         if (hazard.State == RootHazardState.Telegraph)
         {
@@ -1267,141 +1350,239 @@ public sealed class GameRenderer : IDisposable
         DrawRectangleOutline(bounds, 2, new Color(143, 72, 67, 190));
     }
 
-    private void DrawGoblin(Goblin goblin)
+    private void DrawAncientTreantRootHazard(
+        RootHazard hazard,
+        Rectangle bounds)
     {
-        Vector2 topLeft = goblin.Position - goblin.Size / 2f;
-        int clubLength = goblin.Attack.IsActive
-            ? 39
-            : goblin.Attack.IsTelegraphing ? 31 : 25;
+        float progress = hazard.PhaseProgress;
+        Color glow = new(83, 154, 91, 155);
 
-        Rectangle shadow = new(
-            (int)topLeft.X + 3,
-            (int)(topLeft.Y + goblin.Size.Y) - 5,
-            (int)goblin.Size.X - 6,
-            7);
-        Rectangle leftEar = new(
-            (int)topLeft.X,
-            (int)topLeft.Y + 7,
-            8,
-            10);
-        Rectangle rightEar = new(
-            (int)(topLeft.X + goblin.Size.X) - 8,
-            (int)topLeft.Y + 7,
-            8,
-            10);
-        Rectangle body = new(
-            (int)topLeft.X + 7,
-            (int)topLeft.Y + 20,
-            (int)goblin.Size.X - 14,
-            (int)goblin.Size.Y - 20);
-        Rectangle head = new(
-            (int)topLeft.X + 5,
-            (int)topLeft.Y + 3,
-            (int)goblin.Size.X - 10,
-            22);
-        bool facesLeft = goblin.Facing == EnemyFacingDirection.Left;
-        int clubY = goblin.Attack.IsTelegraphing
-            ? body.Y - 8
-            : body.Y + 3;
-        Rectangle eye = facesLeft
-            ? new Rectangle(head.X + 4, head.Y + 7, 4, 4)
-            : new Rectangle(head.Right - 8, head.Y + 7, 4, 4);
-        Rectangle clubHandle = facesLeft
-            ? new Rectangle(body.X - 6, clubY, 5, clubLength)
-            : new Rectangle(body.Right + 1, clubY, 5, clubLength);
-        Rectangle clubHead = new(
-            clubHandle.X - 3,
-            clubHandle.Bottom - 8,
-            11,
-            10);
-        Rectangle leftLeg = new(body.X + 2, body.Bottom - 3, 7, 8);
-        Rectangle rightLeg = new(body.Right - 9, body.Bottom - 3, 7, 8);
-
-        GetGoblinColors(
-            goblin,
-            out Color skinColor,
-            out Color bodyColor,
-            out Color eyeColor);
-
-        _spriteBatch.Draw(_pixel, shadow, new Color(16, 19, 22, 145));
-
-        if (goblin.IsElite)
+        if (hazard.State == RootHazardState.Telegraph)
         {
-            Rectangle eliteOutline = new(
-                (int)topLeft.X - 3,
-                (int)topLeft.Y - 5,
-                (int)MathF.Ceiling(goblin.Size.X) + 6,
-                (int)MathF.Ceiling(goblin.Size.Y) + 8);
-            DrawRectangleOutline(eliteOutline, 3, new Color(242, 190, 45));
-        }
+            if (hazard.IsTerrainRoot && bounds.Height > bounds.Width)
+            {
+                byte verticalAlpha = (byte)MathHelper.Lerp(
+                    30f,
+                    105f,
+                    progress);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(bounds.Center.X - 5, bounds.Y + 2,
+                        10, bounds.Height - 4),
+                    new Color((byte)63, (byte)105, (byte)65,
+                        verticalAlpha));
+                DrawWorldLine(
+                    new Vector2(bounds.Center.X, bounds.Bottom - 3),
+                    new Vector2(bounds.Center.X - 6, bounds.Center.Y),
+                    3f,
+                    glow);
+                DrawWorldLine(
+                    new Vector2(bounds.Center.X - 6, bounds.Center.Y),
+                    new Vector2(bounds.Center.X + 4, bounds.Y + 3),
+                    3f,
+                    new Color(112, 177, 101, 175));
 
-        _spriteBatch.Draw(_pixel, leftEar, skinColor);
-        _spriteBatch.Draw(_pixel, rightEar, skinColor);
-        _spriteBatch.Draw(_pixel, leftLeg, bodyColor);
-        _spriteBatch.Draw(_pixel, rightLeg, bodyColor);
-        _spriteBatch.Draw(_pixel, clubHandle, new Color(103, 68, 42));
-        _spriteBatch.Draw(
-            _pixel,
-            clubHead,
-            goblin.IsElite ? new Color(214, 160, 47) : new Color(126, 85, 50));
-        _spriteBatch.Draw(_pixel, body, bodyColor);
-        _spriteBatch.Draw(_pixel, head, skinColor);
-        _spriteBatch.Draw(_pixel, eye, eyeColor);
+                for (int index = 0; index < 5; index++)
+                {
+                    int y = bounds.Y + 8 + index *
+                        Math.Max(8, (bounds.Height - 16) / 5);
+                    int width = (int)MathF.Round(3f + progress * 8f);
+                    int x = index % 2 == 0
+                        ? bounds.Center.X - width
+                        : bounds.Center.X;
+                    _spriteBatch.Draw(_pixel,
+                        new Rectangle(x, y, width, 5),
+                        new Color(62, 50, 31, 220));
+                }
+                return;
+            }
 
-        if (goblin.Variant == GoblinVariant.Fast)
-        {
-            Rectangle sash = new(body.X + 2, body.Y + 7, body.Width - 4, 4);
-            _spriteBatch.Draw(_pixel, sash, new Color(76, 180, 184));
-        }
-        else if (goblin.Variant == GoblinVariant.Brute)
-        {
-            Rectangle leftShoulder = new(body.X - 4, body.Y + 2, 7, 9);
-            Rectangle rightShoulder = new(body.Right - 3, body.Y + 2, 7, 9);
-            _spriteBatch.Draw(_pixel, leftShoulder, new Color(82, 64, 62));
-            _spriteBatch.Draw(_pixel, rightShoulder, new Color(82, 64, 62));
-        }
+            int groundY = bounds.Bottom - 4;
+            byte alpha = (byte)MathHelper.Lerp(30f, 105f, progress);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.X + 2, groundY - 7,
+                    bounds.Width - 4, 10),
+                new Color((byte)63, (byte)105, (byte)65, alpha));
+            DrawWorldLine(
+                new Vector2(bounds.X + 4, groundY),
+                new Vector2(bounds.Center.X - 6, groundY - 8),
+                3f,
+                glow);
+            DrawWorldLine(
+                new Vector2(bounds.Center.X - 6, groundY - 8),
+                new Vector2(bounds.Right - 4, groundY - 3),
+                3f,
+                new Color(112, 177, 101, 175));
 
-        if (goblin.IsElite)
-        {
-            Rectangle crownBase = new(head.X + 3, head.Y - 6, head.Width - 6, 5);
-            Rectangle crownPoint = new(head.Center.X - 3, head.Y - 10, 6, 5);
-            _spriteBatch.Draw(_pixel, crownBase, new Color(242, 190, 45));
-            _spriteBatch.Draw(_pixel, crownPoint, new Color(255, 220, 78));
-        }
-    }
-
-    private static void GetGoblinColors(
-        Goblin goblin,
-        out Color skinColor,
-        out Color bodyColor,
-        out Color eyeColor)
-    {
-        if (goblin.IsHitFlashing)
-        {
-            skinColor = new Color(245, 245, 225);
-            bodyColor = new Color(205, 205, 195);
-            eyeColor = new Color(255, 190, 45);
+            int tips = hazard.IsTerrainRoot ? 4 : 5;
+            for (int index = 0; index < tips; index++)
+            {
+                int x = bounds.X + 5 + index *
+                    Math.Max(7, (bounds.Width - 10) / tips);
+                int height = (int)MathF.Round(3f + progress *
+                    (hazard.IsTerrainRoot ? 8f : 15f));
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(x, groundY - height, 5, height),
+                    new Color(62, 50, 31, 220));
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(x - 2, groundY - height - 3, 8, 3),
+                    new Color(64, 94, 48, 175));
+            }
             return;
         }
 
-        switch (goblin.Variant)
+        float eruption = progress < 0.18f
+            ? progress / 0.18f
+            : progress > 0.72f
+                ? 1f - (progress - 0.72f) / 0.28f
+                : 1f;
+        eruption = MathHelper.Clamp(eruption, 0f, 1f);
+        _spriteBatch.Draw(_pixel, bounds,
+            new Color(44, 61, 39, 80));
+
+        if (hazard.IsTerrainRoot)
         {
-            case GoblinVariant.Fast:
-                skinColor = new Color(126, 190, 76);
-                bodyColor = new Color(47, 92, 86);
-                eyeColor = new Color(242, 126, 45);
-                break;
-            case GoblinVariant.Brute:
-                skinColor = new Color(72, 123, 58);
-                bodyColor = new Color(112, 55, 45);
-                eyeColor = new Color(245, 55, 45);
-                break;
-            default:
-                skinColor = new Color(91, 156, 75);
-                bodyColor = new Color(104, 69, 47);
-                eyeColor = new Color(225, 50, 45);
-                break;
+            bool horizontal = bounds.Width >= bounds.Height;
+            int count = horizontal ? 6 : 5;
+            for (int index = 0; index < count; index++)
+            {
+                float offset = (index + 0.5f) / count;
+                Vector2 root = horizontal
+                    ? new Vector2(bounds.X + bounds.Width * offset,
+                        bounds.Bottom)
+                    : new Vector2(bounds.Center.X,
+                        bounds.Y + bounds.Height * offset);
+                Vector2 tip = horizontal
+                    ? root + new Vector2((index % 2 == 0 ? -7f : 7f),
+                        -bounds.Height * eruption)
+                    : root + new Vector2(
+                        (index % 2 == 0 ? -1f : 1f) *
+                            bounds.Width * eruption,
+                        -8f);
+                DrawWorldLine(root, tip, 8f, new Color(62, 49, 31));
+                DrawWorldLine(root, tip, 3f, new Color(68, 104, 54));
+            }
+            return;
         }
+
+        int ground = bounds.Bottom - 3;
+        for (int index = 0; index < 5; index++)
+        {
+            float x = bounds.X + 6f + index * (bounds.Width - 12f) / 4f;
+            float height = (31f + (index % 2) * 17f) * eruption;
+            Vector2 root = new(x, ground);
+            Vector2 tip = new(x + (index % 2 == 0 ? -8f : 8f),
+                ground - height);
+            DrawWorldLine(root, tip, 9f, new Color(58, 45, 30));
+            DrawWorldLine(root, tip, 4f, new Color(68, 102, 52));
+        }
+    }
+
+    private void DrawCorruptedTreantRootHazard(
+        RootHazard hazard,
+        Rectangle bounds)
+    {
+        float progress = hazard.PhaseProgress;
+        int groundY = bounds.Bottom - 5;
+
+        if (hazard.State == RootHazardState.Telegraph)
+        {
+            byte glowAlpha = (byte)MathHelper.Lerp(30f, 105f, progress);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.X + 3, groundY - 5,
+                    bounds.Width - 6, 9),
+                new Color((byte)91, (byte)37, (byte)63, glowAlpha));
+            DrawRootLine(
+                new Vector2(bounds.X + 6, groundY),
+                new Vector2(bounds.Center.X - 7, groundY - 6),
+                new Color(124, 52, 74, 175),
+                3f);
+            DrawRootLine(
+                new Vector2(bounds.Center.X - 7, groundY - 6),
+                new Vector2(bounds.Center.X + 5, groundY - 2),
+                new Color(188, 63, 91, 190),
+                2f);
+            DrawRootLine(
+                new Vector2(bounds.Center.X + 5, groundY - 2),
+                new Vector2(bounds.Right - 5, groundY - 8),
+                new Color(117, 48, 69, 170),
+                3f);
+
+            int tipHeight = (int)MathF.Round(3f + progress * 12f);
+            for (int index = 0; index < 3; index++)
+            {
+                int x = bounds.X + 13 + index * 18;
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(x, groundY - tipHeight,
+                        4, tipHeight),
+                    new Color(78, 48, 34, 210));
+            }
+
+            for (int index = 0; index < 4; index++)
+            {
+                int x = bounds.X + 7 + index * 15;
+                int y = groundY - 3 - ((index + (int)(progress * 5f)) % 3) * 3;
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(x, y, 3, 3),
+                    new Color(123, 82, 48, 145));
+            }
+            return;
+        }
+
+        float eruption = progress < 0.2f
+            ? progress / 0.2f
+            : progress > 0.68f
+                ? 1f - (progress - 0.68f) / 0.32f
+                : 1f;
+        eruption = MathHelper.Clamp(eruption, 0f, 1f);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.X + 2, groundY - 6,
+                bounds.Width - 4, 10),
+            new Color(72, 39, 31, 125));
+
+        for (int index = 0; index < 4; index++)
+        {
+            int x = bounds.X + 8 + index * 15;
+            int height = (int)MathF.Round((29f + index % 2 * 13f) * eruption);
+            Vector2 root = new(x, groundY);
+            Vector2 tip = new(x + (index % 2 == 0 ? -6f : 7f),
+                groundY - height);
+            DrawRootLine(root, tip, new Color(87, 51, 34), 7f);
+            DrawRootLine(
+                tip,
+                tip + new Vector2(index % 2 == 0 ? -8f : 8f, 8f),
+                new Color(113, 60, 46),
+                4f);
+        }
+    }
+
+    private void DrawRootLine(
+        Vector2 from,
+        Vector2 to,
+        Color color,
+        float thickness)
+    {
+        Vector2 delta = to - from;
+        float length = delta.Length();
+
+        if (length <= 0.01f)
+            return;
+
+        _spriteBatch.Draw(
+            _pixel,
+            from,
+            sourceRectangle: null,
+            color,
+            MathF.Atan2(delta.Y, delta.X),
+            new Vector2(0f, 0.5f),
+            new Vector2(length, thickness),
+            SpriteEffects.None,
+            layerDepth: 0f);
     }
 
     private void DrawTreasureChest(TreasureChest chest)
@@ -1448,63 +1629,13 @@ public sealed class GameRenderer : IDisposable
             new Color(190, 145, 62));
     }
 
-    private void DrawAncientTreant(AncientTreant boss)
+    private void DrawAncientTreant(AncientTreant boss, GameTime gameTime)
     {
         Rectangle bounds = boss.Bounds;
-        Color bark = boss.IsHitFlashing
-            ? new Color(235, 224, 190)
-            : boss.Phase switch
-            {
-                AncientTreantPhase.PhaseThree => new Color(105, 57, 43),
-                AncientTreantPhase.PhaseTwo => new Color(88, 67, 42),
-                _ => new Color(72, 69, 43)
-            };
-        Color corruption = boss.Phase == AncientTreantPhase.PhaseThree
-            ? new Color(169, 52, 91)
-            : new Color(116, 49, 103);
-        Rectangle trunk = new(
-            bounds.X + 29,
-            bounds.Y + 38,
-            bounds.Width - 58,
-            bounds.Height - 38);
-        Rectangle crown = new(
-            bounds.X + 10,
-            bounds.Y + 4,
-            bounds.Width - 20,
-            48);
+        _wildForestApexSpriteRenderer.Draw(boss, gameTime);
 
-        _spriteBatch.Draw(
-            _pixel,
-            new Rectangle(bounds.X + 10, bounds.Bottom - 8, bounds.Width - 20, 14),
-            new Color(10, 14, 11, 175));
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X, bounds.Y + 47, 39, 13), bark);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.Right - 39, bounds.Y + 47, 39, 13), bark);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 19, bounds.Bottom - 18, 22, 25), bark);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.Right - 41, bounds.Bottom - 18, 22, 25), bark);
-        _spriteBatch.Draw(_pixel, trunk, bark);
-        DrawRectangleOutline(trunk, 4, new Color(52, 42, 30));
-        _spriteBatch.Draw(_pixel, crown, new Color(48, 74, 39));
-        _spriteBatch.Draw(_pixel, new Rectangle(crown.X - 8, crown.Y + 14, 20, 24), new Color(55, 82, 43));
-        _spriteBatch.Draw(_pixel, new Rectangle(crown.Right - 12, crown.Y + 10, 20, 28), new Color(55, 82, 43));
-        _spriteBatch.Draw(_pixel, new Rectangle(trunk.Center.X - 7, trunk.Y + 9, 14, 40), corruption);
-        _spriteBatch.Draw(_pixel, new Rectangle(trunk.X + 8, trunk.Y + 14, 8, 8), new Color(240, 58, 61));
-        _spriteBatch.Draw(_pixel, new Rectangle(trunk.Right - 16, trunk.Y + 14, 8, 8), new Color(240, 58, 61));
-
-        if (boss.Attack.IsActive)
-        {
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(bounds.Right - 4, bounds.Y + 49, 47, 14),
-                new Color(112, 72, 42));
-        }
-
-        if (boss.IsStaggered)
-        {
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(bounds.Center.X - 12, bounds.Y - 10, 24, 5),
-                new Color(225, 183, 244, 220));
-        }
+        if (!boss.IsAlive)
+            return;
 
         int barWidth = 126;
         int healthWidth = (int)((barWidth - 4) *
@@ -2140,6 +2271,78 @@ public sealed class GameRenderer : IDisposable
             panel.Y + 33,
             new Color(222, 231, 225),
             scale: 1);
+    }
+
+    private void DrawSequentialEnemyTestStatus(GameSession gameSession)
+    {
+        var panel = new Rectangle(12, 82, 250, 46);
+        _spriteBatch.Draw(_pixel, panel, new Color(21, 28, 33, 226));
+        DrawRectangleOutline(panel, 2, new Color(189, 151, 79));
+
+        DrawDebugText(
+            "WILD FOREST SHOWCASE",
+            panel.X + 8,
+            panel.Y + 7,
+            new Color(241, 205, 111),
+            scale: 1);
+        DrawDebugText(
+            "PROXIMITY AI 650 PX",
+            panel.X + 8,
+            panel.Y + 20,
+            new Color(167, 177, 185),
+            scale: 1);
+
+        DrawDebugText(
+            "F6 RESET",
+            panel.Right - 58,
+            panel.Bottom - 10,
+            new Color(113, 126, 135),
+            scale: 1);
+    }
+
+    private void DrawWildForestShowcaseLabel(string text, Rectangle bounds)
+    {
+        if (string.IsNullOrEmpty(text))
+            return;
+
+        const int scale = 1;
+        int width = text.Length * 6 * scale;
+        int x = bounds.Center.X - width / 2;
+        int y = bounds.Top - 18;
+        var background = new Rectangle(x - 3, y - 3, width + 6, 12);
+        _spriteBatch.Draw(_pixel, background, new Color(12, 17, 25, 185));
+        DrawDebugText(text, x, y, new Color(230, 220, 179), scale);
+    }
+
+    private static Rectangle GetEnemyVisualBounds(Enemy enemy)
+    {
+        if (enemy is BloodBat bat)
+        {
+            Vector2 batSize = EnemyVisualProfile.BloodBat.VisualSize;
+            return new Rectangle(
+                (int)MathF.Round(bat.Position.X - batSize.X / 2f),
+                (int)MathF.Round(
+                    bat.Position.Y - bat.FlightVisualOffset - batSize.Y / 2f),
+                (int)MathF.Ceiling(batSize.X),
+                (int)MathF.Ceiling(batSize.Y));
+        }
+
+        Vector2 visualSize = enemy switch
+        {
+            DireWolf => EnemyVisualProfile.DireWolf.VisualSize,
+            GiantSpider => EnemyVisualProfile.GiantSpider.VisualSize,
+            ThornCrawler => EnemyVisualProfile.ThornCrawler.VisualSize,
+            CorruptedTreant => EnemyVisualProfile.CorruptedTreant.VisualSize,
+            GoblinChief => EnemyVisualProfile.GoblinChief.VisualSize,
+            MotherSpider => EnemyVisualProfile.MotherSpider.VisualSize,
+            Spiderling => EnemyVisualProfile.Spiderling.VisualSize,
+            _ => enemy.Size
+        };
+        return new Rectangle(
+            (int)MathF.Round(enemy.Position.X - visualSize.X / 2f),
+            enemy.Bounds.Bottom - (int)MathF.Ceiling(visualSize.Y),
+            (int)MathF.Ceiling(visualSize.X),
+            (int)MathF.Ceiling(visualSize.Y));
     }
 
     private static Color GetRarityColor(ItemRarity rarity)

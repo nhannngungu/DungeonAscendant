@@ -66,6 +66,7 @@ Armor now drops with an independent C1-C5 progression Grade, three identical une
 | F3 | Toggle combat hitbox debugging |
 | F5 | Cycle milestone sample weapons for testing |
 | F6 | Cycle Light / Medium / Heavy sample armor for testing |
+| F7 | Restart the sequential Wild Forest enemy test when its debug flag is enabled |
 | E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
 | Q/E (Inventory open) | Previous/next Inventory tab |
@@ -118,6 +119,22 @@ The run tracks Region independently from World Tier. Region selects content and 
 The Wild Forest uses dark earth, moss markings, corrupted growth, roots, vines, and thorn-like boundaries drawn entirely from runtime primitives. Its Boss is the Ancient Treant.
 
 ## Wild Forest Encounters
+
+### Sequential Enemy Test Mode
+
+`GameSession.DebugSequentialWildForestEnemies` temporarily replaces Map 1's procedural population with one main test enemy at a time. Its order is Goblin, Goblin Hunter, Dire Wolf, Giant Spider, Blood Bat, Thorn Crawler, Corrupted Treant, Goblin Chief, Mother Spider, and Ancient Treant. Set the flag to `false` to restore the unchanged procedural room compositions, Elite rules, and normal Region Boss flow.
+
+Test enemies spawn in the first Enemy room at role-sensitive horizontal distances: 425 pixels for standard melee enemies, 475 for Thorn Crawler, 500 for Blood Bat and Corrupted Treant, 550 for Mother Spider, and 650 for Goblin Hunter. Ground and collision checks adjust the exact position within the room. The next stage begins after 1.25 seconds. Mother Spider can use its normal summons; orphaned Spiderlings and temporary projectiles/hazards are cleared when the main enemy dies.
+
+Sequential kills grant no EXP, loot, kill-count progress, exit unlock, checkpoint progress, or Boss reward. Ancient Treant retains its normal combat implementation but uses the test room and completes the sequence without setting normal `BossDefeated`. The HUD displays the current test enemy and `WILD FOREST TEST COMPLETE`; press `F7` to restart the sequence without conflicting with the existing F6 Armor shortcut.
+
+### Goblin Visual Pass - Phase 1
+
+Goblin and Goblin Hunter use `EnemyVisualProfile`, `EnemyAnimationController`, and `GoblinFamilySpriteRenderer`. Gameplay remains in the enemy classes; the presentation controller reads movement, hit, stagger, death, and attack-phase state. Poses are authored facing right and the entire layered composition is mirrored when facing left without reversing animation order. Visual sizes are 52x50 for Goblin and 56x57 for Hunter, while their existing 36x44 and 36x46 collision boxes remain unchanged.
+
+Goblin presentation states are Idle, Move, Attack Windup (0.48s), Attack Active (0.17s), Attack Recovery (0.40s), Hurt, Stagger, and one-shot Death. Its short crude sword pose uses the live `MeleeAttack.PhaseProgress`, so the committed slash coincides with the existing active hit window. Hunter presentation states are Idle, Move, Retreat, Aim (0.26s), Shoot (0.06s), Recovery (0.18s), Hurt, Stagger, and one-shot Death. The Hunter stabilizes during its shot sequence; its bow, string, arms, and nocked arrow use the actual target direction, and the gameplay arrow originates at the rendered bow release point.
+
+Defeated Goblins and Hunters are removed from combat and progression immediately, then retained in a presentation-only list for 0.57 seconds so their non-looping collapse can finish. No textures are created per frame. Run `dotnet run --no-build -- --validate-enemy-visuals` for headless checks covering state mapping, unchanged hitboxes/timings, vertical bow aim, arrow release alignment, arrow blocking, death cleanup, and the sequential Goblin-to-Hunter transition.
 
 Base archetype selection weights are:
 

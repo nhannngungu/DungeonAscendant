@@ -13,11 +13,22 @@ public sealed class GoblinChief : Enemy
     public const float WarCryDurationSeconds = 5f;
     public const float WarCryRadius = 190f;
     public const float WarCryCooldownSeconds = 8f;
+    public const float WarCryWindupSeconds = 0.32f;
+    public const float WarCryActiveSeconds = 0.18f;
+    public const float WarCryRecoverySeconds = 0.30f;
 
     private float _warCryCooldownRemaining = 2.5f;
-    private float _warCryFeedbackRemaining;
+    private float _warCryStateTimeRemaining;
+    private float _warCryStateDuration;
 
-    public bool IsWarCryActive => _warCryFeedbackRemaining > 0f;
+    public GoblinChiefWarCryState WarCryState { get; private set; }
+    public bool IsWarCryActive => WarCryState != GoblinChiefWarCryState.Ready;
+    public float WarCryProgress => _warCryStateDuration <= 0f
+        ? 0f
+        : Math.Clamp(
+            1f - _warCryStateTimeRemaining / _warCryStateDuration,
+            0f,
+            1f);
 
     public GoblinChief(
         Vector2 position,
@@ -50,9 +61,9 @@ public sealed class GoblinChief : Enemy
         _warCryCooldownRemaining = MathF.Max(
             0f,
             _warCryCooldownRemaining - elapsedSeconds);
-        _warCryFeedbackRemaining = MathF.Max(
+        _warCryStateTimeRemaining = MathF.Max(
             0f,
-            _warCryFeedbackRemaining - elapsedSeconds);
+            _warCryStateTimeRemaining - elapsedSeconds);
     }
 
     protected override void UpdateBehavior(
@@ -66,11 +77,19 @@ public sealed class GoblinChief : Enemy
         if (!IsPlayerDetected(player.Position))
             return;
 
+        if (WarCryState != GoblinChiefWarCryState.Ready)
+        {
+            UpdateWarCry(enemies);
+            return;
+        }
+
         if (_warCryCooldownRemaining <= 0f && enemies != null)
         {
-            BuffNearbyGoblins(enemies);
+            EnterWarCryState(
+                GoblinChiefWarCryState.Windup,
+                WarCryWindupSeconds);
             _warCryCooldownRemaining = WarCryCooldownSeconds;
-            _warCryFeedbackRemaining = 0.45f;
+            return;
         }
 
         float distanceSquared = Vector2.DistanceSquared(
@@ -85,6 +104,39 @@ public sealed class GoblinChief : Enemy
         {
             MoveToward(gameTime, player.Position, Attack.Range, dungeon);
         }
+    }
+
+    private void UpdateWarCry(EnemyManager enemies)
+    {
+        if (_warCryStateTimeRemaining > 0f)
+            return;
+
+        switch (WarCryState)
+        {
+            case GoblinChiefWarCryState.Windup:
+                BuffNearbyGoblins(enemies);
+                EnterWarCryState(
+                    GoblinChiefWarCryState.Cry,
+                    WarCryActiveSeconds);
+                break;
+            case GoblinChiefWarCryState.Cry:
+                EnterWarCryState(
+                    GoblinChiefWarCryState.Recovery,
+                    WarCryRecoverySeconds);
+                break;
+            default:
+                EnterWarCryState(GoblinChiefWarCryState.Ready, 0f);
+                break;
+        }
+    }
+
+    private void EnterWarCryState(
+        GoblinChiefWarCryState state,
+        float durationSeconds)
+    {
+        WarCryState = state;
+        _warCryStateTimeRemaining = durationSeconds;
+        _warCryStateDuration = durationSeconds;
     }
 
     private void BuffNearbyGoblins(EnemyManager enemies)
@@ -109,4 +161,12 @@ public sealed class GoblinChief : Enemy
                 WarCryDurationSeconds);
         }
     }
+}
+
+public enum GoblinChiefWarCryState
+{
+    Ready,
+    Windup,
+    Cry,
+    Recovery
 }

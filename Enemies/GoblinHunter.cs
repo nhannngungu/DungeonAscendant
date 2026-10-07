@@ -12,6 +12,8 @@ public sealed class GoblinHunter : Enemy
     public const float PreferredMinimumRange = 145f;
     public const float PreferredMaximumRange = 220f;
     public const float ArrowRange = 300f;
+    public bool IsRetreating { get; private set; }
+    public Vector2 VisualAimDirection { get; private set; } = Vector2.UnitX;
 
     public GoblinHunter(
         Vector2 position,
@@ -46,17 +48,27 @@ public sealed class GoblinHunter : Enemy
         EnemyManager enemies)
     {
         if (!IsPlayerDetected(player.Position))
+        {
+            IsRetreating = false;
             return;
+        }
 
         Vector2 toPlayer = player.Position - Position;
         float distanceSquared = toPlayer.LengthSquared();
         float distance = MathF.Sqrt(distanceSquared);
+        IsRetreating = false;
+        UpdateAimDirection(player.Position);
+        bool isStabilizedForShot = Attack.IsTelegraphing ||
+            Attack.IsActive ||
+            Attack.IsRecovering;
 
-        if (distance < PreferredMinimumRange)
+        if (!isStabilizedForShot && distance < PreferredMinimumRange)
         {
+            IsRetreating = true;
             MoveAway(gameTime, player.Position, dungeon);
+            return;
         }
-        else if (distance > PreferredMaximumRange)
+        else if (!isStabilizedForShot && distance > PreferredMaximumRange)
         {
             MoveToward(
                 gameTime,
@@ -67,12 +79,47 @@ public sealed class GoblinHunter : Enemy
 
         if (distance <= ArrowRange && Attack.TryStart())
         {
+            Vector2 releasePosition = GetArrowReleasePosition();
             projectiles.SpawnArrow(
-                Position,
-                player.Position - Position,
+                releasePosition,
+                player.Position - releasePosition,
                 EffectiveAttackDamage,
                 RoomId);
         }
+    }
+
+    public Vector2 GetBowGripPosition()
+    {
+        float facingSign = Facing == EnemyFacingDirection.Left ? -1f : 1f;
+        return Position + new Vector2(facingSign * 19f, -6f);
+    }
+
+    public Vector2 GetArrowReleasePosition()
+    {
+        return GetBowGripPosition() + VisualAimDirection * 18f;
+    }
+
+    private void UpdateAimDirection(Vector2 target)
+    {
+        Vector2 initialDirection = target - Position;
+
+        if (initialDirection.LengthSquared() < 0.001f)
+            initialDirection = Facing == EnemyFacingDirection.Left
+                ? -Vector2.UnitX
+                : Vector2.UnitX;
+        else
+            initialDirection.Normalize();
+
+        Vector2 releasePosition = GetBowGripPosition() +
+            initialDirection * 18f;
+        Vector2 finalDirection = target - releasePosition;
+
+        if (finalDirection.LengthSquared() < 0.001f)
+            finalDirection = initialDirection;
+        else
+            finalDirection.Normalize();
+
+        VisualAimDirection = finalDirection;
     }
 
     private static int GetScaledStat(

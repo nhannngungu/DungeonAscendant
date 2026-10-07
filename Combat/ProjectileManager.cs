@@ -77,7 +77,8 @@ public sealed class ProjectileManager
     public void SpawnWebShot(
         Vector2 position,
         Vector2 direction,
-        int roomId)
+        int roomId,
+        bool empoweredVisual = false)
     {
         _projectiles.Add(new Projectile(
             ProjectileType.WebShot,
@@ -90,7 +91,8 @@ public sealed class ProjectileManager
             unblockable: false,
             WebShotSlowDurationSeconds,
             WebSlowMultiplier,
-            roomId));
+            roomId,
+            empoweredVisual: empoweredVisual));
     }
 
     public bool TryCreateWebPatch(
