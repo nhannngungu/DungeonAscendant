@@ -43,6 +43,37 @@ public sealed class ProjectileManager
             roomId));
     }
 
+    public void SpawnPlayerProjectile(
+        ProjectileDefinition definition,
+        Vector2 position,
+        Vector2 direction,
+        float speedMultiplier,
+        int damage,
+        float poiseDamage,
+        float knockback,
+        int roomId)
+    {
+        if (definition == null)
+            return;
+
+        _projectiles.Add(new Projectile(
+            definition.Type,
+            position,
+            NormalizeOrDefault(direction) * definition.Speed *
+                MathF.Max(.1f, speedMultiplier),
+            definition.Size,
+            definition.LifetimeSeconds,
+            damage,
+            blockable: false,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            isPlayerOwned: true,
+            poiseDamage,
+            knockback));
+    }
+
     public void SpawnWebShot(
         Vector2 position,
         Vector2 direction,
@@ -98,7 +129,8 @@ public sealed class ProjectileManager
                 continue;
             }
 
-            if (!IsNearPlayer(projectile.Position, player.Position))
+            if (!projectile.IsPlayerOwned &&
+                !IsNearPlayer(projectile.Position, player.Position))
                 continue;
 
             Vector2 desiredPosition = projectile.Position +
@@ -116,6 +148,9 @@ public sealed class ProjectileManager
             }
 
             projectile.Position = resolvedPosition;
+
+            if (projectile.IsPlayerOwned)
+                continue;
 
             bool intersectsBody = projectile.Bounds.Intersects(
                 player.BodyHurtbox);

@@ -17,6 +17,9 @@ public sealed class Projectile
     public float SlowDurationSeconds { get; }
     public float SlowMovementMultiplier { get; }
     public int RoomId { get; }
+    public bool IsPlayerOwned { get; }
+    public float PoiseDamage { get; }
+    public float Knockback { get; }
     public Rectangle Bounds => DungeonCollision.CreateBounds(Position, Size);
 
     public Projectile(
@@ -30,7 +33,10 @@ public sealed class Projectile
         bool unblockable,
         float slowDurationSeconds,
         float slowMovementMultiplier,
-        int roomId)
+        int roomId,
+        bool isPlayerOwned = false,
+        float poiseDamage = 0f,
+        float knockback = 0f)
     {
         Type = type;
         SourcePosition = position;
@@ -44,5 +50,8 @@ public sealed class Projectile
         SlowDurationSeconds = slowDurationSeconds;
         SlowMovementMultiplier = slowMovementMultiplier;
         RoomId = roomId;
+        IsPlayerOwned = isPlayerOwned;
+        PoiseDamage = poiseDamage;
+        Knockback = knockback;
     }
 }

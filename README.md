@@ -6,14 +6,14 @@ DungeonAscendant is a code-first 2D side-scrolling medieval fantasy action rogue
 
 Explore a procedurally generated chain of side-view combat rooms, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype combines gravity, jumping, solid platforms, horizontal transitions, and a side-follow camera with timing-based sword combat, stamina defense, and enemy stagger, all without external art assets.
 
-## Current Version: Combat 2.0 Foundation
+## Current Version: Seven-Weapon Archetype Foundation
 
-The Combat 2.0 milestone builds skill-based action combat on the stable side-scrolling foundation while preserving dungeon progression, World Tiers, loot, equipment, the Wild Forest roster, and the Ancient Treant encounter.
+Seven weapon families now change the procedural Player silhouette, hold pose, attack rhythm, combo length, range, stamina pressure, hit geometry, movement commitment, poise/knockback, defense rules, and melee/projectile delivery while preserving the side-scrolling, dungeon, armor, and Combat 2.0 foundations.
 
 ## Current Features
 
 - Frame-rate-independent left/right movement, gravity, jumping, falling, and grounded state
-- Data-driven three-hit light combo with one-input buffering and distinct finisher timing
+- Data-driven per-family combos with one-input buffering and distinct finisher timing
 - Heavy sword attack with higher damage, knockback, poise damage, and stamina cost
 - Stamina-powered dodge, directional block, and guard break
 - Enemy windup/active/recovery phases with shared poise recovery and stagger
@@ -39,6 +39,10 @@ The Combat 2.0 milestone builds skill-based action combat on the stable side-scr
 - Procedural Weapon and Armor drops with five rarity tiers
 - Manual nearby loot pickup and a 12-slot run inventory
 - Equipment swapping with derived damage and maximum-health bonuses
+- Seven distinct weapon families: Long Sword + Shield, Great Sword, Battle Axe, Spear, Dual Daggers, Bow, and Arcane Staff
+- Charged-release Bow arrows and Arcane Staff bolts with dungeon-wall and enemy collision
+- Light, Medium, and Heavy armor classes with distinct defense, mobility, stamina, and silhouettes
+- Shield/block availability derived from the equipped weapon family
 - Code-rendered inventory, equipment, comparison, and loot visuals
 - Experience, leveling, stat growth, and kill tracking
 - Player-level enemy scaling
@@ -53,11 +57,13 @@ The Combat 2.0 milestone builds skill-based action combat on the stable side-scr
 | Enter | Start from the start screen |
 | A/D or Left/Right Arrow | Move and change facing direction |
 | Space | Jump while grounded |
-| Left Mouse or J | Light attack / continue the three-hit combo |
-| Right Mouse or K | Heavy attack |
+| Left Mouse or J | Light attack / continue the equipped weapon's combo |
+| Right Mouse or K | Heavy attack; hold and release to charge Bow/Arcane attacks |
 | Left or Right Shift | Dodge in the held movement direction, or facing direction |
 | Left Ctrl (hold) | Directional block |
 | F3 | Toggle combat hitbox debugging |
+| F5 | Cycle milestone sample weapons for testing |
+| F6 | Cycle Light / Medium / Heavy sample armor for testing |
 | E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
 | W/S or Up/Down | Change inventory selection |
@@ -70,6 +76,23 @@ The Combat 2.0 milestone builds skill-based action combat on the stable side-scr
 The default sword uses three light attacks with progressively stronger damage, poise damage, reach, and recovery. One late light input can be buffered into the next strike; waiting more than 0.55 seconds after a strike resets the chain. Heavy attacks consume 30 stamina and have a visible 0.32-second startup.
 
 The Player has 100 stamina. Dodge costs 24 stamina, lasts 0.34 seconds, and is invulnerable from 0.05 through 0.22 seconds. Stamina begins regenerating after a 0.8-second delay at 30 points per second. Blocking uses an invisible 80-by-90 forward defense zone, only protects the facing side, and consumes one stamina per incoming damage, with a minimum cost of 10. An exhausted guard breaks for 0.7 seconds and allows half damage through. Goblin Hunter arrows are blockable from the front and are consumed on contact with an active guard.
+
+## Equipment Identity
+
+Every new run starts with a Knight Long Sword and Knight Armor equipped. While `Player.DebugGiveAllTestEquipment` is `true`, the run inventory contains Knight Long Sword, Iron Great Sword, War Axe, Hunter Spear, Twin Daggers, Hunter Bow, Apprentice Arcane Staff, and one Light/Medium/Heavy armor sample. Press `I`, select with `W/S` or the arrow keys, and press `Enter` to equip. The selected item name and `Weapon Family` are printed in the inventory panel. The standard 12-slot capacity is unchanged. Set the flag to `false` to restore an empty starting inventory and normal loot/equip behavior. `F5` and `F6` remain available as additional weapon/armor cycle shortcuts.
+
+- Long Swords use the balanced three-hit combo and are the only family that renders a shield or accepts normal block input.
+- Great Swords use slower, longer, higher-damage two-handed swings with the most committed movement and a powerful overhead heavy.
+- Battle Axes use medium-slow chops with shorter reach than Great Swords but the strongest knockback and poise pressure.
+- Spears use two long narrow thrusts, a sweep finisher, and a long heavy lunge with the greatest melee reach.
+- Dual Daggers use a low dual-wield stance, a fast five-hit advancing combo, short recovery, and the shortest melee reach.
+- Bows have no melee chain: light fires an arrow and held heavy releases a faster, stronger charged arrow from the visible bow.
+- Arcane Staves use a caster stance and slower, heavier arcane bolts. Their attacks are marked `MagicReady` for a future resource system but currently spend stamina.
+- Scout Armor has the narrowest silhouette, fastest movement/dodge, and strongest stamina regeneration, but the least mitigation.
+- Knight Armor retains the established balanced hero silhouette and baseline mobility.
+- Fortress Armor adds broad plate and greaves, more health and mitigation, cheaper shield guarding, but slower movement/dodge and stamina regeneration.
+
+Tier is the progression level and rarity is an independent quality value. Generated dungeon equipment now rolls a weapon family or armor class in addition to its existing tier and rarity.
 
 Common melee attacks and arrows are blockable. Web projectiles and root hazards remain outside defensive handling. F3 toggles the developer combat overlay, which defaults off and can show body, defense, melee-attack, and projectile zones plus block-state labels. Every enemy has regenerating poise; low-poise enemies such as Goblins and Blood Bats stagger quickly, while Corrupted Treants, named Elites, and the Ancient Treant require heavier pressure. The boss restores its poise on stagger and gains 2.5 seconds of stagger resistance to prevent stun locking.
 

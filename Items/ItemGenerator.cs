@@ -105,21 +105,22 @@ public sealed class ItemGenerator
         if (slot == EquipmentSlot.Weapon)
         {
             int baseDamageBonus = 4 + itemLevel * 2;
-            return new EquipmentItem(
+            WeaponFamily family = (WeaponFamily)_random.Next(
+                Enum.GetValues<WeaponFamily>().Length);
+            WeaponDefinition definition = EquipmentCatalog.CreateGeneratedWeapon(
+                family,
                 itemLevel,
-                rarity,
-                slot,
-                ScaleAndRound(baseDamageBonus, rarityPercent),
-                healthBonus: 0);
+                ScaleAndRound(baseDamageBonus, rarityPercent));
+            return new EquipmentItem(definition, rarity);
         }
 
         int baseHealthBonus = 10 + itemLevel * 5;
-        return new EquipmentItem(
+        ArmorClass armorClass = (ArmorClass)_random.Next(3);
+        ArmorDefinition armor = EquipmentCatalog.CreateGeneratedArmor(
+            armorClass,
             itemLevel,
-            rarity,
-            slot,
-            damageBonus: 0,
             ScaleAndRound(baseHealthBonus, rarityPercent));
+        return new EquipmentItem(armor, rarity);
     }
 
     public ItemRarity RollRarity(bool isElite)

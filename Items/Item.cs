@@ -4,12 +4,17 @@ namespace DungeonAscendant.Items;
 
 public abstract class Item
 {
-    public int ItemLevel { get; }
+    public string Id { get; }
+    public string Name { get; }
+    public int Tier { get; }
+    public int ItemLevel => Tier;
     public ItemRarity Rarity { get; }
 
-    protected Item(int itemLevel, ItemRarity rarity)
+    protected Item(string id, string name, int tier, ItemRarity rarity)
     {
-        ItemLevel = Math.Max(1, itemLevel);
+        Id = string.IsNullOrWhiteSpace(id) ? "item" : id;
+        Name = string.IsNullOrWhiteSpace(name) ? "Item" : name;
+        Tier = Math.Max(1, tier);
         Rarity = rarity;
     }
 }

@@ -6,6 +6,7 @@ public enum CombatState
     Moving,
     Jumping,
     LightAttack,
+    ChargingHeavy,
     HeavyAttack,
     Blocking,
     Dodging,

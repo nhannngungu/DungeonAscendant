@@ -18,6 +18,11 @@ public sealed class AttackDefinition
     public float Knockback { get; }
     public float Range { get; }
     public float Thickness { get; }
+    public AttackDelivery Delivery { get; }
+    public AttackHitboxShape HitboxShape { get; }
+    public float ForwardMovementSpeed { get; }
+    public ProjectileDefinition Projectile { get; }
+    public AttackResourceKind ResourceKind { get; }
     public bool IsHeavy => Kind == AttackKind.Heavy;
     public float TotalTime => StartupTime + ActiveTime + RecoveryTime;
 
@@ -31,7 +36,12 @@ public sealed class AttackDefinition
         float recoveryTime,
         float knockback,
         float range,
-        float thickness)
+        float thickness,
+        AttackHitboxShape hitboxShape = AttackHitboxShape.StandardArc,
+        float forwardMovementSpeed = 0f,
+        AttackDelivery delivery = AttackDelivery.Melee,
+        ProjectileDefinition projectile = null,
+        AttackResourceKind resourceKind = AttackResourceKind.Stamina)
     {
         Kind = kind;
         DamageMultiplier = MathF.Max(0f, damageMultiplier);
@@ -43,6 +53,13 @@ public sealed class AttackDefinition
         Knockback = MathF.Max(0f, knockback);
         Range = MathF.Max(1f, range);
         Thickness = MathF.Max(1f, thickness);
+        Delivery = delivery;
+        HitboxShape = delivery == AttackDelivery.Melee
+            ? hitboxShape
+            : AttackHitboxShape.None;
+        ForwardMovementSpeed = MathF.Max(0f, forwardMovementSpeed);
+        Projectile = projectile;
+        ResourceKind = resourceKind;
     }
 
     public int CalculateDamage(int baseDamage)

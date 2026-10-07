@@ -34,6 +34,12 @@ public sealed class Inventory
         return item != null && _items.Remove(item);
     }
 
+    public bool ContainsItemId(string itemId)
+    {
+        return !string.IsNullOrWhiteSpace(itemId) &&
+            _items.Exists(item => item.Id == itemId);
+    }
+
     public EquipmentItem GetItem(int index)
     {
         return index >= 0 && index < Count

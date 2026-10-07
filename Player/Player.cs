@@ -13,6 +13,8 @@ namespace DungeonAscendant.Player;
 /// </summary>
 public sealed class Player
 {
+    public const bool DebugGiveAllTestEquipment = true;
+
     private const int BaseExperienceRequirement = 100;
     private const int ExperienceRequirementPerLevel = 50;
     private const int HealthIncreasePerLevel = 20;
@@ -42,6 +44,7 @@ public sealed class Player
     public bool IsGrounded { get; private set; }
     public float MovementSpeed { get; }
     public float EffectiveMovementSpeed => MovementSpeed *
+        (EquippedArmor?.MoveSpeedModifier ?? 1f) *
         (IsSlowed ? _slowMovementMultiplier : 1f);
     public Vector2 Size { get; }
     public Rectangle Bounds => new(
@@ -59,6 +62,13 @@ public sealed class Player
     public bool IsAlive => CurrentHealth > 0;
     public int MeleeDamage => _baseMeleeDamage +
         (EquippedItems.Weapon?.DamageBonus ?? 0);
+    public WeaponDefinition EquippedWeapon =>
+        EquippedItems.Weapon?.WeaponDefinition ?? EquipmentCatalog.KnightLongSword;
+    public ArmorDefinition EquippedArmor =>
+        EquippedItems.Armor?.ArmorDefinition ?? EquipmentCatalog.KnightArmor;
+    public WeaponFamily WeaponFamily => EquippedWeapon.Family;
+    public ArmorClass ArmorClass => EquippedArmor.Class;
+    public bool UsesShield => EquippedWeapon.UsesShield;
     public int Level { get; private set; }
     public int CurrentExperience { get; private set; }
     public int ExperienceToNextLevel =>
@@ -85,6 +95,8 @@ public sealed class Player
                     ? PlayerVisualState.GuardBreak
                     : Combat.State == CombatState.Dodging
                         ? PlayerVisualState.Dodge
+                        : Combat.State == CombatState.ChargingHeavy
+                            ? PlayerVisualState.HeavyCharge
                         : Combat.State == CombatState.HeavyAttack
                             ? PlayerVisualState.HeavyAttack
                             : Combat.State == CombatState.LightAttack
@@ -92,6 +104,8 @@ public sealed class Player
                                 {
                                     AttackKind.LightTwo => PlayerVisualState.LightAttack2,
                                     AttackKind.LightThree => PlayerVisualState.LightAttack3,
+                                    AttackKind.LightFour => PlayerVisualState.LightAttack4,
+                                    AttackKind.LightFive => PlayerVisualState.LightAttack5,
                                     _ => PlayerVisualState.LightAttack1
                                 }
                                 : Combat.State == CombatState.Blocking
@@ -118,6 +132,17 @@ public sealed class Player
         Inventory = new Inventory();
         EquippedItems = new Equipment();
         Combat = new PlayerCombat();
+        EquippedItems.SetStartingItems(
+            EquipmentCatalog.CreateStartingWeapon(),
+            EquipmentCatalog.CreateStartingArmor());
+
+        if (DebugGiveAllTestEquipment)
+        {
+            foreach (EquipmentItem item in EquipmentCatalog.CreateSampleInventory())
+                Inventory.TryAdd(item);
+        }
+
+        ApplyEquipmentToCombat();
         CurrentHealth = MaxHealth;
         Level = 1;
         CurrentExperience = 0;
@@ -172,8 +197,12 @@ public sealed class Player
         float elapsedSeconds = MathF.Min(
             (float)gameTime.ElapsedGameTime.TotalSeconds,
             1f / 20f);
+        float facingSign = Facing == FacingDirection.Left ? -1f : 1f;
         float horizontalVelocity = Combat.IsDodging
-            ? Combat.DodgeDirection * PlayerCombat.DodgeSpeed
+            ? Combat.DodgeDirection * PlayerCombat.DodgeSpeed *
+                Combat.DodgeSpeedMultiplier
+            : Combat.AttackAdvanceSpeed > 0f
+                ? facingSign * Combat.AttackAdvanceSpeed
             : horizontalInput * EffectiveMovementSpeed * Combat.MovementMultiplier;
         Velocity = new Vector2(
             horizontalVelocity,
@@ -216,11 +245,23 @@ public sealed class Player
 
     public bool EquipItem(EquipmentItem item)
     {
-        if (!EquippedItems.TryEquip(item, Inventory))
+        if (!EquippedItems.TryEquip(
+            item,
+            Inventory,
+            avoidDuplicateItemIds: DebugGiveAllTestEquipment))
             return false;
 
+        ApplyEquipmentToCombat();
         CurrentHealth = Math.Min(CurrentHealth, MaxHealth);
         return true;
+    }
+
+    public void EquipDebugItem(EquipmentItem item)
+    {
+        EquippedItems.SetDebugItem(item);
+        Combat.CancelActions();
+        ApplyEquipmentToCombat();
+        CurrentHealth = Math.Min(CurrentHealth, MaxHealth);
     }
 
     public bool ReceiveDamage(int damage)
@@ -228,7 +269,7 @@ public sealed class Player
         if (!IsAlive || IsInvulnerable || damage <= 0)
             return false;
 
-        ApplyHealthDamage(damage);
+        ApplyHealthDamage(ApplyArmorDefense(damage));
         return true;
     }
 
@@ -257,11 +298,13 @@ public sealed class Player
             if (IsInvulnerable)
                 return AttackResolution.Ignored;
 
-            ApplyHealthDamage(contact.Damage);
+            ApplyHealthDamage(ApplyArmorDefense(contact.Damage));
         }
         else if (resolution == AttackResolution.GuardBroken)
         {
-            ApplyHealthDamage(Math.Max(1, contact.Damage / 2), triggerHurt: false);
+            ApplyHealthDamage(
+                ApplyArmorDefense(Math.Max(1, contact.Damage / 2)),
+                triggerHurt: false);
         }
 
         return resolution;
@@ -319,6 +362,18 @@ public sealed class Player
 
         if (triggerHurt || !IsAlive)
             Combat.OnDamaged(IsAlive);
+    }
+
+    private int ApplyArmorDefense(int damage)
+    {
+        return Math.Max(
+            1,
+            (int)MathF.Round(damage * EquippedArmor.DamageTakenMultiplier));
+    }
+
+    private void ApplyEquipmentToCombat()
+    {
+        Combat.ApplyLoadout(EquippedWeapon, EquippedArmor);
     }
 
     public static Rectangle CreateDefenseBounds(

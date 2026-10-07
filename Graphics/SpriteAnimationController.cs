@@ -23,6 +23,9 @@ public sealed class SpriteAnimationController
             [PlayerVisualState.LightAttack1] = new(6, 0.06f, false),
             [PlayerVisualState.LightAttack2] = new(6, 0.065f, false),
             [PlayerVisualState.LightAttack3] = new(9, 0.0667f, false),
+            [PlayerVisualState.LightAttack4] = new(6, 0.05f, false),
+            [PlayerVisualState.LightAttack5] = new(9, 0.05f, false),
+            [PlayerVisualState.HeavyCharge] = new(6, 0.10f, true),
             [PlayerVisualState.HeavyAttack] = new(6, 0.1467f, false),
             [PlayerVisualState.Dodge] = new(5, 0.068f, false),
             [PlayerVisualState.Block] = new(2, 0.08f, false),
@@ -65,6 +68,9 @@ public sealed class SpriteAnimationController
         return state == PlayerVisualState.LightAttack1 ||
             state == PlayerVisualState.LightAttack2 ||
             state == PlayerVisualState.LightAttack3 ||
+            state == PlayerVisualState.LightAttack4 ||
+            state == PlayerVisualState.LightAttack5 ||
+            state == PlayerVisualState.HeavyCharge ||
             state == PlayerVisualState.HeavyAttack ||
             state == PlayerVisualState.Dodge ||
             state == PlayerVisualState.GuardBreak ||

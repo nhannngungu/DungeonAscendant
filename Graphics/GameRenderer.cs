@@ -27,14 +27,28 @@ public sealed class GameRenderer : IDisposable
             ['C'] = new byte[] { 15, 16, 16, 16, 16, 16, 15 },
             ['D'] = new byte[] { 30, 17, 17, 17, 17, 17, 30 },
             ['E'] = new byte[] { 31, 16, 16, 30, 16, 16, 31 },
+            ['F'] = new byte[] { 31, 16, 16, 30, 16, 16, 16 },
+            ['G'] = new byte[] { 14, 17, 16, 23, 17, 17, 14 },
             ['H'] = new byte[] { 17, 17, 17, 31, 17, 17, 17 },
             ['I'] = new byte[] { 31, 4, 4, 4, 4, 4, 31 },
+            ['J'] = new byte[] { 7, 2, 2, 2, 18, 18, 12 },
             ['K'] = new byte[] { 17, 18, 20, 24, 20, 18, 17 },
             ['L'] = new byte[] { 16, 16, 16, 16, 16, 16, 31 },
+            ['M'] = new byte[] { 17, 27, 21, 21, 17, 17, 17 },
+            ['N'] = new byte[] { 17, 25, 21, 19, 17, 17, 17 },
             ['O'] = new byte[] { 14, 17, 17, 17, 17, 17, 14 },
+            ['P'] = new byte[] { 30, 17, 17, 30, 16, 16, 16 },
+            ['Q'] = new byte[] { 14, 17, 17, 17, 21, 18, 13 },
             ['R'] = new byte[] { 30, 17, 17, 30, 20, 18, 17 },
+            ['S'] = new byte[] { 15, 16, 16, 14, 1, 1, 30 },
             ['T'] = new byte[] { 31, 4, 4, 4, 4, 4, 4 },
-            ['V'] = new byte[] { 17, 17, 17, 17, 17, 10, 4 }
+            ['U'] = new byte[] { 17, 17, 17, 17, 17, 17, 14 },
+            ['V'] = new byte[] { 17, 17, 17, 17, 17, 10, 4 },
+            ['W'] = new byte[] { 17, 17, 17, 21, 21, 21, 10 },
+            ['X'] = new byte[] { 17, 17, 10, 4, 10, 17, 17 },
+            ['Y'] = new byte[] { 17, 17, 10, 4, 4, 4, 4 },
+            ['Z'] = new byte[] { 31, 1, 2, 4, 8, 16, 31 },
+            [':'] = new byte[] { 0, 4, 4, 0, 4, 4, 0 }
         };
 
     private readonly GraphicsDevice _graphicsDevice;
@@ -92,7 +106,8 @@ public sealed class GameRenderer : IDisposable
         }
 
         if (gameSession.ShowCombatDebug &&
-            gameSession.Player.Combat.IsAttackActive)
+            gameSession.Player.Combat.IsAttackActive &&
+            gameSession.Player.Combat.CurrentAttack?.Delivery == AttackDelivery.Melee)
             DrawAttackArea(gameSession.PlayerAttackArea);
 
         _playerSpriteRenderer.Draw(gameSession.Player, gameTime);
@@ -1126,6 +1141,25 @@ public sealed class GameRenderer : IDisposable
             return;
         }
 
+        if (projectile.Type == ProjectileType.ArcaneBolt)
+        {
+            Rectangle glow = projectile.Bounds;
+            glow.Inflate(7, 7);
+            _spriteBatch.Draw(_pixel, glow, new Color(126, 72, 177, 50));
+            _spriteBatch.Draw(_pixel, projectile.Bounds, new Color(75, 43, 105, 230));
+            var core = new Rectangle(
+                projectile.Bounds.Center.X - 4,
+                projectile.Bounds.Center.Y - 4,
+                8,
+                8);
+            _spriteBatch.Draw(_pixel, core, new Color(210, 159, 241));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(glow.X - 7, glow.Center.Y - 1, glow.Width + 14, 3),
+                new Color(177, 117, 220, 150));
+            return;
+        }
+
         Vector2 direction = projectile.Velocity;
         direction.Normalize();
         float rotation = MathF.Atan2(direction.Y, direction.X);
@@ -1510,7 +1544,7 @@ public sealed class GameRenderer : IDisposable
             (byte)55));
         _spriteBatch.Draw(_pixel, core, new Color(22, 25, 29, 235));
         DrawRectangleOutline(core, 2, rarityColor);
-        DrawEquipmentSymbol(loot.Item.Slot, core, rarityColor);
+        DrawEquipmentSymbol(loot.Item, core, rarityColor);
         DrawRarityMarkers(
             loot.Item.Rarity,
             core.Center.X,
@@ -1578,6 +1612,11 @@ public sealed class GameRenderer : IDisposable
             panel.Center.X + 27,
             panel.Bottom - 49);
 
+        DrawSelectedItemIdentity(
+            gameSession.SelectedInventoryItem,
+            panel.X + 29,
+            panel.Y + 267);
+
         var controls = new Rectangle(panel.X + 28, panel.Bottom - 66, 267, 36);
         _spriteBatch.Draw(_pixel, controls, new Color(31, 38, 47));
         DrawRectangleOutline(controls, 2, new Color(77, 88, 98));
@@ -1607,13 +1646,39 @@ public sealed class GameRenderer : IDisposable
             bounds.Y + 8,
             bounds.Width - 24,
             bounds.Height - 21);
-        DrawEquipmentSymbol(item.Slot, symbolBounds, rarityColor);
+        DrawEquipmentSymbol(item, symbolBounds, rarityColor);
         DrawRarityMarkers(
             item.Rarity,
             bounds.Center.X,
             bounds.Bottom - 9,
             rarityColor,
             markerSize: 4);
+    }
+
+    private void DrawSelectedItemIdentity(
+        EquipmentItem item,
+        int x,
+        int y)
+    {
+        if (item == null)
+            return;
+
+        DrawDebugText(
+            item.Name.ToUpperInvariant(),
+            x,
+            y,
+            GetRarityColor(item.Rarity),
+            scale: 1);
+
+        string identity = item.WeaponDefinition != null
+            ? $"WEAPON FAMILY: {item.WeaponDefinition.Family.ToDisplayName()}"
+            : $"ARMOR: {item.ArmorDefinition.Class}";
+        DrawDebugText(
+            identity.ToUpperInvariant(),
+            x,
+            y + 13,
+            new Color(187, 194, 199),
+            scale: 1);
     }
 
     private void DrawEquipmentSlot(
@@ -1646,7 +1711,7 @@ public sealed class GameRenderer : IDisposable
             bounds.Y + 40,
             50,
             53);
-        DrawEquipmentSymbol(item.Slot, itemBounds, rarityColor);
+        DrawEquipmentSymbol(item, itemBounds, rarityColor);
         DrawRarityMarkers(
             item.Rarity,
             bounds.Center.X,
@@ -1657,6 +1722,128 @@ public sealed class GameRenderer : IDisposable
             _pixel,
             new Rectangle(bounds.Right - 19, bounds.Y + 10, 9, 9),
             new Color(80, 199, 126));
+    }
+
+    private void DrawEquipmentSymbol(
+        EquipmentItem item,
+        Rectangle bounds,
+        Color color)
+    {
+        if (item?.WeaponDefinition != null)
+        {
+            int centerX = bounds.Center.X;
+            int top = bounds.Y + 3;
+            int height = Math.Max(8, bounds.Height - 14);
+
+            if (item.WeaponDefinition.Family == WeaponFamily.BattleAxe)
+            {
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(centerX - 2, top + 4, 5, height + 4),
+                    new Color(105, 68, 45));
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(centerX - 10, top + 1, 21, 9),
+                    color);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(centerX - 13, top + 4, 5, 10),
+                    color);
+                return;
+            }
+
+            if (item.WeaponDefinition.Family == WeaponFamily.Spear)
+            {
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 2, top, 4, height + 10), new Color(117, 78, 49));
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 5, top - 1, 10, 9), color);
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 2, top - 5, 4, 8), color);
+                return;
+            }
+
+            if (item.WeaponDefinition.Family == WeaponFamily.DualDaggers)
+            {
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 10, top + 2, 4, height - 2), color);
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX + 6, top + 2, 4, height - 2), color);
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 14, top + height - 4, 12, 4), new Color(173, 130, 70));
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX + 2, top + height - 4, 12, 4), new Color(173, 130, 70));
+                return;
+            }
+
+            if (item.WeaponDefinition.Family == WeaponFamily.Bow)
+            {
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 10, top + 3, 4, height - 1), color);
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 7, top, 7, 4), color);
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 7, top + height, 7, 4), color);
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX, top + 2, 2, height + 1), new Color(211, 205, 177));
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 4, top + height / 2, 18, 2), new Color(173, 130, 70));
+                return;
+            }
+
+            if (item.WeaponDefinition.Family == WeaponFamily.ArcaneStaff)
+            {
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 2, top + 6, 5, height + 4), new Color(105, 68, 45));
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 7, top, 15, 12), new Color(45, 35, 57));
+                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 4, top + 3, 9, 6), color);
+                return;
+            }
+
+            int bladeWidth = item.WeaponDefinition.Family == WeaponFamily.GreatSword
+                ? 9
+                : 5;
+            int guardWidth = item.WeaponDefinition.Family == WeaponFamily.GreatSword
+                ? 23
+                : 17;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(centerX - bladeWidth / 2, top, bladeWidth, height),
+                color);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(centerX - guardWidth / 2, top + height - 4, guardWidth, 4),
+                new Color(173, 130, 70));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(centerX - 2, top + height, 5, 9),
+                new Color(105, 68, 45));
+            return;
+        }
+
+        if (item?.ArmorDefinition != null)
+        {
+            int inset = item.ArmorDefinition.Class switch
+            {
+                ArmorClass.Light => 10,
+                ArmorClass.Heavy => 3,
+                _ => 7
+            };
+            int shoulder = item.ArmorDefinition.Class switch
+            {
+                ArmorClass.Light => 3,
+                ArmorClass.Heavy => 8,
+                _ => 5
+            };
+            var chest = new Rectangle(
+                bounds.X + inset,
+                bounds.Y + 9,
+                Math.Max(8, bounds.Width - inset * 2),
+                Math.Max(10, bounds.Height - 13));
+            _spriteBatch.Draw(_pixel, chest, color);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(chest.X - shoulder, chest.Y + 2, shoulder + 1, 11),
+                color);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(chest.Right - 1, chest.Y + 2, shoulder + 1, 11),
+                color);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(chest.Center.X - 2, chest.Y + 4, 4, chest.Height - 8),
+                new Color(35, 40, 45, 150));
+            return;
+        }
+
+        DrawEquipmentSymbol(item?.Slot ?? EquipmentSlot.Armor, bounds, color);
     }
 
     private void DrawEquipmentSymbol(

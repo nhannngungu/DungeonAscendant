@@ -30,6 +30,9 @@ public sealed class GameSession
     private float _worldTierTransitionTimeRemaining;
     private Vector2 _lastSafePlayerPosition;
     private int _trackedPlayerAttackId = -1;
+    private int _spawnedPlayerProjectileAttackId = -1;
+    private int _debugWeaponIndex = 1;
+    private int _debugArmorIndex = 1;
     private bool _bossHitByPlayerAttack;
 
     public PlayerCharacter Player { get; private set; }
@@ -67,6 +70,7 @@ public sealed class GameSession
 
     public GameSession(Rectangle viewportBounds, int? randomSeed = null)
     {
+        WeaponArchetypeValidation.ValidateOrThrow();
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         Enemies = new EnemyManager(randomSeed);
         Projectiles = new ProjectileManager();
@@ -93,6 +97,8 @@ public sealed class GameSession
         bool inventoryPressed = keyboardState.IsKeyDown(Keys.I) &&
             !_previousKeyboardState.IsKeyDown(Keys.I);
         bool debugPressed = WasKeyPressed(keyboardState, Keys.F3);
+        bool debugWeaponPressed = WasKeyPressed(keyboardState, Keys.F5);
+        bool debugArmorPressed = WasKeyPressed(keyboardState, Keys.F6);
 
         if (debugPressed)
             ShowCombatDebug = !ShowCombatDebug;
@@ -167,6 +173,22 @@ public sealed class GameSession
             return;
         }
 
+        if (debugWeaponPressed)
+        {
+            _debugWeaponIndex =
+                (_debugWeaponIndex + 1) % EquipmentCatalog.WeaponSampleCount;
+            Player.EquipDebugItem(
+                EquipmentCatalog.CreateWeaponSample(_debugWeaponIndex));
+        }
+
+        if (debugArmorPressed)
+        {
+            _debugArmorIndex =
+                (_debugArmorIndex + 1) % EquipmentCatalog.ArmorSampleCount;
+            Player.EquipDebugItem(
+                EquipmentCatalog.CreateArmorSample(_debugArmorIndex));
+        }
+
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _worldTierTransitionTimeRemaining = System.MathF.Max(
             0f,
@@ -212,6 +234,7 @@ public sealed class GameSession
             Projectiles,
             RootHazards);
         Projectiles.Update(gameTime, Player, CurrentDungeon);
+        ProcessPlayerProjectileHits();
         RootHazards.Update(gameTime, Player);
         Boss.Update(
             gameTime,
@@ -279,6 +302,8 @@ public sealed class GameSession
         IsInventoryOpen = false;
         ShowCombatDebug = DebugCombatHitboxes;
         SelectedInventoryIndex = 0;
+        _debugWeaponIndex = 1;
+        _debugArmorIndex = 1;
         InitializeDungeonState();
     }
 
@@ -307,6 +332,7 @@ public sealed class GameSession
         Player.ClearTemporaryStatus();
         _playerAttackHits.Clear();
         _trackedPlayerAttackId = -1;
+        _spawnedPlayerProjectileAttackId = -1;
         _bossHitByPlayerAttack = false;
         Projectiles.Clear();
         RootHazards.Clear();
@@ -423,19 +449,27 @@ public sealed class GameSession
     private void UpdatePlayerAttackArea()
     {
         AttackDefinition attack = Player.Combat.CurrentAttack ??
-            SwordAttackSet.LightOne;
+            Player.Combat.MoveSet.GetLight(0);
         PlayerAttackArea = MeleeHitArea.Create(
             Player.Position,
             Player.Size,
             Player.Facing,
-            attack.Range,
-            attack.Thickness);
+            Player.Combat.CalculateRange(attack),
+            attack.Thickness,
+            attack.HitboxShape);
     }
 
     private void RegisterPlayerHitEffect(Rectangle targetBounds)
     {
+        RegisterPlayerHitEffect(PlayerAttackArea, targetBounds);
+    }
+
+    private void RegisterPlayerHitEffect(
+        Rectangle hitArea,
+        Rectangle targetBounds)
+    {
         Rectangle overlap = Rectangle.Intersect(
-            PlayerAttackArea,
+            hitArea,
             targetBounds);
         PlayerHitEffectPosition = overlap.Width > 0 && overlap.Height > 0
             ? overlap.Center.ToVector2()
@@ -459,7 +493,16 @@ public sealed class GameSession
         }
 
         AttackDefinition attack = Player.Combat.CurrentAttack;
-        int damage = attack.CalculateDamage(Player.MeleeDamage);
+
+        if (attack.Delivery != AttackDelivery.Melee)
+        {
+            SpawnPlayerProjectile(attack);
+            return;
+        }
+
+        int damage = Player.Combat.CalculateDamage(Player.MeleeDamage);
+        float poiseDamage = Player.Combat.CalculatePoiseDamage();
+        float knockback = Player.Combat.CalculateKnockback();
 
         foreach (Enemy enemy in Enemies.Enemies)
         {
@@ -472,10 +515,10 @@ public sealed class GameSession
 
             _playerAttackHits.Add(enemy);
             RegisterPlayerHitEffect(enemy.MeleeTargetBounds);
-            enemy.ReceiveDamage(damage, attack.PoiseDamage);
+            enemy.ReceiveDamage(damage, poiseDamage);
             enemy.ApplyKnockback(
                 Player.Position,
-                attack.Knockback,
+                knockback,
                 CurrentDungeon);
         }
 
@@ -484,11 +527,75 @@ public sealed class GameSession
         {
             _bossHitByPlayerAttack = true;
             RegisterPlayerHitEffect(Boss.Bounds);
-            Boss.ReceiveDamage(damage, attack.PoiseDamage);
+            Boss.ReceiveDamage(damage, poiseDamage);
             Boss.ApplyKnockback(
                 Player.Position,
-                attack.Knockback,
+                knockback,
                 CurrentDungeon);
+        }
+    }
+
+    private void SpawnPlayerProjectile(AttackDefinition attack)
+    {
+        if (_spawnedPlayerProjectileAttackId == Player.Combat.AttackId ||
+            attack.Projectile == null)
+            return;
+
+        _spawnedPlayerProjectileAttackId = Player.Combat.AttackId;
+        float direction = Player.Facing == DungeonAscendant.Player.FacingDirection.Left
+            ? -1f
+            : 1f;
+        Vector2 spawnPosition = Player.Position + new Vector2(direction * 30f, -10f);
+        int roomId = CurrentDungeon.FindRoomContaining(Player.Position)?.Id ?? -1;
+        Projectiles.SpawnPlayerProjectile(
+            attack.Projectile,
+            spawnPosition,
+            new Vector2(direction, 0f),
+            Player.Combat.ProjectileSpeedMultiplier,
+            Player.Combat.CalculateDamage(Player.MeleeDamage),
+            Player.Combat.CalculatePoiseDamage(),
+            Player.Combat.CalculateKnockback(),
+            roomId);
+    }
+
+    private void ProcessPlayerProjectileHits()
+    {
+        foreach (Projectile projectile in Projectiles.Projectiles)
+        {
+            if (!projectile.IsPlayerOwned || projectile.LifetimeRemaining <= 0f)
+                continue;
+
+            bool consumed = false;
+            foreach (Enemy enemy in Enemies.Enemies)
+            {
+                if (!enemy.CanBeTargeted ||
+                    !projectile.Bounds.Intersects(enemy.MeleeTargetBounds))
+                    continue;
+
+                RegisterPlayerHitEffect(projectile.Bounds, enemy.MeleeTargetBounds);
+                enemy.ReceiveDamage(projectile.Damage, projectile.PoiseDamage);
+                enemy.ApplyKnockback(
+                    projectile.SourcePosition,
+                    projectile.Knockback,
+                    CurrentDungeon);
+                consumed = true;
+                break;
+            }
+
+            if (!consumed && Boss.IsAlive &&
+                projectile.Bounds.Intersects(Boss.Bounds))
+            {
+                RegisterPlayerHitEffect(projectile.Bounds, Boss.Bounds);
+                Boss.ReceiveDamage(projectile.Damage, projectile.PoiseDamage);
+                Boss.ApplyKnockback(
+                    projectile.SourcePosition,
+                    projectile.Knockback,
+                    CurrentDungeon);
+                consumed = true;
+            }
+
+            if (consumed)
+                projectile.LifetimeRemaining = 0f;
         }
     }
 
@@ -499,9 +606,12 @@ public sealed class GameSession
         bool lightPressed = WasKeyPressed(keyboardState, Keys.J) ||
             (mouseState.LeftButton == ButtonState.Pressed &&
              _previousMouseState.LeftButton == ButtonState.Released);
-        bool heavyPressed = WasKeyPressed(keyboardState, Keys.K) ||
-            (mouseState.RightButton == ButtonState.Pressed &&
-             _previousMouseState.RightButton == ButtonState.Released);
+        bool heavyHeld = keyboardState.IsKeyDown(Keys.K) ||
+            mouseState.RightButton == ButtonState.Pressed;
+        bool heavyWasHeld = _previousKeyboardState.IsKeyDown(Keys.K) ||
+            _previousMouseState.RightButton == ButtonState.Pressed;
+        bool heavyPressed = heavyHeld && !heavyWasHeld;
+        bool heavyReleased = !heavyHeld && heavyWasHeld;
         bool dodgePressed = WasKeyPressed(keyboardState, Keys.LeftShift) ||
             WasKeyPressed(keyboardState, Keys.RightShift);
         bool blockHeld = keyboardState.IsKeyDown(Keys.LeftControl);
@@ -516,6 +626,8 @@ public sealed class GameSession
         return new CombatInput(
             lightPressed,
             heavyPressed,
+            heavyHeld,
+            heavyReleased,
             dodgePressed,
             blockHeld,
             horizontalDirection);

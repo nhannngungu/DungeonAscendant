@@ -42,7 +42,10 @@ public sealed class PlayerStamina
         return spent;
     }
 
-    public void Update(float elapsedSeconds, bool regenerationAllowed)
+    public void Update(
+        float elapsedSeconds,
+        bool regenerationAllowed,
+        float regenerationMultiplier = 1f)
     {
         _regenerationDelayRemaining = MathF.Max(
             0f,
@@ -53,7 +56,8 @@ public sealed class PlayerStamina
 
         Current = MathF.Min(
             Maximum,
-            Current + RegenerationPerSecond * elapsedSeconds);
+            Current + RegenerationPerSecond *
+                MathF.Max(0f, regenerationMultiplier) * elapsedSeconds);
     }
 
     public void Restore()
