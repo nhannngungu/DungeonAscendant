@@ -33,6 +33,7 @@ public sealed class PlayerCombat
     private float _projectileSpeedMultiplier = 1f;
     private WeaponDefinition _weapon = EquipmentCatalog.KnightLongSword;
     private ArmorDefinition _armor = EquipmentCatalog.KnightArmor;
+    private EquipmentItem _armorItem = EquipmentCatalog.CreateStartingArmor();
 
     public CombatState State { get; private set; } = CombatState.Idle;
     public AttackDefinition CurrentAttack { get; private set; }
@@ -46,7 +47,8 @@ public sealed class PlayerCombat
     public bool IsGuardBroken => State == CombatState.Staggered;
     public bool CanBlock => _weapon.UsesShield;
     public WeaponMoveSet MoveSet => _weapon.MoveSet;
-    public float DodgeSpeedMultiplier => _armor.MoveSpeedModifier;
+    public float DodgeSpeedMultiplier => _armorItem?.MoveSpeedModifier ??
+        _armor.MoveSpeedModifier;
     public bool IsBlockFeedbackActive => _blockFeedbackRemaining > 0f;
     public bool IsDodgeInvulnerable => State == CombatState.Dodging &&
         _stateElapsed >= DodgeStartupSeconds &&
@@ -78,10 +80,11 @@ public sealed class PlayerCombat
         ? _weapon.AttackMovementMultiplier
         : CanJump ? 1f : 0f;
 
-    public void ApplyLoadout(WeaponDefinition weapon, ArmorDefinition armor)
+    public void ApplyLoadout(WeaponDefinition weapon, EquipmentItem armorItem)
     {
         _weapon = weapon ?? EquipmentCatalog.KnightLongSword;
-        _armor = armor ?? EquipmentCatalog.KnightArmor;
+        _armorItem = armorItem ?? EquipmentCatalog.CreateStartingArmor();
+        _armor = _armorItem.ArmorDefinition ?? EquipmentCatalog.KnightArmor;
 
         if (!_weapon.UsesShield && State == CombatState.Blocking)
             StartTimedState(CombatState.Idle);
@@ -137,7 +140,7 @@ public sealed class PlayerCombat
         bool canStartAction = CanStartAction();
 
         if (canStartAction && input.DodgePressed && isGrounded &&
-            Stamina.TrySpend(DodgeStaminaCost * _armor.DodgeCostModifier))
+            Stamina.TrySpend(DodgeStaminaCost * _armorItem.DodgeCostModifier))
         {
             DodgeDirection = MathF.Abs(input.HorizontalDirection) > 0.1f
                 ? MathF.Sign(input.HorizontalDirection)
@@ -180,7 +183,7 @@ public sealed class PlayerCombat
         Stamina.Update(
             elapsedSeconds,
             regenerationAllowed,
-            _armor.StaminaRegenModifier);
+            _armorItem.StaminaRegenModifier);
     }
 
     public void SetLocomotion(bool isGrounded, bool isMoving)
@@ -224,7 +227,7 @@ public sealed class PlayerCombat
             float staminaCost = MathF.Max(
                 BlockMinimumStaminaCost,
                 contact.Damage * BlockStaminaPerDamage) *
-                _armor.GuardCostModifier;
+                _armorItem.GuardCostModifier;
 
             if (Stamina.Current >= staminaCost)
             {

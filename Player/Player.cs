@@ -14,6 +14,7 @@ namespace DungeonAscendant.Player;
 public sealed class Player
 {
     public const bool DebugGiveAllTestEquipment = true;
+    private const int DebugInventoryCapacity = 20;
 
     private const int BaseExperienceRequirement = 100;
     private const int ExperienceRequirementPerLevel = 50;
@@ -44,7 +45,7 @@ public sealed class Player
     public bool IsGrounded { get; private set; }
     public float MovementSpeed { get; }
     public float EffectiveMovementSpeed => MovementSpeed *
-        (EquippedArmor?.MoveSpeedModifier ?? 1f) *
+        (EquippedItems.Armor?.MoveSpeedModifier ?? 1f) *
         (IsSlowed ? _slowMovementMultiplier : 1f);
     public Vector2 Size { get; }
     public Rectangle Bounds => new(
@@ -129,7 +130,10 @@ public sealed class Player
         Size = new Vector2(40f, 56f);
         _baseMaxHealth = maxHealth;
         _baseMeleeDamage = meleeDamage;
-        Inventory = new Inventory();
+        Inventory = new Inventory(
+            DebugGiveAllTestEquipment
+                ? DebugInventoryCapacity
+                : Inventory.DefaultCapacity);
         EquippedItems = new Equipment();
         Combat = new PlayerCombat();
         EquippedItems.SetStartingItems(
@@ -247,8 +251,7 @@ public sealed class Player
     {
         if (!EquippedItems.TryEquip(
             item,
-            Inventory,
-            avoidDuplicateItemIds: DebugGiveAllTestEquipment))
+            Inventory))
             return false;
 
         ApplyEquipmentToCombat();
@@ -368,12 +371,13 @@ public sealed class Player
     {
         return Math.Max(
             1,
-            (int)MathF.Round(damage * EquippedArmor.DamageTakenMultiplier));
+            (int)MathF.Round(
+                damage * (EquippedItems.Armor?.DamageTakenMultiplier ?? 1f)));
     }
 
     private void ApplyEquipmentToCombat()
     {
-        Combat.ApplyLoadout(EquippedWeapon, EquippedArmor);
+        Combat.ApplyLoadout(EquippedWeapon, EquippedItems.Armor);
     }
 
     public static Rectangle CreateDefenseBounds(

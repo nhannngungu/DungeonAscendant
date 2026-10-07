@@ -40,10 +40,75 @@ public sealed class Inventory
             _items.Exists(item => item.Id == itemId);
     }
 
+    public int CountMatchingFusionMaterials(EquipmentItem source)
+    {
+        if (source?.ArmorDefinition == null)
+            return 0;
+
+        int count = 0;
+
+        foreach (EquipmentItem item in _items)
+        {
+            if (IsSameFusionMaterial(item, source))
+                count++;
+        }
+
+        return count;
+    }
+
+    public bool CanFuseArmor(EquipmentItem source)
+    {
+        return source?.ArmorDefinition != null &&
+            ArmorGradeRules.CanAdvance(source.ArmorGrade) &&
+            CountMatchingFusionMaterials(source) >=
+                ArmorGradeRules.FusionMaterialCount;
+    }
+
+    public bool TryFuseArmor(
+        EquipmentItem source,
+        out EquipmentItem result)
+    {
+        result = null;
+
+        if (!CanFuseArmor(source))
+            return false;
+
+        int remaining = ArmorGradeRules.FusionMaterialCount;
+
+        for (int index = _items.Count - 1;
+             index >= 0 && remaining > 0;
+             index--)
+        {
+            if (!IsSameFusionMaterial(_items[index], source))
+                continue;
+
+            _items.RemoveAt(index);
+            remaining--;
+        }
+
+        result = new EquipmentItem(
+            source.ArmorDefinition,
+            source.Rarity,
+            ArmorGradeRules.Next(source.ArmorGrade));
+        _items.Add(result);
+        return true;
+    }
+
     public EquipmentItem GetItem(int index)
     {
         return index >= 0 && index < Count
             ? _items[index]
             : null;
+    }
+
+    private static bool IsSameFusionMaterial(
+        EquipmentItem item,
+        EquipmentItem source)
+    {
+        return item?.ArmorDefinition != null &&
+            source?.ArmorDefinition != null &&
+            item.ArmorDefinition.Id == source.ArmorDefinition.Id &&
+            item.ArmorGrade == source.ArmorGrade &&
+            item.Rarity == source.Rarity;
     }
 }

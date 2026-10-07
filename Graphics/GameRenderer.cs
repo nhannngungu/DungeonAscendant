@@ -7,6 +7,7 @@ using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
 using DungeonAscendant.Player;
+using DungeonAscendant.UI;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -48,7 +49,22 @@ public sealed class GameRenderer : IDisposable
             ['X'] = new byte[] { 17, 17, 10, 4, 10, 17, 17 },
             ['Y'] = new byte[] { 17, 17, 10, 4, 4, 4, 4 },
             ['Z'] = new byte[] { 31, 1, 2, 4, 8, 16, 31 },
-            [':'] = new byte[] { 0, 4, 4, 0, 4, 4, 0 }
+            ['0'] = new byte[] { 14, 17, 19, 21, 25, 17, 14 },
+            ['1'] = new byte[] { 4, 12, 4, 4, 4, 4, 14 },
+            ['2'] = new byte[] { 14, 17, 1, 2, 4, 8, 31 },
+            ['3'] = new byte[] { 30, 1, 1, 14, 1, 1, 30 },
+            ['4'] = new byte[] { 2, 6, 10, 18, 31, 2, 2 },
+            ['5'] = new byte[] { 31, 16, 16, 30, 1, 1, 30 },
+            ['6'] = new byte[] { 14, 16, 16, 30, 17, 17, 14 },
+            ['7'] = new byte[] { 31, 1, 2, 4, 8, 8, 8 },
+            ['8'] = new byte[] { 14, 17, 17, 14, 17, 17, 14 },
+            ['9'] = new byte[] { 14, 17, 17, 15, 1, 1, 14 },
+            [':'] = new byte[] { 0, 4, 4, 0, 4, 4, 0 },
+            ['/'] = new byte[] { 1, 2, 2, 4, 8, 8, 16 },
+            ['-'] = new byte[] { 0, 0, 0, 31, 0, 0, 0 },
+            ['!'] = new byte[] { 4, 4, 4, 4, 4, 0, 4 },
+            ['+'] = new byte[] { 0, 4, 4, 31, 4, 4, 0 },
+            ['%'] = new byte[] { 17, 2, 4, 4, 8, 16, 17 }
         };
 
     private readonly GraphicsDevice _graphicsDevice;
@@ -163,6 +179,9 @@ public sealed class GameRenderer : IDisposable
             DrawPauseOverlay();
         else if (gameSession.State == GameState.GameOver)
             DrawGameOverOverlay();
+
+        if (gameSession.IsFusionFeedbackVisible)
+            DrawFusionFeedback(gameSession);
 
         _spriteBatch.End();
     }
@@ -1559,29 +1578,33 @@ public sealed class GameRenderer : IDisposable
         var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
         var panel = new Rectangle(
             viewport.Width / 2 - 310,
-            viewport.Height / 2 - 195,
+            viewport.Height / 2 - 220,
             620,
-            390);
+            440);
 
         _spriteBatch.Draw(_pixel, screen, new Color(7, 9, 13, 190));
         _spriteBatch.Draw(_pixel, panel, new Color(22, 27, 34, 248));
         DrawRectangleOutline(panel, 4, new Color(122, 111, 91));
-        _spriteBatch.Draw(
-            _pixel,
-            new Rectangle(panel.X + 25, panel.Y + 24, 270, 6),
-            new Color(190, 164, 101));
-        _spriteBatch.Draw(
-            _pixel,
-            new Rectangle(panel.Right - 215, panel.Y + 24, 190, 6),
-            new Color(101, 158, 137));
+        DrawInventoryTab(
+            new Rectangle(panel.X + 28, panel.Y + 17, 120, 30),
+            "Q WEAPONS",
+            gameSession.ActiveInventoryTab == InventoryTab.Weapons);
+        DrawInventoryTab(
+            new Rectangle(panel.X + 156, panel.Y + 17, 138, 30),
+            "E EQUIPMENT",
+            gameSession.ActiveInventoryTab == InventoryTab.Equipment);
 
-        const int slotSize = 58;
-        const int slotGap = 10;
-        const int columns = 4;
+        const int slotSize = 50;
+        const int slotGap = 8;
+        const int columns = InventoryGridNavigation.ColumnCount;
         int inventoryX = panel.X + 28;
         int inventoryY = panel.Y + 57;
 
-        for (int index = 0; index < gameSession.Player.Inventory.Capacity; index++)
+        int visibleSlotCount = Math.Max(
+            Inventory.DefaultCapacity,
+            gameSession.ActiveInventoryItems.Count);
+
+        for (int index = 0; index < visibleSlotCount; index++)
         {
             int column = index % columns;
             int row = index / columns;
@@ -1590,37 +1613,83 @@ public sealed class GameRenderer : IDisposable
                 inventoryY + row * (slotSize + slotGap),
                 slotSize,
                 slotSize);
-            EquipmentItem item = gameSession.Player.Inventory.GetItem(index);
+            EquipmentItem item = index < gameSession.ActiveInventoryItems.Count
+                ? gameSession.ActiveInventoryItems[index]
+                : null;
             bool isSelected = item != null &&
                 index == gameSession.SelectedInventoryIndex;
             DrawInventorySlot(slotBounds, item, isSelected);
         }
 
+        if (gameSession.ActiveInventoryItems.Count == 0)
+        {
+            DrawDebugText(
+                gameSession.ActiveInventoryEmptyMessage,
+                inventoryX + 12,
+                inventoryY + 20,
+                new Color(132, 144, 153),
+                scale: 1);
+        }
+
         int equipmentX = panel.Right - 168;
+        EquipmentSlot activeSlot = gameSession.ActiveInventoryTab ==
+            InventoryTab.Weapons
+                ? EquipmentSlot.Weapon
+                : EquipmentSlot.Armor;
         DrawEquipmentSlot(
             new Rectangle(equipmentX, panel.Y + 57, 128, 118),
-            EquipmentSlot.Weapon,
-            gameSession.Player.EquippedItems.Weapon);
-        DrawEquipmentSlot(
-            new Rectangle(equipmentX, panel.Y + 190, 128, 118),
-            EquipmentSlot.Armor,
-            gameSession.Player.EquippedItems.Armor);
+            activeSlot,
+            gameSession.Player.EquippedItems.GetEquipped(activeSlot));
 
         DrawComparisonIndicator(
             gameSession.SelectedInventoryItem,
             gameSession.Player,
-            panel.Center.X + 27,
-            panel.Bottom - 49);
+            panel.X + 270,
+            panel.Y + 190);
 
         DrawSelectedItemIdentity(
-            gameSession.SelectedInventoryItem,
-            panel.X + 29,
-            panel.Y + 267);
+            gameSession,
+            panel.X + 300,
+            panel.Y + 195);
 
         var controls = new Rectangle(panel.X + 28, panel.Bottom - 66, 267, 36);
         _spriteBatch.Draw(_pixel, controls, new Color(31, 38, 47));
         DrawRectangleOutline(controls, 2, new Color(77, 88, 98));
-        DrawControlHints(controls);
+        DrawControlHints(
+            controls,
+            gameSession.ActiveInventoryTab == InventoryTab.Equipment);
+    }
+
+    private void DrawInventoryTab(
+        Rectangle bounds,
+        string label,
+        bool isActive)
+    {
+        Color borderColor = isActive
+            ? new Color(235, 207, 119)
+            : new Color(75, 84, 94);
+        Color textColor = isActive
+            ? new Color(247, 232, 166)
+            : new Color(128, 139, 148);
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            isActive ? new Color(54, 52, 42) : new Color(27, 32, 39));
+        DrawRectangleOutline(bounds, isActive ? 3 : 2, borderColor);
+        DrawDebugText(
+            label,
+            bounds.X + 9,
+            bounds.Y + 10,
+            textColor,
+            scale: 1);
+
+        if (isActive)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bounds.X + 5, bounds.Bottom - 5, bounds.Width - 10, 3),
+                new Color(235, 207, 119));
+        }
     }
 
     private void DrawInventorySlot(
@@ -1653,13 +1722,25 @@ public sealed class GameRenderer : IDisposable
             bounds.Bottom - 9,
             rarityColor,
             markerSize: 4);
+
+        if (item.ArmorDefinition != null)
+        {
+            DrawDebugText(
+                item.ArmorGradeLabel,
+                bounds.X + 3,
+                bounds.Y + 3,
+                new Color(245, 230, 151),
+                scale: 1);
+        }
     }
 
     private void DrawSelectedItemIdentity(
-        EquipmentItem item,
+        GameSession gameSession,
         int x,
         int y)
     {
+        EquipmentItem item = gameSession.SelectedInventoryItem;
+
         if (item == null)
             return;
 
@@ -1672,13 +1753,76 @@ public sealed class GameRenderer : IDisposable
 
         string identity = item.WeaponDefinition != null
             ? $"WEAPON FAMILY: {item.WeaponDefinition.Family.ToDisplayName()}"
-            : $"ARMOR: {item.ArmorDefinition.Class}";
+            : item.ArmorDefinition != null
+                ? $"CLASS: {item.ArmorDefinition.Class} ARMOR"
+                : $"EQUIPMENT SLOT: {item.Slot}";
         DrawDebugText(
             identity.ToUpperInvariant(),
             x,
             y + 13,
             new Color(187, 194, 199),
             scale: 1);
+
+        DrawDebugText(
+            item.ArmorDefinition == null
+                ? $"RARITY: {item.Rarity}"
+                : $"GRADE: {item.ArmorGradeLabel} RARITY: {item.Rarity}",
+            x,
+            y + 26,
+            new Color(187, 194, 199),
+            scale: 1);
+
+        string stats = item.WeaponDefinition != null
+            ? $"DAMAGE +{item.DamageBonus}"
+            : item.ArmorDefinition != null
+                ? $"HEALTH +{item.HealthBonus} DAMAGE TAKEN " +
+                    $"{(int)MathF.Round(item.DamageTakenMultiplier * 100f)}%"
+                : $"SLOT: {item.Slot}";
+        DrawDebugText(
+            stats,
+            x,
+            y + 39,
+            new Color(161, 190, 174),
+            scale: 1);
+        DrawDebugText(
+            "STATUS: UNEQUIPPED",
+            x,
+            y + 52,
+            new Color(137, 149, 158),
+            scale: 1);
+
+        if (item.ArmorDefinition == null)
+            return;
+
+        string fusionStatus = gameSession.IsFusionConfirmationPending
+            ? $"FUSE 3X {item.ArmorGradeLabel} TO " +
+                ArmorGradeRules.ToDisplayName(
+                    ArmorGradeRules.Next(item.ArmorGrade))
+            : item.ArmorGrade == ArmorGrade.C5
+            ? "MAX GRADE"
+            : gameSession.CanFuseSelectedArmor
+                ? $"FUSE AVAILABLE: 3 TO " +
+                    ArmorGradeRules.ToDisplayName(
+                        ArmorGradeRules.Next(item.ArmorGrade))
+                : $"FUSION: {gameSession.SelectedFusionMaterialCount}/3";
+        DrawDebugText(
+            fusionStatus,
+            x,
+            y + 65,
+            gameSession.CanFuseSelectedArmor
+                ? new Color(245, 205, 93)
+                : new Color(137, 149, 158),
+            scale: 1);
+
+        if (gameSession.IsFusionConfirmationPending)
+        {
+            DrawDebugText(
+                "ENTER CONFIRM  ESC CANCEL",
+                x,
+                y + 78,
+                new Color(224, 229, 232),
+                scale: 1);
+        }
     }
 
     private void DrawEquipmentSlot(
@@ -1949,26 +2093,53 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
-    private void DrawControlHints(Rectangle bounds)
+    private void DrawControlHints(Rectangle bounds, bool showFusion)
     {
-        Color keyColor = new(126, 141, 153);
-        int centerY = bounds.Center.Y;
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 16, centerY - 9, 18, 18), new Color(49, 58, 68));
-        DrawRectangleOutline(new Rectangle(bounds.X + 16, centerY - 9, 18, 18), 2, keyColor);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 23, centerY - 5, 4, 10), keyColor);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 20, centerY - 5, 10, 4), keyColor);
-        _spriteBatch.Draw(_pixel, new Rectangle(bounds.X + 23, centerY + 2, 4, 4), keyColor);
+        DrawDebugText(
+            "WASD/ARROWS MOVE",
+            bounds.X + 8,
+            bounds.Y + 3,
+            new Color(156, 170, 181),
+            scale: 1);
+        DrawDebugText(
+            "Q/E TABS  ENTER EQUIP",
+            bounds.X + 8,
+            bounds.Y + 14,
+            new Color(156, 170, 181),
+            scale: 1);
+        DrawDebugText(
+            showFusion ? "F FUSE  I/ESC CLOSE" : "I/ESC CLOSE",
+            bounds.X + 8,
+            bounds.Y + 25,
+            new Color(156, 170, 181),
+            scale: 1);
+    }
 
-        var enterKey = new Rectangle(bounds.X + 73, centerY - 9, 55, 18);
-        _spriteBatch.Draw(_pixel, enterKey, new Color(49, 58, 68));
-        DrawRectangleOutline(enterKey, 2, keyColor);
-        _spriteBatch.Draw(_pixel, new Rectangle(enterKey.X + 13, centerY - 2, 27, 4), keyColor);
-        _spriteBatch.Draw(_pixel, new Rectangle(enterKey.X + 13, centerY - 2, 4, 8), keyColor);
+    private void DrawFusionFeedback(GameSession gameSession)
+    {
+        EquipmentItem source = gameSession.LastFusionSource;
+        EquipmentItem result = gameSession.LastFusionResult;
 
-        var inventoryKey = new Rectangle(bounds.Right - 56, centerY - 9, 18, 18);
-        _spriteBatch.Draw(_pixel, inventoryKey, new Color(49, 58, 68));
-        DrawRectangleOutline(inventoryKey, 2, keyColor);
-        _spriteBatch.Draw(_pixel, new Rectangle(inventoryKey.Center.X - 2, inventoryKey.Y + 4, 4, 10), keyColor);
+        if (source == null || result == null)
+            return;
+
+        Viewport viewport = _graphicsDevice.Viewport;
+        var panel = new Rectangle(viewport.Width / 2 - 170, 92, 340, 60);
+        _spriteBatch.Draw(_pixel, panel, new Color(25, 39, 35, 242));
+        DrawRectangleOutline(panel, 3, new Color(93, 210, 137));
+        DrawDebugText(
+            "FUSED!",
+            panel.Center.X - 21,
+            panel.Y + 10,
+            new Color(112, 239, 157),
+            scale: 1);
+        DrawDebugText(
+            $"{source.Name} {source.ArmorGradeLabel} X3 TO " +
+                $"{result.Name} {result.ArmorGradeLabel}",
+            panel.X + 12,
+            panel.Y + 33,
+            new Color(222, 231, 225),
+            scale: 1);
     }
 
     private static Color GetRarityColor(ItemRarity rarity)

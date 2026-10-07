@@ -58,7 +58,13 @@ public static class EquipmentCatalog
             new(HunterBow, ItemRarity.Uncommon),
             new(ApprenticeArcaneStaff, ItemRarity.Rare),
             new(ScoutArmor, ItemRarity.Common),
+            new(ScoutArmor, ItemRarity.Common),
+            new(ScoutArmor, ItemRarity.Common),
             new(KnightArmor, ItemRarity.Uncommon),
+            new(KnightArmor, ItemRarity.Uncommon),
+            new(KnightArmor, ItemRarity.Uncommon),
+            new(FortressArmor, ItemRarity.Rare),
+            new(FortressArmor, ItemRarity.Rare),
             new(FortressArmor, ItemRarity.Rare)
         };
     }

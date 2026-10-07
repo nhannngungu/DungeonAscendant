@@ -4,6 +4,5 @@ public enum LootSource
 {
     NormalEnemy,
     EliteEnemy,
-    TreasureChest,
-    Boss
+    TreasureChest
 }

@@ -43,6 +43,7 @@ public sealed class TreasureChest
             playerLevel,
             dungeonDepth,
             WorldProgression.GetWorldTier(dungeonDepth),
+            RegionType.WildForest,
             dungeon);
     }
 
@@ -52,6 +53,7 @@ public sealed class TreasureChest
         int playerLevel,
         int dungeonDepth,
         int worldTier,
+        RegionType region,
         DungeonMap dungeon)
     {
         if (IsOpen || !IsPlayerInRange(playerPosition))
@@ -62,6 +64,7 @@ public sealed class TreasureChest
             playerLevel,
             dungeonDepth,
             worldTier,
+            region,
             dungeon);
         IsOpen = true;
         return true;

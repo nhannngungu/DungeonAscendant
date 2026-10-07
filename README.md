@@ -6,9 +6,9 @@ DungeonAscendant is a code-first 2D side-scrolling medieval fantasy action rogue
 
 Explore a procedurally generated chain of side-view combat rooms, fight room-based groups of Wild Forest enemies, earn experience, and grow stronger. The current prototype combines gravity, jumping, solid platforms, horizontal transitions, and a side-follow camera with timing-based sword combat, stamina defense, and enemy stagger, all without external art assets.
 
-## Current Version: Seven-Weapon Archetype Foundation
+## Current Version: Armor Grade, Fusion, and Boss-Only Weapons
 
-Seven weapon families now change the procedural Player silhouette, hold pose, attack rhythm, combo length, range, stamina pressure, hit geometry, movement commitment, poise/knockback, defense rules, and melee/projectile delivery while preserving the side-scrolling, dungeon, armor, and Combat 2.0 foundations.
+Armor now drops with an independent C1-C5 progression Grade, three identical unequipped pieces can be fused into the next Grade, and random weapon acquisition has been removed. The seven weapon families remain fully implemented as test equipment and as content for explicit final Region Boss rewards.
 
 ## Current Features
 
@@ -30,14 +30,16 @@ Seven weapon families now change the procedural Player silhouette, hold pose, at
 - Procedural generation of 7-10 ordered 1100-1700 pixel-wide side-view rooms
 - Continuous safe ground, reachable raised platforms, jumpable obstacles, and horizontal transitions
 - Distinct Start, Normal, Enemy, Treasure, Boss, and Exit rooms
-- One-shot Treasure Chest with improved 1-2 item rewards
+- One-shot Treasure Chest with improved 1-2 Armor rewards
 - Three-phase Ancient Treant Boss with root strikes and temporary terrain hazards
 - Multi-floor dungeon completion with persistent Player progression and linear depth scaling
 - Five World Tiers with deeper enemy, variant, Elite, and loot scaling
 - Axis-separated floor/platform/wall/ceiling collision and a clamped side-follow camera
 - Room-based enemy placement and local enemy activation
-- Procedural Weapon and Armor drops with five rarity tiers
-- Manual nearby loot pickup and a 12-slot run inventory
+- Progression-scaled Armor drops with independent C1-C5 Grades and five rarity tiers
+- Three-for-one Armor Fusion with confirmation and equipped-item safety
+- Boss-only, explicitly assigned weapon reward architecture
+- Manual nearby loot pickup and a 12-slot normal run inventory
 - Equipment swapping with derived damage and maximum-health bonuses
 - Seven distinct weapon families: Long Sword + Shield, Great Sword, Battle Axe, Spear, Dual Daggers, Bow, and Arcane Staff
 - Charged-release Bow arrows and Arcane Staff bolts with dungeon-wall and enemy collision
@@ -66,8 +68,13 @@ Seven weapon families now change the procedural Player silhouette, hold pose, at
 | F6 | Cycle Light / Medium / Heavy sample armor for testing |
 | E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
-| W/S or Up/Down | Change inventory selection |
+| Q/E (Inventory open) | Previous/next Inventory tab |
+| W/S or Up/Down | Move inventory selection one row up/down |
+| A/D or Left/Right | Move inventory selection one column left/right |
 | Enter | Equip the selected inventory item |
+| F (Inventory open) | Prepare fusion of three eligible matching Armor pieces |
+| Enter (fusion prompt) | Confirm the prepared Armor fusion |
+| Escape (Inventory open) | Cancel fusion confirmation, or close Inventory |
 | Escape | Pause or resume during gameplay |
 | R | Restart after Game Over |
 
@@ -79,7 +86,11 @@ The Player has 100 stamina. Dodge costs 24 stamina, lasts 0.34 seconds, and is i
 
 ## Equipment Identity
 
-Every new run starts with a Knight Long Sword and Knight Armor equipped. While `Player.DebugGiveAllTestEquipment` is `true`, the run inventory contains Knight Long Sword, Iron Great Sword, War Axe, Hunter Spear, Twin Daggers, Hunter Bow, Apprentice Arcane Staff, and one Light/Medium/Heavy armor sample. Press `I`, select with `W/S` or the arrow keys, and press `Enter` to equip. The selected item name and `Weapon Family` are printed in the inventory panel. The standard 12-slot capacity is unchanged. Set the flag to `false` to restore an empty starting inventory and normal loot/equip behavior. `F5` and `F6` remain available as additional weapon/armor cycle shortcuts.
+Every new run starts with a Knight Long Sword and Knight Armor equipped. While `Player.DebugGiveAllTestEquipment` is `true`, the test inventory contains all seven sample weapons plus three C1 copies each of Scout, Knight, and Fortress Armor so every base fusion can be exercised immediately. Debug inventory capacity is 20; normal inventory capacity remains 12. Press `I`, select with `W/S` or the arrow keys, press `Enter` to equip, or press `F` and then `Enter` to confirm an eligible fusion. Set the flag to `false` to restore an empty starting inventory and normal loot/equip behavior. `F5` and `F6` remain available as additional weapon/armor cycle shortcuts. Debug weapons are test-only and are never part of random loot.
+
+Inventory selection uses a four-column grid. WASD and the arrow keys move in matching directions without wrapping; vertical movement into a partial final row chooses the nearest valid slot.
+
+The Inventory has `WEAPONS` and `EQUIPMENT` tabs. Press `Q` or `E` while Inventory is open to switch tabs. Each tab filters the same underlying inventory item references and remembers its own grid selection; Armor fusion is available only from `EQUIPMENT`.
 
 - Long Swords use the balanced three-hit combo and are the only family that renders a shield or accepts normal block input.
 - Great Swords use slower, longer, higher-damage two-handed swings with the most committed movement and a powerful overhead heavy.
@@ -92,13 +103,13 @@ Every new run starts with a Knight Long Sword and Knight Armor equipped. While `
 - Knight Armor retains the established balanced hero silhouette and baseline mobility.
 - Fortress Armor adds broad plate and greaves, more health and mitigation, cheaper shield guarding, but slower movement/dodge and stamina regeneration.
 
-Tier is the progression level and rarity is an independent quality value. Generated dungeon equipment now rolls a weapon family or armor class in addition to its existing tier and rarity.
+Armor Grade and rarity are independent. Grade controls progression power and is displayed as C1 through C5; rarity remains the item's quality classification. Grade scaling uses centralized power multipliers of 100%, 112%, 125%, 139%, and 154%. It improves maximum-health bonuses and each Armor class's defensive/stamina strengths without removing Light, Medium, and Heavy tradeoffs.
 
 Common melee attacks and arrows are blockable. Web projectiles and root hazards remain outside defensive handling. F3 toggles the developer combat overlay, which defaults off and can show body, defense, melee-attack, and projectile zones plus block-state labels. Every enemy has regenerating poise; low-poise enemies such as Goblins and Blood Bats stagger quickly, while Corrupted Treants, named Elites, and the Ancient Treant require heavier pressure. The boss restores its poise on stagger and gains 2.5 seconds of stagger resistance to prevent stun locking.
 
 ## Progression Loop
 
-Fight region enemies, earn experience and equipment drops, open the Treasure Chest, defeat the Ancient Treant, and use the unlocked Exit to descend. Weapons add melee damage, Armor adds maximum health, and level progression continues to improve the underlying base stats. Completing a floor preserves Player progression while increasing Dungeon Depth and generating a new dungeon; Game Over restart still resets the entire run.
+Fight region enemies, earn experience and Armor drops, fuse matching Armor, open the Treasure Chest, defeat the Ancient Treant, and use the unlocked Exit to descend. Weapons add melee damage, Armor adds maximum health and class-specific modifiers, and level progression continues to improve the underlying base stats. Completing a floor preserves Player progression while increasing Dungeon Depth and generating a new dungeon; Game Over restart still resets the entire run.
 
 ## Regions
 
@@ -175,18 +186,18 @@ All health and damage values receive the existing World Tier multipliers. Elites
 - Defeating the Boss unlocks the Exit; interacting with it generates the next floor and increments Dungeon Depth.
 - Player level, experience, inventory, equipment, Dungeon Depth, and World Tier persist between floors. Game Over restart resets the complete run to depth 1 and Tier 1.
 
-## Item Progression
+## Armor and Reward Progression
 
-- Normal enemies have a 35% equipment drop chance; Elite enemies always drop equipment.
-- Item level is `max(SourceLevel, PlayerLevel) + floor((DungeonDepth - 1) / 3) + floor((WorldTier - 1) / 2) + SourceBonus`.
-- Source bonuses are 0 for Normal enemies, 0-1 for Elites, 1-2 for Treasure Chests, and 2-3 for Bosses.
+- Normal enemies have a 35% Armor drop chance; Elite enemies always drop Armor.
+- Generic Treasure Chests create 1-2 Armor rewards and never roll weapons.
+- Armor definitions are selected from the current Scout, Knight, and Fortress pool.
+- Grade pressure combines Dungeon Depth, World Tier, and Region order into five centralized progression stages. Normal, Elite, and Treasure sources have separate Grade weights; Elites and Treasure are biased upward.
+- Early normal drops are 92% C1 and 8% C2. C5 appears only in the two latest pressure stages and remains uncommon.
+- Fusion requires three inventory pieces with the same Armor definition, Grade, and rarity. C5 cannot fuse. Equipped Armor never counts as material.
 - Normal rarity weights by Tier (Common/Uncommon/Rare/Epic/Legendary) are `55/25/13/6/1`, `49/27/15/8/1`, `43/28/18/9/2`, `37/29/20/11/3`, and `31/30/22/13/4`.
 - Elite rarity weights by Tier are `25/30/25/15/5`, `21/29/27/17/6`, `17/28/29/19/7`, `13/27/31/21/8`, and `9/26/33/23/9`.
 - Treasure Chest rarity weights by Tier are `15/35/30/15/5`, `12/32/32/18/6`, `9/29/34/21/7`, `6/26/36/24/8`, and `3/23/38/27/9`.
-- Boss rarity weights by Tier are `0/0/55/35/10`, `0/0/50/38/12`, `0/0/45/41/14`, `0/0/40/44/16`, and `0/0/35/47/18`.
-- Weapon base bonus is `4 + ItemLevel * 2`.
-- Armor base health bonus is `10 + ItemLevel * 5`.
-- Rarity multipliers are 100%, 125%, 150%, 190%, and 250% respectively.
+- Weapons are never produced by normal, Elite, Treasure, or generic item generation. A final Region Boss can award one explicitly assigned `BossWeaponReward`; the reward is protected by the one-shot Boss defeat path. Wild Forest currently has no designed unique weapon assigned, so none was invented for this milestone.
 
 ## Enemy Types
 

@@ -41,6 +41,7 @@ public sealed class LootManager
             playerLevel,
             dungeonDepth: 1,
             worldTier: 1,
+            RegionType.WildForest,
             dungeon);
     }
 
@@ -49,6 +50,7 @@ public sealed class LootManager
         int playerLevel,
         int dungeonDepth,
         int worldTier,
+        RegionType region,
         DungeonMap dungeon)
     {
         if (enemy == null || dungeon == null || !enemy.CanDropLoot)
@@ -66,7 +68,8 @@ public sealed class LootManager
                 ? LootSource.EliteEnemy
                 : LootSource.NormalEnemy,
             dungeonDepth,
-            worldTier);
+            worldTier,
+            region);
         Vector2 position = FindSafeDropPosition(enemy.Position, dungeon);
         _worldLoot.Add(new WorldLoot(item, position));
         return true;
@@ -83,6 +86,7 @@ public sealed class LootManager
             playerLevel,
             dungeonDepth,
             WorldProgression.GetWorldTier(dungeonDepth),
+            RegionType.WildForest,
             dungeon);
     }
 
@@ -91,6 +95,7 @@ public sealed class LootManager
         int playerLevel,
         int dungeonDepth,
         int worldTier,
+        RegionType region,
         DungeonMap dungeon)
     {
         int itemCount = _random.Next(1, 3);
@@ -106,7 +111,8 @@ public sealed class LootManager
                 playerLevel,
                 LootSource.TreasureChest,
                 dungeonDepth,
-                worldTier);
+                worldTier,
+                region);
             Vector2 position = FindSafeDropPosition(chestPosition, dungeon);
             _worldLoot.Add(new WorldLoot(item, position));
         }
@@ -114,37 +120,19 @@ public sealed class LootManager
         return itemCount;
     }
 
-    public void CreateBossDrop(
+    public bool CreateBossWeaponDrop(
         Vector2 bossPosition,
-        int bossLevel,
-        int playerLevel,
+        BossWeaponReward reward,
         DungeonMap dungeon)
     {
-        CreateBossDrop(
-            bossPosition,
-            bossLevel,
-            playerLevel,
-            dungeonDepth: 1,
-            worldTier: 1,
-            dungeon);
-    }
+        EquipmentItem item = reward?.CreateItem();
 
-    public void CreateBossDrop(
-        Vector2 bossPosition,
-        int bossLevel,
-        int playerLevel,
-        int dungeonDepth,
-        int worldTier,
-        DungeonMap dungeon)
-    {
-        EquipmentItem item = _itemGenerator.Generate(
-            bossLevel,
-            playerLevel,
-            LootSource.Boss,
-            dungeonDepth,
-            worldTier);
+        if (item?.WeaponDefinition == null || dungeon == null)
+            return false;
+
         Vector2 position = FindSafeDropPosition(bossPosition, dungeon);
         _worldLoot.Add(new WorldLoot(item, position));
+        return true;
     }
 
     public bool TryCollectNearest(Vector2 playerPosition, Inventory inventory)

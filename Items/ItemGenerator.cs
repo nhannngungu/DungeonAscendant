@@ -1,10 +1,39 @@
 using System;
 using DungeonAscendant.Progression;
+using DungeonAscendant.World;
 
 namespace DungeonAscendant.Items;
 
 public sealed class ItemGenerator
 {
+    private readonly record struct GradeWeights(
+        int C1,
+        int C2,
+        int C3,
+        int C4,
+        int C5);
+
+    private static readonly GradeWeights[] NormalGradeWeights =
+    {
+        new(92, 8, 0, 0, 0), new(65, 30, 5, 0, 0),
+        new(38, 42, 17, 3, 0), new(18, 35, 32, 13, 2),
+        new(8, 22, 38, 25, 7)
+    };
+
+    private static readonly GradeWeights[] EliteGradeWeights =
+    {
+        new(75, 22, 3, 0, 0), new(45, 40, 13, 2, 0),
+        new(24, 38, 28, 9, 1), new(10, 27, 38, 21, 4),
+        new(4, 14, 36, 34, 12)
+    };
+
+    private static readonly GradeWeights[] TreasureGradeWeights =
+    {
+        new(68, 27, 5, 0, 0), new(38, 42, 17, 3, 0),
+        new(18, 36, 34, 11, 1), new(8, 24, 40, 24, 4),
+        new(3, 12, 33, 38, 14)
+    };
+
     private static readonly RarityWeights[] NormalEnemyWeights =
     {
         new(55, 25, 13, 6, 1),
@@ -30,15 +59,6 @@ public sealed class ItemGenerator
         new(9, 29, 34, 21, 7),
         new(6, 26, 36, 24, 8),
         new(3, 23, 38, 27, 9)
-    };
-
-    private static readonly RarityWeights[] BossWeights =
-    {
-        new(0, 0, 55, 35, 10),
-        new(0, 0, 50, 38, 12),
-        new(0, 0, 45, 41, 14),
-        new(0, 0, 40, 44, 16),
-        new(0, 0, 35, 47, 18)
     };
 
     private readonly Random _random;
@@ -81,46 +101,58 @@ public sealed class ItemGenerator
         int playerLevel,
         LootSource source,
         int dungeonDepth,
-        int worldTier)
+        int worldTier,
+        RegionType region = RegionType.WildForest)
     {
-        int safeDepth = Math.Max(1, dungeonDepth);
+        _ = sourceLevel;
+        _ = playerLevel;
         int safeWorldTier = WorldProgression.ClampWorldTier(worldTier);
-        int itemLevel = Math.Max(1, Math.Max(sourceLevel, playerLevel));
-        itemLevel += (safeDepth - 1) / 3;
-        itemLevel += (safeWorldTier - 1) / 2;
-        itemLevel += source switch
+        ArmorDefinition armor = _random.Next(3) switch
         {
-            LootSource.EliteEnemy => _random.Next(0, 2),
-            LootSource.TreasureChest => 1 + _random.Next(0, 2),
-            LootSource.Boss => 2 + _random.Next(0, 2),
-            _ => 0
+            0 => EquipmentCatalog.ScoutArmor,
+            1 => EquipmentCatalog.KnightArmor,
+            _ => EquipmentCatalog.FortressArmor
         };
+        return new EquipmentItem(
+            armor,
+            RollRarity(source, safeWorldTier),
+            RollArmorGrade(source, dungeonDepth, safeWorldTier, region));
+    }
 
-        ItemRarity rarity = RollRarity(source, safeWorldTier);
-        EquipmentSlot slot = _random.Next(2) == 0
-            ? EquipmentSlot.Weapon
-            : EquipmentSlot.Armor;
-        int rarityPercent = GetRarityMultiplierPercent(rarity);
-
-        if (slot == EquipmentSlot.Weapon)
+    public ArmorGrade RollArmorGrade(
+        LootSource source,
+        int dungeonDepth,
+        int worldTier,
+        RegionType region = RegionType.WildForest)
+    {
+        int depthPressure = (Math.Max(1, dungeonDepth) - 1) / 3;
+        int tierPressure = WorldProgression.ClampWorldTier(worldTier) - 1;
+        int regionPressure = Math.Max(0, (int)region) / 2;
+        int stage = Math.Clamp(
+            depthPressure + tierPressure + regionPressure,
+            0,
+            4);
+        GradeWeights weights = source switch
         {
-            int baseDamageBonus = 4 + itemLevel * 2;
-            WeaponFamily family = (WeaponFamily)_random.Next(
-                Enum.GetValues<WeaponFamily>().Length);
-            WeaponDefinition definition = EquipmentCatalog.CreateGeneratedWeapon(
-                family,
-                itemLevel,
-                ScaleAndRound(baseDamageBonus, rarityPercent));
-            return new EquipmentItem(definition, rarity);
-        }
+            LootSource.EliteEnemy => EliteGradeWeights[stage],
+            LootSource.TreasureChest => TreasureGradeWeights[stage],
+            _ => NormalGradeWeights[stage]
+        };
+        int roll = _random.Next(100);
 
-        int baseHealthBonus = 10 + itemLevel * 5;
-        ArmorClass armorClass = (ArmorClass)_random.Next(3);
-        ArmorDefinition armor = EquipmentCatalog.CreateGeneratedArmor(
-            armorClass,
-            itemLevel,
-            ScaleAndRound(baseHealthBonus, rarityPercent));
-        return new EquipmentItem(armor, rarity);
+        if (roll < weights.C1)
+            return ArmorGrade.C1;
+
+        int threshold = weights.C1 + weights.C2;
+        if (roll < threshold)
+            return ArmorGrade.C2;
+
+        threshold += weights.C3;
+        if (roll < threshold)
+            return ArmorGrade.C3;
+
+        threshold += weights.C4;
+        return roll < threshold ? ArmorGrade.C4 : ArmorGrade.C5;
     }
 
     public ItemRarity RollRarity(bool isElite)
@@ -168,7 +200,6 @@ public sealed class ItemGenerator
         {
             LootSource.EliteEnemy => EliteEnemyWeights[index],
             LootSource.TreasureChest => TreasureChestWeights[index],
-            LootSource.Boss => BossWeights[index],
             _ => NormalEnemyWeights[index]
         };
     }
@@ -185,8 +216,4 @@ public sealed class ItemGenerator
         };
     }
 
-    private static int ScaleAndRound(int value, int percent)
-    {
-        return (value * percent + 50) / 100;
-    }
 }
