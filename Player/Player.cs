@@ -419,6 +419,11 @@ public sealed class Player
             Combat.OnDamaged(isAlive: false);
     }
 
+    public void RestoreHealth()
+    {
+        CurrentHealth = MaxHealth;
+    }
+
     public void GainExperience(int experience)
     {
         if (experience <= 0)

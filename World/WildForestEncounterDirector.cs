@@ -91,6 +91,24 @@ public sealed class WildForestEncounterDirector
     public bool IsCleared(string zoneId) =>
         _states.TryGetValue(zoneId, out ZoneState state) && state.Cleared;
 
+    public bool ResetZone(string zoneId, EnemyManager enemies)
+    {
+        if (!_states.TryGetValue(zoneId ?? string.Empty, out ZoneState state))
+            return false;
+
+        enemies?.RemoveForDebug(state.Enemies);
+        state.Enemies.Clear();
+        state.WarningStarted = false;
+        state.WarningRemaining = 0f;
+        state.Spawned = false;
+        state.Cleared = false;
+        if (WarningZoneId == zoneId)
+            WarningZoneId = string.Empty;
+        if (ActiveZoneId == zoneId)
+            ActiveZoneId = string.Empty;
+        return true;
+    }
+
     public void EnforceArenaBounds()
     {
         foreach (ZoneState state in _states.Values)

@@ -73,6 +73,15 @@ if (System.Array.Exists(
     return;
 }
 
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-developer-panel"))
+{
+    DungeonAscendant.Core.DeveloperPanelValidation.ValidateOrThrow();
+    System.Console.WriteLine("Developer panel validation passed.");
+    return;
+}
+
 if (System.Array.Exists(args, argument => argument == "--validate-catacombs"))
 {
     DungeonAscendant.Dungeon.CatacombMapValidation.ValidateOrThrow();

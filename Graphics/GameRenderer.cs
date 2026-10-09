@@ -64,7 +64,8 @@ public sealed class GameRenderer : IDisposable
             ['-'] = new byte[] { 0, 0, 0, 31, 0, 0, 0 },
             ['!'] = new byte[] { 4, 4, 4, 4, 4, 0, 4 },
             ['+'] = new byte[] { 0, 4, 4, 31, 4, 4, 0 },
-            ['%'] = new byte[] { 17, 2, 4, 4, 8, 16, 17 }
+            ['%'] = new byte[] { 17, 2, 4, 4, 8, 16, 17 },
+            ['>'] = new byte[] { 16, 8, 4, 2, 4, 8, 16 }
         };
     private static readonly Color[] WildForestSkyBands =
     {
@@ -284,6 +285,9 @@ public sealed class GameRenderer : IDisposable
             DrawPauseOverlay();
         else if (gameSession.State == GameState.GameOver)
             DrawGameOverOverlay();
+
+        if (gameSession.DeveloperPanel.IsOpen)
+            DrawDeveloperPanel(gameSession);
 
         if (gameSession.IsFusionFeedbackVisible)
             DrawFusionFeedback(gameSession);
@@ -3857,6 +3861,120 @@ public sealed class GameRenderer : IDisposable
         var panel = new Rectangle(12, 12, 238, 94);
         _spriteBatch.Draw(_pixel, panel, new Color(17, 21, 28, 220));
         DrawRectangleOutline(panel, 2, new Color(112, 119, 126, 230));
+    }
+
+    private void DrawDeveloperPanel(GameSession session)
+    {
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int viewportHeight = _graphicsDevice.Viewport.Height;
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(0, 0, viewportWidth, viewportHeight),
+            new Color(4, 6, 8, 205));
+
+        int width = Math.Min(900, viewportWidth - 32);
+        int height = Math.Min(650, viewportHeight - 24);
+        var panel = new Rectangle(
+            (viewportWidth - width) / 2,
+            (viewportHeight - height) / 2,
+            width,
+            height);
+        _spriteBatch.Draw(_pixel, panel, new Color(18, 19, 22, 248));
+        DrawRectangleOutline(panel, 3, new Color(112, 94, 69));
+        DrawRectangleOutline(
+            new Rectangle(panel.X + 7, panel.Y + 7, panel.Width - 14, panel.Height - 14),
+            1,
+            new Color(67, 62, 54));
+
+        int x = panel.X + 24;
+        int y = panel.Y + 20;
+        DrawDebugText(
+            "DUNGEONASCENDANT - DEV PANEL",
+            x,
+            y,
+            new Color(214, 188, 139),
+            2);
+        y += 38;
+        DrawDebugText(
+            $"MAP: {session.CurrentMapName}  ZONE: {session.CurrentZoneName}",
+            x,
+            y,
+            new Color(173, 178, 168),
+            1);
+        y += 15;
+        DrawDebugText(
+            $"POSITION: {(int)session.Player.Position.X}/{(int)session.Player.Position.Y}  " +
+            $"HP: {session.Player.CurrentHealth}/{session.Player.MaxHealth}  " +
+            $"STAMINA: {(int)session.Player.CurrentStamina}/{(int)session.Player.MaxStamina}  " +
+            $"CURSE: {(int)session.Curse.Value}  ENEMIES: {session.ActiveEnemyCount}",
+            x,
+            y,
+            new Color(145, 158, 151),
+            1);
+        y += 24;
+
+        string lastSection = string.Empty;
+        for (int index = 0; index < DeveloperPanel.Entries.Length; index++)
+        {
+            DeveloperCommand command = DeveloperPanel.Entries[index];
+            string section = DeveloperPanel.GetSection(command);
+            if (section != lastSection)
+            {
+                DrawDebugText(section, x, y, new Color(151, 113, 78), 1);
+                y += 17;
+                lastSection = section;
+            }
+
+            bool selected = session.DeveloperPanel.SelectedIndex == index;
+            if (selected)
+            {
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(x - 8, y - 4, panel.Width - 48, 20),
+                    new Color(70, 59, 43, 220));
+                DrawRectangleOutline(
+                    new Rectangle(x - 8, y - 4, panel.Width - 48, 20),
+                    1,
+                    new Color(157, 126, 78));
+            }
+
+            DrawDebugText(
+                selected ? ">" : " ",
+                x,
+                y,
+                new Color(226, 196, 137),
+                1);
+            DrawDebugText(
+                DeveloperPanel.GetLabel(command),
+                x + 16,
+                y,
+                selected ? new Color(231, 220, 193) : new Color(174, 176, 170),
+                1);
+            string value = session.DeveloperPanel.GetValue(session, command);
+            if (!string.IsNullOrEmpty(value))
+            {
+                DrawDebugText(
+                    value,
+                    panel.Right - 310,
+                    y,
+                    selected ? new Color(213, 174, 104) : new Color(132, 157, 142),
+                    1);
+            }
+            y += 20;
+        }
+
+        DrawDebugText(
+            session.DeveloperPanel.Feedback,
+            x,
+            panel.Bottom - 47,
+            new Color(148, 177, 145),
+            1);
+        DrawDebugText(
+            "W/S NAVIGATE  A/D CHANGE  ENTER ACTIVATE  ESC/F10 CLOSE",
+            x,
+            panel.Bottom - 27,
+            new Color(124, 128, 126),
+            1);
     }
 
     private void DrawCombatStateDebug(PlayerCharacter player)

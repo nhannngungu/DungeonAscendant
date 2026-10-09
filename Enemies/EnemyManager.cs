@@ -455,6 +455,24 @@ public sealed class EnemyManager
         return defeatedCount;
     }
 
+    public void RemoveForDebug(IReadOnlyList<Enemy> enemies)
+    {
+        if (enemies == null)
+            return;
+
+        foreach (Enemy enemy in enemies)
+        {
+            _enemies.Remove(enemy);
+            if (enemy is Goblin goblin)
+                _goblins.Remove(goblin);
+            _defeatPresentations.Remove(enemy);
+            if (enemy is GoblinChief)
+                ClearGoblinFamilyBuffs(enemy.RoomId);
+        }
+
+        RemoveOrphanedSpiderlings();
+    }
+
     private void UpdateDeathPresentations(GameTime gameTime)
     {
         for (int index = _defeatPresentations.Count - 1;
