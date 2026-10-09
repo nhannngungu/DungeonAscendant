@@ -14,6 +14,7 @@ namespace DungeonAscendant.Player;
 public sealed class Player
 {
     public const bool DebugGiveAllTestEquipment = true;
+    public const bool DebugGodModeDefault = true;
     private const int DebugInventoryCapacity = 20;
 
     private const int BaseExperienceRequirement = 100;
@@ -43,6 +44,7 @@ public sealed class Player
     public Vector2 Position { get; private set; }
     public Vector2 Velocity { get; private set; }
     public bool IsGrounded { get; private set; }
+    public bool DebugGodMode { get; set; } = DebugGodModeDefault;
     public float MovementSpeed { get; }
     public float EffectiveMovementSpeed => MovementSpeed *
         (EquippedItems.Armor?.MoveSpeedModifier ?? 1f) *
@@ -436,7 +438,8 @@ public sealed class Player
 
     private void ApplyHealthDamage(int damage, bool triggerHurt = true)
     {
-        CurrentHealth = Math.Max(0, CurrentHealth - damage);
+        int minimumHealth = DebugGodMode ? 1 : 0;
+        CurrentHealth = Math.Max(minimumHealth, CurrentHealth - damage);
         _invulnerabilityTimeRemaining = InvulnerabilityDurationSeconds;
         _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
 

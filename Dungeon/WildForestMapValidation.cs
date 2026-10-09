@@ -189,7 +189,14 @@ public static class WildForestMapValidation
 
         Require(elite && boss,
             "Map 1 must expose both elite and boss encounter hooks.");
-        foreach (SpawnSocketRole role in Enum.GetValues<SpawnSocketRole>())
+        SpawnSocketRole[] requiredRoles =
+        {
+            SpawnSocketRole.GroundMelee, SpawnSocketRole.Ranged,
+            SpawnSocketRole.Flying, SpawnSocketRole.Ambush,
+            SpawnSocketRole.Heavy, SpawnSocketRole.Elite,
+            SpawnSocketRole.Boss, SpawnSocketRole.Minion
+        };
+        foreach (SpawnSocketRole role in requiredRoles)
         {
             Require(roles.Contains(role),
                 $"Map 1 is missing the {role} future spawn role.");

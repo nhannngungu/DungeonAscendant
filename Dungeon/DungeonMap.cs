@@ -16,6 +16,7 @@ public sealed class DungeonMap
     public DungeonRoom BossRoom { get; }
     public DungeonRoom ExitRoom { get; }
     public bool IsAuthoredWildForest { get; }
+    public bool IsAncientCatacombs { get; }
     public IReadOnlyList<WildForestSection> WildForestSections { get; }
     public IReadOnlyList<EncounterZone> EncounterZones { get; }
     public IReadOnlyList<SpawnSocket> SpawnSockets { get; }
@@ -23,18 +24,27 @@ public sealed class DungeonMap
     public IReadOnlyList<WildForestRouteFeature> RouteFeatures { get; }
     public IReadOnlyList<WildForestSpawnProfile> SpawnProfiles { get; }
     public Vector2? AuthoredExitPosition { get; }
+    public IReadOnlyList<CatacombZoneDefinition> CatacombZones { get; }
+    public IReadOnlyList<CurseZoneDefinition> CurseZones { get; }
+    public IReadOnlyList<SafeShrineDefinition> SafeShrines { get; }
+    public IReadOnlyList<TombInteractionDefinition> Tombs { get; }
 
     public DungeonMap(
         IReadOnlyList<DungeonRoom> rooms,
         IReadOnlyList<Rectangle> corridors,
         Rectangle worldBounds,
         bool isAuthoredWildForest = false,
+        bool isAncientCatacombs = false,
         IReadOnlyList<WildForestSection> wildForestSections = null,
         IReadOnlyList<EncounterZone> encounterZones = null,
         IReadOnlyList<SpawnSocket> spawnSockets = null,
         IReadOnlyList<WildForestLandmark> landmarks = null,
         IReadOnlyList<WildForestRouteFeature> routeFeatures = null,
         IReadOnlyList<WildForestSpawnProfile> spawnProfiles = null,
+        IReadOnlyList<CatacombZoneDefinition> catacombZones = null,
+        IReadOnlyList<CurseZoneDefinition> curseZones = null,
+        IReadOnlyList<SafeShrineDefinition> safeShrines = null,
+        IReadOnlyList<TombInteractionDefinition> tombs = null,
         DungeonRoom exitRoomOverride = null,
         Vector2? authoredExitPosition = null)
     {
@@ -42,6 +52,7 @@ public sealed class DungeonMap
         Corridors = corridors;
         WorldBounds = worldBounds;
         IsAuthoredWildForest = isAuthoredWildForest;
+        IsAncientCatacombs = isAncientCatacombs;
         WildForestSections = new List<WildForestSection>(
             wildForestSections ?? Array.Empty<WildForestSection>());
         EncounterZones = new List<EncounterZone>(
@@ -54,6 +65,10 @@ public sealed class DungeonMap
             routeFeatures ?? Array.Empty<WildForestRouteFeature>());
         SpawnProfiles = new List<WildForestSpawnProfile>(
             spawnProfiles ?? Array.Empty<WildForestSpawnProfile>());
+        CatacombZones = new List<CatacombZoneDefinition>(catacombZones ?? Array.Empty<CatacombZoneDefinition>());
+        CurseZones = new List<CurseZoneDefinition>(curseZones ?? Array.Empty<CurseZoneDefinition>());
+        SafeShrines = new List<SafeShrineDefinition>(safeShrines ?? Array.Empty<SafeShrineDefinition>());
+        Tombs = new List<TombInteractionDefinition>(tombs ?? Array.Empty<TombInteractionDefinition>());
         AuthoredExitPosition = authoredExitPosition;
         var platforms = new List<Platform>();
 

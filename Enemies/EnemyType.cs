@@ -11,5 +11,15 @@ public enum EnemyType
     BloodBat,
     GoblinChief,
     MotherSpider,
-    Spiderling
+    Spiderling,
+    Skeleton,
+    SkeletonArcher,
+    RottenCorpse,
+    Wraith,
+    UndeadGuard,
+    CursedKnight,
+    GraveBat,
+    DeathKnight,
+    SoulCollector,
+    FallenKnight
 }

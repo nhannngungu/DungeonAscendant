@@ -62,8 +62,22 @@ public static class EnemyFactory
                 context.Position,
                 context.Level,
                 context.RoomId,
-                context.WorldTier)
+                context.WorldTier),
+            [EnemyType.Skeleton] = context => Catacomb(context,EnemyType.Skeleton),
+            [EnemyType.SkeletonArcher] = context => Catacomb(context,EnemyType.SkeletonArcher),
+            [EnemyType.RottenCorpse] = context => Catacomb(context,EnemyType.RottenCorpse),
+            [EnemyType.Wraith] = context => Catacomb(context,EnemyType.Wraith),
+            [EnemyType.UndeadGuard] = context => Catacomb(context,EnemyType.UndeadGuard),
+            [EnemyType.CursedKnight] = context => Catacomb(context,EnemyType.CursedKnight),
+            [EnemyType.GraveBat] = context => Catacomb(context,EnemyType.GraveBat),
+            [EnemyType.DeathKnight] = context => Catacomb(context,EnemyType.DeathKnight),
+            [EnemyType.SoulCollector] = context => Catacomb(context,EnemyType.SoulCollector),
+            [EnemyType.FallenKnight] = context => Catacomb(context,EnemyType.FallenKnight)
         };
+
+    private static Enemy Catacomb(EnemySpawnContext context,EnemyType type)=>
+        new CatacombEnemy(type,context.Position,context.Level,context.WorldTier,context.RoomId,
+            context.IsElite||type is EnemyType.CursedKnight or EnemyType.DeathKnight or EnemyType.SoulCollector or EnemyType.FallenKnight);
 
     public static Enemy Create(EnemyType type, EnemySpawnContext context)
     {

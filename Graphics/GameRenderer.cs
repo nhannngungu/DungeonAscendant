@@ -127,6 +127,7 @@ public sealed class GameRenderer : IDisposable
             samplerState: SamplerState.PointClamp,
             transformMatrix: gameSession.Camera.Transform);
         DrawWildForestDepth(gameSession, gameSession.Camera.ViewBounds);
+        DrawCatacombDepth(gameSession, gameSession.Camera.ViewBounds);
         DrawDungeon(gameSession, gameSession.Camera.ViewBounds);
 
         foreach (WebPatch patch in gameSession.Projectiles.WebPatches)
@@ -252,10 +253,18 @@ public sealed class GameRenderer : IDisposable
         DrawHudPanel();
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerStamina(gameSession.Player);
+        DrawCurseMeter(gameSession);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
         DrawWeaponResource(gameSession.Player);
         DrawTechniqueFeedback(gameSession.Player);
         DrawDungeonStatus(gameSession);
+
+        if (gameSession.DebugGodMode)
+            DrawDebugLabel(
+                "GOD MODE  F9",
+                270,
+                88,
+                new Color(231, 200, 103));
 
         if (gameSession.EnemyIntroductions.IsPresenting)
             DrawEnemyIntroduction(gameSession.EnemyIntroductions);
@@ -931,6 +940,74 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
+    private void DrawCatacombDepth(GameSession session,Rectangle camera)
+    {
+        if(session.CurrentDungeon?.IsAncientCatacombs!=true)return;
+        _spriteBatch.Draw(_pixel,session.CurrentDungeon.WorldBounds,new Color(12,14,19));
+        int far=camera.Left-(camera.Left%240);
+        for(int x=far-240;x<camera.Right+240;x+=240)
+        {
+            int px=(int)(x-camera.X*.18f);
+            _spriteBatch.Draw(_pixel,new Rectangle(px,170,170,460),new Color(24,28,34));
+            _spriteBatch.Draw(_pixel,new Rectangle(px+28,210,114,330),new Color(10,13,18));
+        }
+        int mid=camera.Left-(camera.Left%170);
+        for(int x=mid-170;x<camera.Right+170;x+=170)
+        {
+            int px=(int)(x-camera.X*.08f);
+            _spriteBatch.Draw(_pixel,new Rectangle(px,250,34,410),new Color(39,42,44));
+            _spriteBatch.Draw(_pixel,new Rectangle(px-10,244,54,12),new Color(51,53,52));
+        }
+    }
+
+    private void DrawAncientCatacombs(GameSession session,Rectangle visible)
+    {
+        DungeonMap map=session.CurrentDungeon;
+        foreach(var zone in map.CatacombZones)
+        {
+            if(!zone.Bounds.Intersects(visible))continue;
+            Color wall=zone.Kind is CatacombZoneKind.WraithHalls or CatacombZoneKind.SoulChapel?new Color(29,31,39):new Color(38,38,39);
+            _spriteBatch.Draw(_pixel,zone.Bounds,wall);
+            for(int x=zone.Bounds.Left+30;x<zone.Bounds.Right;x+=96)
+            {
+                _spriteBatch.Draw(_pixel,new Rectangle(x,zone.Bounds.Top+90,4,zone.GroundY-zone.Bounds.Top-90),new Color(48,48,47,150));
+                if(zone.Kind is CatacombZoneKind.OssuaryCorridors or CatacombZoneKind.RotPits)
+                    _spriteBatch.Draw(_pixel,new Rectangle(x+18,zone.GroundY-24,18,8),new Color(173,166,143));
+            }
+            if(zone.Kind is CatacombZoneKind.ArcherGalleries or CatacombZoneKind.GuardBarracks)
+                for(int x=zone.Bounds.Left+140;x<zone.Bounds.Right-60;x+=260)_spriteBatch.Draw(_pixel,new Rectangle(x,zone.GroundY-105,12,105),new Color(69,67,62));
+            if(zone.Kind is CatacombZoneKind.WraithHalls or CatacombZoneKind.SoulChapel)
+                for(int x=zone.Bounds.Left+120;x<zone.Bounds.Right;x+=230)_spriteBatch.Draw(_pixel,new Rectangle(x,zone.GroundY-82,10,22),new Color(73,151,157,180));
+            if(zone.Kind is CatacombZoneKind.CursedKnightMausoleum or CatacombZoneKind.DeathKnightWarTomb or CatacombZoneKind.FallenHall)
+                for(int x=zone.Bounds.Left+170;x<zone.Bounds.Right;x+=310){_spriteBatch.Draw(_pixel,new Rectangle(x,zone.GroundY-210,42,210),new Color(61,59,56));_spriteBatch.Draw(_pixel,new Rectangle(x-10,zone.GroundY-220,62,14),new Color(78,73,67));}
+        }
+        foreach(Platform p in map.Platforms)if(p.Bounds.Intersects(visible)){Color c=p.Kind==PlatformKind.Raised?new Color(83,79,70):new Color(55,53,49);_spriteBatch.Draw(_pixel,p.Bounds,c);_spriteBatch.Draw(_pixel,new Rectangle(p.Bounds.X,p.Bounds.Y,p.Bounds.Width,4),new Color(102,98,86));}
+        foreach(var tomb in map.Tombs)if(tomb.Bounds.Intersects(visible)){TombState state=session.Tombs.States.TryGetValue(tomb.Id,out TombRuntime rt)?rt.State:TombState.Sealed;Color c=state==TombState.Disturbed?new Color(128,111,85):new Color(70,67,62);_spriteBatch.Draw(_pixel,tomb.Bounds,c);DrawRectangleOutline(tomb.Bounds,3,new Color(104,98,85));}
+        foreach(var shrine in map.SafeShrines)if(visible.Contains(shrine.Position.ToPoint())){_spriteBatch.Draw(_pixel,new Rectangle((int)shrine.Position.X-28,(int)shrine.Position.Y-34,56,34),new Color(68,67,62));_spriteBatch.Draw(_pixel,new Rectangle((int)shrine.Position.X-4,(int)shrine.Position.Y-56,8,20),new Color(107,190,183));}
+        foreach(var burst in session.RottenCorpseBursts){int size=(int)(34+(1f-burst.TimeRemaining/.85f)*42);var warning=new Rectangle((int)burst.Position.X-size/2,(int)burst.Position.Y-size/2,size,size);DrawRectangleOutline(warning,3,new Color(126,110,66,220));}
+        if(session.ShowMapDebug){foreach(var z in map.CurseZones)DrawRectangleOutline(z.Bounds,2,new Color(155,85,180,190));foreach(var z in map.EncounterZones)DrawRectangleOutline(z.ActivationBounds,2,new Color(105,190,165,190));}
+    }
+
+    private void DrawCatacombEnemy(CatacombEnemy e)
+    {
+        Rectangle b=e.Bounds;Color bone=new(184,178,154);Color armor=e.Type switch{EnemyType.CursedKnight=>new Color(82,74,75),EnemyType.DeathKnight=>new Color(69,66,72),EnemyType.FallenKnight=>new Color(83,77,78),EnemyType.UndeadGuard=>new Color(91,89,82),_=>bone};
+        if(e.Type==EnemyType.Wraith)armor=e.IsEthereal?new Color(83,150,158,90):new Color(98,164,169,190);
+        if(e.Type==EnemyType.GraveBat){_spriteBatch.Draw(_pixel,new Rectangle(b.X-12,b.Y+5,b.Width+24,b.Height/2),new Color(54,50,58));return;}
+        if(e.Type==EnemyType.RottenCorpse)armor=new Color(91,94,70);
+        _spriteBatch.Draw(_pixel,new Rectangle(b.X+5,b.Y+12,b.Width-10,b.Height-12),armor);
+        _spriteBatch.Draw(_pixel,new Rectangle(b.Center.X-10,b.Y,20,18),e.Type is EnemyType.Skeleton or EnemyType.SkeletonArcher?bone:armor);
+        if(e.Type is EnemyType.SkeletonArcher or EnemyType.SoulCollector)DrawRootLine(new Vector2(b.Right,b.Y+16),new Vector2(b.Right+18,b.Bottom-8),new Color(119,91,63),3f);
+        else DrawRootLine(new Vector2(b.Right-3,b.Y+20),new Vector2(b.Right+25,b.Bottom-12),new Color(135,133,124),4f);
+        if(e.Type==EnemyType.FallenKnight)_spriteBatch.Draw(_pixel,new Rectangle(b.X+3,b.Y-5,b.Width-6,5),new Color(133,102,61));
+        if(e.IsSpecialTelegraphing)DrawRectangleOutline(e.SpecialAttackArea,3,e.CombatPhase==3?new Color(161,62,59,220):new Color(121,79,145,190));
+    }
+
+    private void DrawCurseMeter(GameSession session)
+    {
+        if(session.CurrentDungeon?.IsAncientCatacombs!=true)return;
+        Rectangle bar=new(270,58,150,8);_spriteBatch.Draw(_pixel,bar,new Color(35,27,42));int fill=(int)((bar.Width-2)*session.Curse.Ratio);if(fill>0)_spriteBatch.Draw(_pixel,new Rectangle(bar.X+1,bar.Y+1,fill,bar.Height-2),new Color(119,73,145));DrawRectangleOutline(bar,1,new Color(151,139,158));DrawDebugText("CURSE",270,46,new Color(182,170,190),1);
+    }
+
     private void DrawDungeon(GameSession gameSession, Rectangle cameraBounds)
     {
         DungeonMap dungeon = gameSession.CurrentDungeon;
@@ -941,6 +1018,12 @@ public sealed class GameRenderer : IDisposable
         if (dungeon.IsAuthoredWildForest)
         {
             DrawAuthoredWildForestGameplay(gameSession, visibleBounds, theme);
+            return;
+        }
+
+        if (dungeon.IsAncientCatacombs)
+        {
+            DrawAncientCatacombs(gameSession, visibleBounds);
             return;
         }
 
@@ -1627,6 +1710,9 @@ public sealed class GameRenderer : IDisposable
                 break;
             case Spiderling spiderling:
                 _wildForestApexSpriteRenderer.Draw(spiderling, gameTime);
+                break;
+            case CatacombEnemy catacomb:
+                DrawCatacombEnemy(catacomb);
                 break;
         }
 

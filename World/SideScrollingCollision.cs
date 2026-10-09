@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DungeonAscendant.Dungeon;
 using Microsoft.Xna.Framework;
 
@@ -35,6 +36,10 @@ public static class SideScrollingCollision
 {
     private const float MaximumStepDistance = 6f;
     private const int GroundProbeDistance = 2;
+    public const float DefaultEntryDropOffset = 40f;
+    public const float DefaultEntrySearchRadius = 128f;
+    private const float EntrySearchStep = 16f;
+    private const float EntryClearanceProbeStep = 4f;
 
     public static MovementResult Resolve(
         Vector2 position,
@@ -148,6 +153,151 @@ public static class SideScrollingCollision
             room.Bounds.Left + halfWidth + 8f,
             room.Bounds.Right - halfWidth - 8f);
         return new Vector2(clampedX, room.GroundY - size.Y / 2f);
+    }
+
+    public static Vector2 ResolveSafeEntrySpawn(
+        float intendedX,
+        Vector2 size,
+        DungeonMap dungeon,
+        float dropOffset = DefaultEntryDropOffset,
+        float horizontalSearchRadius = DefaultEntrySearchRadius,
+        IReadOnlyList<Rectangle> blockedBounds = null)
+    {
+        if (dungeon == null)
+            throw new ArgumentNullException(nameof(dungeon));
+        if (size.X <= 0f || size.Y <= 0f)
+            throw new ArgumentOutOfRangeException(nameof(size));
+
+        dropOffset = MathF.Max(0f, dropOffset);
+        horizontalSearchRadius = MathF.Max(0f, horizontalSearchRadius);
+        float halfWidth = size.X / 2f;
+        float minimumX = dungeon.WorldBounds.Left + halfWidth;
+        float maximumX = dungeon.WorldBounds.Right - halfWidth;
+        int searchSteps = (int)MathF.Ceiling(
+            horizontalSearchRadius / EntrySearchStep);
+
+        for (int step = 0; step <= searchSteps; step++)
+        {
+            if (step == 0)
+            {
+                float x = MathHelper.Clamp(intendedX, minimumX, maximumX);
+                if (TryResolveSafeEntryAtX(
+                    x, size, dungeon, dropOffset, blockedBounds,
+                    out Vector2 spawn))
+                {
+                    return spawn;
+                }
+
+                continue;
+            }
+
+            float distance = MathF.Min(
+                horizontalSearchRadius,
+                step * EntrySearchStep);
+            float right = MathHelper.Clamp(
+                intendedX + distance, minimumX, maximumX);
+            if (TryResolveSafeEntryAtX(
+                right, size, dungeon, dropOffset, blockedBounds,
+                out Vector2 rightSpawn))
+            {
+                return rightSpawn;
+            }
+
+            float left = MathHelper.Clamp(
+                intendedX - distance, minimumX, maximumX);
+            if (left != right && TryResolveSafeEntryAtX(
+                left, size, dungeon, dropOffset, blockedBounds,
+                out Vector2 leftSpawn))
+            {
+                return leftSpawn;
+            }
+        }
+
+        throw new InvalidOperationException(
+            $"No safe entry floor was found within {horizontalSearchRadius:0} px of X={intendedX:0}.");
+    }
+
+    private static bool TryResolveSafeEntryAtX(
+        float x,
+        Vector2 size,
+        DungeonMap dungeon,
+        float dropOffset,
+        IReadOnlyList<Rectangle> blockedBounds,
+        out Vector2 spawn)
+    {
+        spawn = Vector2.Zero;
+        float halfWidth = size.X / 2f;
+        int bestFloorTop = int.MaxValue;
+
+        foreach (Platform platform in dungeon.Platforms)
+        {
+            if (x - halfWidth < platform.Bounds.Left ||
+                x + halfWidth > platform.Bounds.Right ||
+                platform.Bounds.Top >= bestFloorTop)
+            {
+                continue;
+            }
+
+            Vector2 standing = new(
+                x,
+                platform.Bounds.Top - size.Y / 2f);
+            Vector2 candidate = standing - new Vector2(0f, dropOffset);
+            if (!HasClearEntryDrop(
+                candidate, standing, size, dungeon, blockedBounds))
+            {
+                continue;
+            }
+
+            bestFloorTop = platform.Bounds.Top;
+            spawn = candidate;
+        }
+
+        return bestFloorTop != int.MaxValue;
+    }
+
+    private static bool HasClearEntryDrop(
+        Vector2 spawn,
+        Vector2 standing,
+        Vector2 size,
+        DungeonMap dungeon,
+        IReadOnlyList<Rectangle> blockedBounds)
+    {
+        float distance = standing.Y - spawn.Y;
+        int steps = Math.Max(
+            1,
+            (int)MathF.Ceiling(distance / EntryClearanceProbeStep));
+        for (int step = 0; step <= steps; step++)
+        {
+            Vector2 position = Vector2.Lerp(
+                spawn,
+                standing,
+                step / (float)steps);
+            if (!IsPositionFree(position, size, dungeon) ||
+                IntersectsAny(position, size, blockedBounds))
+            {
+                return false;
+            }
+        }
+
+        return IsSupported(standing, size, dungeon);
+    }
+
+    private static bool IntersectsAny(
+        Vector2 position,
+        Vector2 size,
+        IReadOnlyList<Rectangle> blockedBounds)
+    {
+        if (blockedBounds == null)
+            return false;
+
+        Rectangle bounds = DungeonCollision.CreateBounds(position, size);
+        foreach (Rectangle blocked in blockedBounds)
+        {
+            if (bounds.Intersects(blocked))
+                return true;
+        }
+
+        return false;
     }
 
     private static Vector2 MoveUntilContact(

@@ -241,9 +241,10 @@ public sealed class EnemyManager
             type == EnemyType.Spiderling)
             return null;
 
-        bool aerial = type == EnemyType.BloodBat ||
+        bool aerial = type is EnemyType.BloodBat or EnemyType.GraveBat ||
             socket.Role == SpawnSocketRole.Flying;
-        bool elite = type is EnemyType.GoblinChief or EnemyType.MotherSpider;
+        bool elite = type is EnemyType.GoblinChief or EnemyType.MotherSpider or
+            EnemyType.CursedKnight or EnemyType.SoulCollector or EnemyType.DeathKnight or EnemyType.FallenKnight;
         var context = new EnemySpawnContext(
             socket.Position,
             enemyLevel,

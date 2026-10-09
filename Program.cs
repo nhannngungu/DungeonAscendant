@@ -57,6 +57,31 @@ if (System.Array.Exists(
 
 if (System.Array.Exists(
     args,
+    argument => argument == "--validate-god-mode"))
+{
+    DungeonAscendant.Core.DebugGodModeValidation.ValidateOrThrow();
+    System.Console.WriteLine("Debug God Mode validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-entry-spawn"))
+{
+    DungeonAscendant.Core.MapEntrySpawnValidation.ValidateOrThrow();
+    System.Console.WriteLine("Map entry spawn validation passed.");
+    return;
+}
+
+if (System.Array.Exists(args, argument => argument == "--validate-catacombs"))
+{
+    DungeonAscendant.Dungeon.CatacombMapValidation.ValidateOrThrow();
+    System.Console.WriteLine("Ancient Catacombs validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
     argument => argument == "--validate-equipment"))
 {
     DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();

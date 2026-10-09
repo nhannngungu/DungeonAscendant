@@ -27,7 +27,7 @@ public sealed class WildForestEncounterDirector
         _states.Clear();
         WarningZoneId = string.Empty;
         ActiveZoneId = string.Empty;
-        if (map == null || !map.IsAuthoredWildForest)
+        if (map == null || (!map.IsAuthoredWildForest && !map.IsAncientCatacombs))
             return;
         foreach (EncounterZone zone in map.EncounterZones)
             _states[zone.ZoneId] = new ZoneState(zone);
@@ -41,7 +41,7 @@ public sealed class WildForestEncounterDirector
         int enemyLevel,
         int worldTier)
     {
-        if (map == null || !map.IsAuthoredWildForest)
+        if (map == null || (!map.IsAuthoredWildForest && !map.IsAncientCatacombs))
             return;
 
         WarningZoneId = string.Empty;
@@ -58,7 +58,7 @@ public sealed class WildForestEncounterDirector
                     ActiveZoneId = state.Zone.ZoneId;
             }
 
-            if (state.Zone.IsBossZone || state.Spawned ||
+            if ((state.Zone.IsBossZone && map.IsAuthoredWildForest) || state.Spawned ||
                 !state.Zone.ActivationBounds.Contains(playerPosition.ToPoint()))
                 continue;
 
@@ -95,7 +95,7 @@ public sealed class WildForestEncounterDirector
     {
         foreach (ZoneState state in _states.Values)
         {
-            if (!state.Zone.IsEliteZone || !state.Spawned || state.Cleared)
+            if ((!state.Zone.IsEliteZone && !state.Zone.IsBossZone) || !state.Spawned || state.Cleared)
                 continue;
             foreach (Enemy enemy in state.Enemies)
                 enemy.ConstrainToAuthoredArena(state.Zone.ActivationBounds);

@@ -37,6 +37,12 @@ public enum EnemyTheme
     RuinOccupiers,
     TreantTerritory,
     AncientTreant
+    ,CatacombUndead
+    ,CatacombRot
+    ,CatacombSpirits
+    ,CatacombGuard
+    ,CatacombElite
+    ,FallenKnight
 }
 
 public enum EncounterDifficulty
@@ -58,6 +64,11 @@ public enum SpawnSocketRole
     Elite,
     Boss,
     Minion
+    ,Coffin
+    ,BonePile
+    ,BurialPit
+    ,Spectral
+    ,GuardPost
 }
 
 public enum WildForestRouteFeatureKind

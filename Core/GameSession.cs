@@ -24,6 +24,8 @@ public sealed class GameSession
 
     private const float ExitInteractionRadius = 72f;
     private const float WorldTierTransitionDurationSeconds = 1.4f;
+    public const float MapEntryDropOffset =
+        SideScrollingCollision.DefaultEntryDropOffset;
     public const float WildForestShowcasePlayerStartDistance = 400f;
     public const float WildForestShowcaseBloodBatHeight = 180f;
 
@@ -70,12 +72,15 @@ public sealed class GameSession
     private const float WildForestShowcaseBossOffset = 8900f;
 
     private readonly DungeonGenerator _dungeonGenerator;
+    private readonly CatacombMapGenerator _catacombGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
+    private readonly List<RottenCorpseBurst> _rottenCorpseBursts = new();
     private readonly HashSet<Enemy> _playerAttackHits = new();
     private KeyboardState _previousKeyboardState;
     private MouseState _previousMouseState;
     private float _worldTierTransitionTimeRemaining;
     private Vector2 _lastSafePlayerPosition;
+    private bool _mapEntryFallActive;
     private int _trackedPlayerAttackId = -1;
     private int _spawnedPlayerProjectileAttackId = -1;
     private int _duelistMotionAttackId = -1;
@@ -118,6 +123,10 @@ public sealed class GameSession
     public EnemyManager Enemies { get; }
     public WildForestEncounterDirector WildForestEncounters { get; }
     public EnemyIntroductionManager EnemyIntroductions { get; }
+    public CurseSystem Curse { get; }
+    public TombInteractionManager Tombs { get; }
+    public IReadOnlyList<RottenCorpseBurst> RottenCorpseBursts => _rottenCorpseBursts;
+    public bool Map02Cleared { get; private set; }
     public ProjectileManager Projectiles { get; }
     public GroundRuneManager GroundRunes { get; }
     public IReadOnlyList<BreakerShockwave> BreakerShockwaves =>
@@ -152,6 +161,7 @@ public sealed class GameSession
     public bool IsInventoryOpen { get; private set; }
     public bool ShowCombatDebug { get; private set; } = DebugCombatHitboxes;
     public bool ShowMapDebug { get; private set; }
+    public bool DebugGodMode => Player.DebugGodMode;
     public InventoryTab ActiveInventoryTab { get; private set; } =
         InventoryTab.Weapons;
     public IReadOnlyList<EquipmentItem> ActiveInventoryItems =>
@@ -179,7 +189,8 @@ public sealed class GameSession
         CurrentRegion == RegionType.WildForest &&
         DungeonDepth == 1;
     public bool IsSequentialEnemyTestMode => IsWildForestShowcaseMode;
-    public bool ShouldRenderBoss => true;
+    public bool IsMapEntryFallActive => _mapEntryFallActive;
+    public bool ShouldRenderBoss => CurrentDungeon?.IsAncientCatacombs != true;
     public IReadOnlyList<Enemy> WildForestShowcaseEnemies =>
         _wildForestShowcaseEnemies;
     public bool IsSequentialEnemyTestComplete => _sequentialTestComplete;
@@ -213,9 +224,12 @@ public sealed class GameSession
         InventoryTabRules.ValidateOrThrow();
         WildForestMapValidation.ValidateOrThrow();
         _dungeonGenerator = new DungeonGenerator(randomSeed);
+        _catacombGenerator = new CatacombMapGenerator();
         Enemies = new EnemyManager(randomSeed);
         WildForestEncounters = new WildForestEncounterDirector();
         EnemyIntroductions = new EnemyIntroductionManager();
+        Curse = new CurseSystem();
+        Tombs = new TombInteractionManager();
         Projectiles = new ProjectileManager();
         GroundRunes = new GroundRuneManager();
         RootHazards = new RootHazardManager();
@@ -248,6 +262,7 @@ public sealed class GameSession
             Keys.F6);
         bool debugArmorPressed = WasKeyPressed(keyboardState, Keys.F7);
         bool environmentDebugPressed = WasKeyPressed(keyboardState, Keys.F8);
+        bool godModePressed = WasKeyPressed(keyboardState, Keys.F9);
         bool fusePressed = WasKeyPressed(keyboardState, Keys.F);
         bool previousTabPressed = WasKeyPressed(keyboardState, Keys.Q);
         bool nextTabPressed = WasKeyPressed(keyboardState, Keys.E);
@@ -261,6 +276,9 @@ public sealed class GameSession
 
         if (environmentDebugPressed)
             ShowMapDebug = !ShowMapDebug;
+
+        if (godModePressed)
+            Player.DebugGodMode = !Player.DebugGodMode;
 
         if (State == GameState.Start)
         {
@@ -381,9 +399,12 @@ public sealed class GameSession
         Player.Combat.SetSpellbladeRuneCount(GroundRunes.CountWithin(
             Player.Position,
             SpellbladeTuning.ConvergenceMaximumRange));
+        bool entryFallWasActive = _mapEntryFallActive;
         Player.UpdateCombat(
             gameTime,
-            CreateCombatInput(keyboardState, mouseState));
+            entryFallWasActive
+                ? default
+                : CreateCombatInput(keyboardState, mouseState));
         UpdateDuelistTechniqueMovement();
         UpdateRangerTechniqueMovement();
         UpdateRangerFocusPressure(elapsedSeconds);
@@ -392,13 +413,20 @@ public sealed class GameSession
             StoreInputStates(keyboardState, mouseState);
             return;
         }
-        bool jumpPressed = keyboardState.IsKeyDown(Keys.Space) &&
+        KeyboardState movementInput = entryFallWasActive
+            ? new KeyboardState()
+            : keyboardState;
+        bool jumpPressed = !entryFallWasActive &&
+            keyboardState.IsKeyDown(Keys.Space) &&
             !_previousKeyboardState.IsKeyDown(Keys.Space);
         Player.UpdateSideScrollingMovement(
             gameTime,
-            keyboardState,
+            movementInput,
             jumpPressed,
             CurrentDungeon);
+
+        if (_mapEntryFallActive && Player.IsGrounded)
+            _mapEntryFallActive = false;
 
         RecoverPlayerFromFallIfNeeded();
 
@@ -406,6 +434,13 @@ public sealed class GameSession
             CurrentDungeon.WorldBounds.Contains(Player.Bounds))
         {
             _lastSafePlayerPosition = Player.Position;
+        }
+
+        if (entryFallWasActive)
+        {
+            FollowPlayerWithCamera(elapsedSeconds);
+            StoreInputStates(keyboardState, mouseState);
+            return;
         }
 
         bool interactPressed = keyboardState.IsKeyDown(Keys.E) &&
@@ -426,14 +461,32 @@ public sealed class GameSession
             Enemies,
             activeEnemyLevel,
             WorldTier);
-        if (CurrentDungeon.IsAuthoredWildForest)
+        Tombs.Update(gameTime,Player,CurrentDungeon,Enemies,activeEnemyLevel,WorldTier);
+        if (Tombs.LootOpenedPosition.HasValue)
+            Loot.CreateTreasureChestDrops(Tombs.LootOpenedPosition.Value,
+                Player.Level,DungeonDepth,WorldTier,CurrentRegion,CurrentDungeon);
+        Curse.Update(gameTime,Player,CurrentDungeon);
+        UpdateRottenCorpseBursts(gameTime);
+        if (CurrentDungeon.IsAncientCatacombs)
+        {
+            float curseDelta = (float)gameTime.ElapsedGameTime.TotalSeconds;
+            foreach (Enemy enemy in Enemies.Enemies)
+            {
+                float distance = Vector2.Distance(enemy.Position, Player.Position);
+                if (enemy.Type == EnemyType.GraveBat && distance < 260f)
+                    Player.Combat.ExternalStaminaRegenMultiplier *= .72f;
+                if (enemy.Type is EnemyType.Wraith or EnemyType.SoulCollector && distance < 135f)
+                    Curse.Add(5f * curseDelta);
+            }
+        }
+        if (CurrentDungeon.IsAuthoredWildForest || CurrentDungeon.IsAncientCatacombs)
         {
             EnemyIntroductions.Update(
                 gameTime,
                 Player.Position,
                 Enemies.Enemies,
                 Boss,
-                allowBossIntroduction: true);
+                allowBossIntroduction: CurrentDungeon.IsAuthoredWildForest);
         }
         if (EnemyIntroductions.JustTriggered)
         {
@@ -486,13 +539,26 @@ public sealed class GameSession
             State = GameState.GameOver;
         }
 
-        Camera.Follow(
-            Player.Position,
-            Player.Facing,
-            CurrentDungeon.WorldBounds,
-            elapsedSeconds,
-            CurrentDungeon.IsAuthoredWildForest ? .54f : .57f);
+        FollowPlayerWithCamera(elapsedSeconds);
         StoreInputStates(keyboardState, mouseState);
+    }
+
+    private void UpdateRottenCorpseBursts(GameTime gameTime)
+    {
+        float elapsed = MathF.Min((float)gameTime.ElapsedGameTime.TotalSeconds, .05f);
+        for (int index = _rottenCorpseBursts.Count - 1; index >= 0; index--)
+        {
+            RottenCorpseBurst burst = _rottenCorpseBursts[index];
+            burst.TimeRemaining -= elapsed;
+            if (burst.TimeRemaining > 0f)
+                continue;
+            if (Vector2.DistanceSquared(Player.Position, burst.Position) < 190f * 190f)
+                Curse.Add(12f);
+            foreach (Enemy nearby in Enemies.Enemies)
+                if (Vector2.DistanceSquared(nearby.Position, burst.Position) < 150f * 150f)
+                    nearby.ReceiveDamage(18, 32f);
+            _rottenCorpseBursts.RemoveAt(index);
+        }
     }
 
     private void ProcessDefeatedEnemies()
@@ -518,6 +584,26 @@ public sealed class GameSession
         {
             RootHazards.RemoveOwnedBy(enemy);
 
+            if (CurrentDungeon.IsAncientCatacombs)
+            {
+                Curse.Reduce(enemy.Type switch
+                {
+                    EnemyType.SoulCollector => 32f,
+                    EnemyType.CursedKnight => 18f,
+                    EnemyType.DeathKnight => 24f,
+                    EnemyType.Wraith => 8f,
+                    _ => 3f
+                });
+                if (enemy.Type == EnemyType.RottenCorpse)
+                    _rottenCorpseBursts.Add(new RottenCorpseBurst(enemy.Position));
+                if (enemy.Type == EnemyType.FallenKnight)
+                {
+                    Map02Cleared = true;
+                    BossDefeated = true;
+                    Curse.Reduce(100f);
+                }
+            }
+
             if (enemy.CanDropLoot)
             {
                 Loot.TryCreateDrop(
@@ -536,6 +622,7 @@ public sealed class GameSession
     private void ResetRun()
     {
         DungeonDepth = 1;
+        Map02Cleared = false;
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
@@ -571,9 +658,10 @@ public sealed class GameSession
                 WorldTierTransitionDurationSeconds;
         }
 
-        CurrentDungeon = _dungeonGenerator.Generate();
-        Player.MoveTo(GetRoomEntranceSpawn(CurrentDungeon.StartRoom));
-        _lastSafePlayerPosition = Player.Position;
+        CurrentDungeon = DungeonDepth == 2
+            ? _catacombGenerator.Generate()
+            : _dungeonGenerator.Generate();
+        PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
         IsInventoryOpen = false;
         _pendingFusionItem = null;
         RefreshInventoryView();
@@ -612,9 +700,14 @@ public sealed class GameSession
             CurrentRegion,
             isFirstDungeonOfRun: DungeonDepth == 1,
             suppressProceduralSpawns: IsWildForestShowcaseMode ||
-                CurrentDungeon.IsAuthoredWildForest);
+                CurrentDungeon.IsAuthoredWildForest ||
+                CurrentDungeon.IsAncientCatacombs);
+        PlacePlayerAtMapEntry(CurrentDungeon.StartRoom, avoidEnemies: true);
         WildForestEncounters.Reset(CurrentDungeon);
         EnemyIntroductions.Reset();
+        Curse.Reset();
+        Tombs.Reset(CurrentDungeon);
+        _rottenCorpseBursts.Clear();
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
                 CurrentDungeon.TreasureRoom.Bounds.Center.X,
@@ -634,7 +727,8 @@ public sealed class GameSession
             Player.Position,
             Player.Facing,
             CurrentDungeon.WorldBounds,
-            CurrentDungeon.IsAuthoredWildForest ? .54f : .57f);
+            CurrentDungeon.IsAuthoredWildForest ? .54f :
+                CurrentDungeon.IsAncientCatacombs ? .55f : .57f);
     }
 
     private AncientTreant CreateRegionBoss()
@@ -671,8 +765,7 @@ public sealed class GameSession
         _sequentialTestComplete = false;
         BossDefeated = false;
         Player.ClearTemporaryStatus();
-        Player.MoveTo(GetRoomEntranceSpawn(_sequentialTestRoom));
-        _lastSafePlayerPosition = Player.Position;
+        PlacePlayerAtMapEntry(_sequentialTestRoom, avoidEnemies: true);
 
         int enemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level,
@@ -810,12 +903,47 @@ public sealed class GameSession
             ExitInteractionRadius * ExitInteractionRadius;
     }
 
-    private Vector2 GetRoomEntranceSpawn(DungeonRoom room)
+    private Vector2 GetRoomEntranceSpawn(
+        DungeonRoom room,
+        bool avoidEnemies = false)
     {
-        return SideScrollingCollision.PlaceOnGround(
+        List<Rectangle> blockedBounds = null;
+        if (avoidEnemies && Enemies.Enemies.Count > 0)
+        {
+            blockedBounds = new List<Rectangle>(Enemies.Enemies.Count);
+            foreach (Enemy enemy in Enemies.Enemies)
+            {
+                if (enemy.IsAlive)
+                    blockedBounds.Add(enemy.Bounds);
+            }
+        }
+
+        return SideScrollingCollision.ResolveSafeEntrySpawn(
             room.Bounds.Left + 120f,
             Player?.Size ?? new Vector2(40f, 56f),
-            room);
+            CurrentDungeon,
+            MapEntryDropOffset,
+            blockedBounds: blockedBounds);
+    }
+
+    private void PlacePlayerAtMapEntry(
+        DungeonRoom room,
+        bool avoidEnemies = false)
+    {
+        Player.MoveTo(GetRoomEntranceSpawn(room, avoidEnemies));
+        _lastSafePlayerPosition = Player.Position;
+        _mapEntryFallActive = true;
+    }
+
+    private void FollowPlayerWithCamera(float elapsedSeconds)
+    {
+        Camera.Follow(
+            Player.Position,
+            Player.Facing,
+            CurrentDungeon.WorldBounds,
+            elapsedSeconds,
+            CurrentDungeon.IsAuthoredWildForest ? .54f :
+                CurrentDungeon.IsAncientCatacombs ? .55f : .57f);
     }
 
     private void RecoverPlayerFromFallIfNeeded()

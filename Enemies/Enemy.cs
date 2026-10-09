@@ -75,7 +75,9 @@ public abstract class Enemy
         IsUltimateHuntMarked && (_ultimateHuntShotMask & 3) == 3;
     public bool HasBrokenArmor => _brokenArmorTimeRemaining > 0f;
     public bool IsHeavyPullAnchor => Type is EnemyType.CorruptedTreant or
-        EnemyType.MotherSpider;
+        EnemyType.MotherSpider or EnemyType.RottenCorpse or
+        EnemyType.CursedKnight or EnemyType.DeathKnight or
+        EnemyType.SoulCollector or EnemyType.FallenKnight;
     public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
         MaxPoise,
         IsFlying);
@@ -823,6 +825,16 @@ public abstract class Enemy
             EnemyType.GoblinChief => 110f,
             EnemyType.CorruptedTreant => 135f,
             EnemyType.MotherSpider => 165f,
+            EnemyType.Skeleton => 48f,
+            EnemyType.SkeletonArcher => 42f,
+            EnemyType.GraveBat => 34f,
+            EnemyType.Wraith => 58f,
+            EnemyType.RottenCorpse => 112f,
+            EnemyType.UndeadGuard => 105f,
+            EnemyType.CursedKnight => 145f,
+            EnemyType.SoulCollector => 130f,
+            EnemyType.DeathKnight => 190f,
+            EnemyType.FallenKnight => 280f,
             _ => 60f
         };
     }

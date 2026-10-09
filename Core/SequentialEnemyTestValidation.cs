@@ -191,6 +191,18 @@ public static class SequentialEnemyTestValidation
     {
         Update(session, 1f / 60f, new KeyboardState(key));
         Update(session, 1f / 60f, new KeyboardState());
+        if (key == Keys.Enter)
+        {
+            for (int frame = 0;
+                 frame < 60 && session.IsMapEntryFallActive;
+                 frame++)
+            {
+                Update(session, 1f / 60f, new KeyboardState());
+            }
+
+            Require(!session.IsMapEntryFallActive && session.Player.IsGrounded,
+                "entry fall settles before showcase assertions");
+        }
     }
 
     private static void Tick(GameSession session, float seconds)

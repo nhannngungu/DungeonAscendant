@@ -11,6 +11,7 @@ namespace DungeonAscendant.Player;
 /// </summary>
 public sealed class PlayerCombat
 {
+    public float ExternalStaminaRegenMultiplier { get; set; } = 1f;
     public const float ComboResetSeconds = 0.55f;
     public const float DodgeStaminaCost = 24f;
     public const float DodgeDurationSeconds = 0.34f;
@@ -506,7 +507,7 @@ public sealed class PlayerCombat
         Stamina.Update(
             elapsedSeconds,
             regenerationAllowed,
-            _armorItem.StaminaRegenModifier);
+            _armorItem.StaminaRegenModifier * ExternalStaminaRegenMultiplier);
     }
 
     public void SetLocomotion(bool isGrounded, bool isMoving)

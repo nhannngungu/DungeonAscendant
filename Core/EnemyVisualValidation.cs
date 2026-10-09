@@ -972,6 +972,21 @@ public static class EnemyVisualValidation
     {
         session.Update(Frame(1f / 60f), new KeyboardState(key), default);
         session.Update(Frame(1f / 60f), new KeyboardState(), default);
+        if (key == Keys.Enter)
+        {
+            for (int frame = 0;
+                 frame < 60 && session.IsMapEntryFallActive;
+                 frame++)
+            {
+                session.Update(
+                    Frame(1f / 60f),
+                    new KeyboardState(),
+                    default);
+            }
+
+            Require(!session.IsMapEntryFallActive && session.Player.IsGrounded,
+                "entry fall settles before enemy visual assertions");
+        }
     }
 
     private static void Tick(GameSession session, float seconds)

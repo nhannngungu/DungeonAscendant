@@ -17,7 +17,9 @@ public enum WildForestEnemyIdentity
     BloodBat,
     GoblinChief,
     MotherSpider,
-    AncientTreant
+    AncientTreant,
+    Skeleton, SkeletonArcher, RottenCorpse, Wraith, UndeadGuard,
+    CursedKnight, GraveBat, DeathKnight, SoulCollector, FallenKnight
 }
 
 public sealed class EnemyIntroductionDefinition
@@ -59,7 +61,17 @@ public sealed class EnemyIntroductionManager
         new(WildForestEnemyIdentity.BloodBat, "BLOOD BAT", "THE CRIMSON WING", "A SWIFT SCAVENGER DRAWN TO WARM BLOOD", 1),
         new(WildForestEnemyIdentity.GoblinChief, "GOBLIN CHIEF", "WARLORD OF THE WILDS", "THE WAR CAMP BENDS TO HIS BRUTAL COMMAND", 2),
         new(WildForestEnemyIdentity.MotherSpider, "MOTHER SPIDER", "BROODMOTHER OF WEBWOOD", "HER BROOD FEEDS WHERE THE FOREST CANNOT SEE", 2),
-        new(WildForestEnemyIdentity.AncientTreant, "ANCIENT TREANT", "GUARDIAN OF THE FORGOTTEN FOREST", "THE SANCTUARYS LAST KEEPER HAS AWAKENED", 3)
+        new(WildForestEnemyIdentity.AncientTreant, "ANCIENT TREANT", "GUARDIAN OF THE FORGOTTEN FOREST", "THE SANCTUARYS LAST KEEPER HAS AWAKENED", 3),
+        new(WildForestEnemyIdentity.Skeleton,"SKELETON","THE RESTLESS DEAD","ONLY BONES REMAIN YET THE CURSE STILL COMMANDS THEM",1),
+        new(WildForestEnemyIdentity.SkeletonArcher,"SKELETON ARCHER","THE SILENT WATCHER","EVEN DEATH COULD NOT END ITS VIGIL",1),
+        new(WildForestEnemyIdentity.RottenCorpse,"ROTTEN CORPSE","BEARER OF GRAVE ROT","THE CURSE FESTERS INSIDE FLESH THAT NO LONGER BREATHES",1),
+        new(WildForestEnemyIdentity.Wraith,"WRAITH","ECHO OF THE UNBURIED","A SOUL THAT HAS FORGOTTEN BOTH LIFE AND DEATH",1),
+        new(WildForestEnemyIdentity.UndeadGuard,"UNDEAD GUARD","SENTINEL BEYOND DEATH","THE COMMAND ENDED CENTURIES AGO THE GUARD NEVER DID",1),
+        new(WildForestEnemyIdentity.CursedKnight,"CURSED KNIGHT","OATHBOUND BEYOND DEATH","ITS KINGDOM IS GONE ITS OATH REMAINS",2),
+        new(WildForestEnemyIdentity.GraveBat,"GRAVE BAT","VOICE OF THE HOLLOW CRYPT","ITS CRY TRAVELS FARTHER THAN ITS WINGS",1),
+        new(WildForestEnemyIdentity.DeathKnight,"DEATH KNIGHT","CHAMPION OF THE BURIED WAR","DEATH ENDED THE BATTLE IT DID NOT END THE WARRIOR",2),
+        new(WildForestEnemyIdentity.SoulCollector,"SOUL COLLECTOR","KEEPER OF THE UNCLAIMED","EVERY SOUL THAT FAILED TO ESCAPE BECAME ANOTHER TOOL",2),
+        new(WildForestEnemyIdentity.FallenKnight,"THE FALLEN KNIGHT","THE LAST OATH OF A FORGOTTEN KINGDOM","THE FINAL ROYAL CHAMPION RISES FROM THE MONUMENTAL TOMB",3)
     };
 
     private readonly HashSet<WildForestEnemyIdentity> _discovered = new();
@@ -158,6 +170,16 @@ public sealed class EnemyIntroductionManager
             EnemyType.BloodBat => WildForestEnemyIdentity.BloodBat,
             EnemyType.GoblinChief => WildForestEnemyIdentity.GoblinChief,
             EnemyType.MotherSpider => WildForestEnemyIdentity.MotherSpider,
+            EnemyType.Skeleton => WildForestEnemyIdentity.Skeleton,
+            EnemyType.SkeletonArcher => WildForestEnemyIdentity.SkeletonArcher,
+            EnemyType.RottenCorpse => WildForestEnemyIdentity.RottenCorpse,
+            EnemyType.Wraith => WildForestEnemyIdentity.Wraith,
+            EnemyType.UndeadGuard => WildForestEnemyIdentity.UndeadGuard,
+            EnemyType.CursedKnight => WildForestEnemyIdentity.CursedKnight,
+            EnemyType.GraveBat => WildForestEnemyIdentity.GraveBat,
+            EnemyType.DeathKnight => WildForestEnemyIdentity.DeathKnight,
+            EnemyType.SoulCollector => WildForestEnemyIdentity.SoulCollector,
+            EnemyType.FallenKnight => WildForestEnemyIdentity.FallenKnight,
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
         };
 }
