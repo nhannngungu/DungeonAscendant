@@ -36,5 +36,15 @@ if (System.Array.Exists(
     return;
 }
 
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-equipment"))
+{
+    DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();
+    DungeonAscendant.Combat.EquipmentRebuildValidation.ValidateOrThrow();
+    System.Console.WriteLine("Equipment and all seven weapon combat validations passed.");
+    return;
+}
+
 using var game = new DungeonAscendant.Game1();
 game.Run();

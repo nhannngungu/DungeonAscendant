@@ -96,6 +96,11 @@ public sealed class Player
                     ? PlayerVisualState.GuardBreak
                     : Combat.State == CombatState.Dodging
                         ? PlayerVisualState.Dodge
+                    : Combat.CurrentTechnique?.Effect is
+                        WeaponTechniqueEffect.IronBastion or
+                        WeaponTechniqueEffect.OathStance &&
+                        Combat.TechniqueStageIndex == 0
+                            ? PlayerVisualState.Block
                         : Combat.State == CombatState.ChargingHeavy
                             ? PlayerVisualState.HeavyCharge
                         : Combat.State == CombatState.HeavyAttack
@@ -202,11 +207,15 @@ public sealed class Player
             (float)gameTime.ElapsedGameTime.TotalSeconds,
             1f / 20f);
         float facingSign = Facing == FacingDirection.Left ? -1f : 1f;
+        float attackAdvanceDirection =
+            MathF.Abs(Combat.RangerWindrunnerDirection) > .1f
+                ? Combat.RangerWindrunnerDirection
+                : facingSign;
         float horizontalVelocity = Combat.IsDodging
             ? Combat.DodgeDirection * PlayerCombat.DodgeSpeed *
                 Combat.DodgeSpeedMultiplier
             : Combat.AttackAdvanceSpeed > 0f
-                ? facingSign * Combat.AttackAdvanceSpeed
+                ? attackAdvanceDirection * Combat.AttackAdvanceSpeed
             : horizontalInput * EffectiveMovementSpeed * Combat.MovementMultiplier;
         Velocity = new Vector2(
             horizontalVelocity,
@@ -230,6 +239,14 @@ public sealed class Player
         if (!IsAlive)
             return;
 
+        if (WeaponFamily == WeaponFamily.HunterBow)
+        {
+            if (Combat.CanJump && input.HorizontalDirection < -.1f)
+                Facing = FacingDirection.Left;
+            else if (Combat.CanJump && input.HorizontalDirection > .1f)
+                Facing = FacingDirection.Right;
+        }
+
         Combat.Update(gameTime, input, IsGrounded, Facing);
 
         if (Combat.IsDodging)
@@ -245,6 +262,66 @@ public sealed class Player
         Position = position;
         Velocity = Vector2.Zero;
         IsGrounded = false;
+    }
+
+    public void BeginRangerHop(float verticalVelocity)
+    {
+        if (!IsAlive || !IsGrounded || verticalVelocity >= 0f)
+            return;
+
+        Velocity = new Vector2(Velocity.X, verticalVelocity);
+        IsGrounded = false;
+    }
+
+    public void PullToward(Vector2 target, float distance, DungeonMap dungeon)
+    {
+        if (!IsAlive || dungeon == null || distance <= 0f)
+            return;
+
+        float horizontal = target.X - Position.X;
+        if (MathF.Abs(horizontal) <= 1f)
+            return;
+
+        Position = DungeonCollision.ResolveMovement(
+            Position,
+            Position + new Vector2(
+                MathF.Sign(horizontal) * MathF.Min(distance, 32f),
+                0f),
+            Size,
+            dungeon);
+    }
+
+    public Vector2 MoveThroughCombatTechnique(
+        Vector2 desiredPosition,
+        DungeonMap dungeon)
+    {
+        if (!IsAlive || dungeon == null)
+            return Vector2.Zero;
+
+        Vector2 start = Position;
+        Position = DungeonCollision.ResolveMovement(
+            Position,
+            desiredPosition,
+            Size,
+            dungeon);
+        Velocity = new Vector2(0f, Velocity.Y);
+
+        if (MathF.Abs(Position.X - start.X) > .5f)
+        {
+            Facing = Position.X < start.X
+                ? FacingDirection.Left
+                : FacingDirection.Right;
+        }
+
+        return Position - start;
+    }
+
+    public void FaceToward(float worldX)
+    {
+        if (worldX < Position.X - .5f)
+            Facing = FacingDirection.Left;
+        else if (worldX > Position.X + .5f)
+            Facing = FacingDirection.Right;
     }
 
     public bool EquipItem(EquipmentItem item)
@@ -364,7 +441,7 @@ public sealed class Player
         _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
 
         if (triggerHurt || !IsAlive)
-            Combat.OnDamaged(IsAlive);
+            Combat.OnDamaged(IsAlive, damage);
     }
 
     private int ApplyArmorDefense(int damage)

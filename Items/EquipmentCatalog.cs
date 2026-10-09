@@ -10,25 +10,36 @@ public static class EquipmentCatalog
     public const int ArmorSampleCount = 3;
 
     public static readonly WeaponDefinition RustedLongSword = CreateWeapon(
-        "rusted-long-sword", "Rusted Long Sword", WeaponFamily.LongSword, 1, 4);
+        "rusted-long-sword", "Rusted Long Sword + Shield", WeaponFamily.LongSword, 1, 4);
     public static readonly WeaponDefinition KnightLongSword = CreateWeapon(
-        "knight-long-sword", "Knight Long Sword", WeaponFamily.LongSword, 2, 8);
-    public static readonly WeaponDefinition IronGreatSword = CreateWeapon(
-        "iron-great-sword", "Iron Great Sword", WeaponFamily.GreatSword, 2, 12);
-    public static readonly WeaponDefinition ExecutionerGreatSword = CreateWeapon(
-        "executioner-great-sword", "Executioner Great Sword", WeaponFamily.GreatSword, 3, 18);
-    public static readonly WeaponDefinition RaiderAxe = CreateWeapon(
-        "raider-axe", "Raider Axe", WeaponFamily.BattleAxe, 1, 9);
-    public static readonly WeaponDefinition WarAxe = CreateWeapon(
-        "war-axe", "War Axe", WeaponFamily.BattleAxe, 3, 16);
-    public static readonly WeaponDefinition HunterSpear = CreateWeapon(
-        "hunter-spear", "Hunter Spear", WeaponFamily.Spear, 2, 9);
-    public static readonly WeaponDefinition TwinDaggers = CreateWeapon(
-        "twin-daggers", "Twin Daggers", WeaponFamily.DualDaggers, 2, 7);
+        "knight-long-sword", "Knight Long Sword + Shield", WeaponFamily.LongSword, 2, 8);
+    public static readonly WeaponDefinition DuelistDualSwords = CreateWeapon(
+        "duelist-dual-swords", "Duelist Dual Swords", WeaponFamily.DualSwords, 2, 7);
     public static readonly WeaponDefinition HunterBow = CreateWeapon(
-        "hunter-bow", "Hunter Bow", WeaponFamily.Bow, 2, 8);
-    public static readonly WeaponDefinition ApprenticeArcaneStaff = CreateWeapon(
-        "apprentice-arcane-staff", "Apprentice Arcane Staff", WeaponFamily.ArcaneStaff, 2, 11);
+        "hunter-bow", "Hunter Bow", WeaponFamily.HunterBow, 2, 8);
+    public static readonly WeaponDefinition RaiderWarAxe = CreateWeapon(
+        "war-axe", "War Axe + Buckler", WeaponFamily.WarAxe, 3, 16);
+    public static readonly WeaponDefinition ArcaneWarStaff = CreateWeapon(
+        "arcane-war-staff", "Arcane War Staff", WeaponFamily.ArcaneWarStaff, 2, 11);
+    public static readonly WeaponDefinition BreakerSpikedMace = CreateWeapon(
+        "breaker-spiked-mace", "Breaker Spiked Mace", WeaponFamily.SpikedMace, 3, 17);
+    public static readonly WeaponDefinition ReckonerChainFlail = CreateWeapon(
+        "reckoner-chain-flail", "Reckoner Chain Flail", WeaponFamily.ChainFlail, 3, 14);
+
+    [Obsolete("Use BreakerSpikedMace.")]
+    public static WeaponDefinition IronGreatSword => BreakerSpikedMace;
+    [Obsolete("Use BreakerSpikedMace.")]
+    public static WeaponDefinition ExecutionerGreatSword => BreakerSpikedMace;
+    [Obsolete("Use RaiderWarAxe.")]
+    public static WeaponDefinition RaiderAxe => RaiderWarAxe;
+    [Obsolete("Use RaiderWarAxe.")]
+    public static WeaponDefinition WarAxe => RaiderWarAxe;
+    [Obsolete("Use HunterBow.")]
+    public static WeaponDefinition HunterSpear => HunterBow;
+    [Obsolete("Use DuelistDualSwords.")]
+    public static WeaponDefinition TwinDaggers => DuelistDualSwords;
+    [Obsolete("Use ArcaneWarStaff.")]
+    public static WeaponDefinition ApprenticeArcaneStaff => ArcaneWarStaff;
 
     public static readonly ArmorDefinition ScoutArmor = new(
         "scout-armor", "Scout Armor", ArmorClass.Light, 1, 5,
@@ -51,12 +62,12 @@ public static class EquipmentCatalog
         return new EquipmentItem[]
         {
             new(KnightLongSword, ItemRarity.Uncommon),
-            new(IronGreatSword, ItemRarity.Common),
-            new(WarAxe, ItemRarity.Rare),
-            new(HunterSpear, ItemRarity.Uncommon),
-            new(TwinDaggers, ItemRarity.Uncommon),
+            new(DuelistDualSwords, ItemRarity.Uncommon),
             new(HunterBow, ItemRarity.Uncommon),
-            new(ApprenticeArcaneStaff, ItemRarity.Rare),
+            new(RaiderWarAxe, ItemRarity.Rare),
+            new(ArcaneWarStaff, ItemRarity.Rare),
+            new(BreakerSpikedMace, ItemRarity.Rare),
+            new(ReckonerChainFlail, ItemRarity.Rare),
             new(ScoutArmor, ItemRarity.Common),
             new(ScoutArmor, ItemRarity.Common),
             new(ScoutArmor, ItemRarity.Common),
@@ -74,12 +85,29 @@ public static class EquipmentCatalog
         return index switch
         {
             0 => new EquipmentItem(KnightLongSword, ItemRarity.Uncommon),
-            1 => new EquipmentItem(IronGreatSword, ItemRarity.Common),
-            2 => new EquipmentItem(WarAxe, ItemRarity.Rare),
-            3 => new EquipmentItem(HunterSpear, ItemRarity.Uncommon),
-            4 => new EquipmentItem(TwinDaggers, ItemRarity.Uncommon),
-            5 => new EquipmentItem(HunterBow, ItemRarity.Uncommon),
-            _ => new EquipmentItem(ApprenticeArcaneStaff, ItemRarity.Rare)
+            1 => new EquipmentItem(DuelistDualSwords, ItemRarity.Uncommon),
+            2 => new EquipmentItem(HunterBow, ItemRarity.Uncommon),
+            3 => new EquipmentItem(RaiderWarAxe, ItemRarity.Rare),
+            4 => new EquipmentItem(ArcaneWarStaff, ItemRarity.Rare),
+            5 => new EquipmentItem(BreakerSpikedMace, ItemRarity.Rare),
+            _ => new EquipmentItem(ReckonerChainFlail, ItemRarity.Rare)
+        };
+    }
+
+    public static WeaponDefinition ResolveSavedWeaponId(string id)
+    {
+        return id switch
+        {
+            "rusted-long-sword" => RustedLongSword,
+            "knight-long-sword" => KnightLongSword,
+            "duelist-dual-swords" or "twin-daggers" => DuelistDualSwords,
+            "hunter-bow" or "hunter-spear" => HunterBow,
+            "war-axe" or "raider-axe" => RaiderWarAxe,
+            "arcane-war-staff" or "apprentice-arcane-staff" => ArcaneWarStaff,
+            "breaker-spiked-mace" or "iron-great-sword" or
+                "executioner-great-sword" => BreakerSpikedMace,
+            "reckoner-chain-flail" => ReckonerChainFlail,
+            _ => KnightLongSword
         };
     }
 
@@ -98,8 +126,10 @@ public static class EquipmentCatalog
         int tier,
         int damageBonus)
     {
+        family = family.ToOfficialFamily();
         string familyId = family.ToDisplayName()
             .Replace(" ", "-", StringComparison.Ordinal)
+            .Replace("+", "", StringComparison.Ordinal)
             .ToLowerInvariant();
         return CreateWeapon(
             $"generated-{familyId}-t{Math.Max(1, tier)}",
@@ -135,39 +165,48 @@ public static class EquipmentCatalog
         int tier,
         int damageBonus)
     {
+        family = family.ToOfficialFamily();
         return family switch
         {
-            WeaponFamily.GreatSword => Definition(id, name, family, tier, damageBonus,
-                .72f, 1.10f, 1.05f, 1.30f, 1.35f, false, .12f,
-                "Massive overhead smash", WeaponMoveSets.GreatSword),
-            WeaponFamily.BattleAxe => Definition(id, name, family, tier, damageBonus,
-                .84f, 1.05f, .96f, 1.35f, 1.45f, false, .22f,
-                "Execution downward chop", WeaponMoveSets.BattleAxe),
-            WeaponFamily.Spear => Definition(id, name, family, tier, damageBonus,
-                1.05f, .95f, 1.12f, .85f, 1.05f, false, .28f,
-                "Committed long lunge", WeaponMoveSets.Spear),
-            WeaponFamily.DualDaggers => Definition(id, name, family, tier, damageBonus,
-                1.30f, .80f, .90f, .60f, .70f, false, .58f,
-                "Rapid crossing burst", WeaponMoveSets.DualDaggers),
-            WeaponFamily.Bow => Definition(id, name, family, tier, damageBonus,
-                1f, .90f, 1f, .80f, 1f, false, 0f,
-                "Charged piercing arrow", WeaponMoveSets.Bow),
-            WeaponFamily.ArcaneStaff => Definition(id, name, family, tier, damageBonus,
-                .82f, 1.10f, 1f, 1.10f, 1.25f, false, .08f,
-                "Charged arcane bolt", WeaponMoveSets.ArcaneStaff),
+            WeaponFamily.DualSwords => Definition(id, name, family, tier, damageBonus,
+                1.24f, 1f, .88f, .65f, .72f, false, .62f,
+                "Continuous asymmetric blade pressure", WeaponMoveSets.DualDaggers,
+                WeaponTechniqueCatalog.Duelist),
+            WeaponFamily.HunterBow => Definition(id, name, family, tier, damageBonus,
+                1f, 1f, 1f, .82f, 1f, false, 0f,
+                "Patient precision shooting", WeaponMoveSets.Bow,
+                WeaponTechniqueCatalog.Ranger),
+            WeaponFamily.WarAxe => Definition(id, name, family, tier, damageBonus,
+                .88f, 1f, .98f, 1.34f, 1.35f, true, .25f,
+                "Aggressive guard breaking", WeaponMoveSets.BattleAxe,
+                WeaponTechniqueCatalog.Raider),
+            WeaponFamily.ArcaneWarStaff => Definition(id, name, family, tier, damageBonus,
+                .94f, 1f, 1.10f, 1.05f, 1.12f, false, .22f,
+                "Physical strikes into arcane release", WeaponMoveSets.ArcaneStaff,
+                WeaponTechniqueCatalog.Spellblade),
+            WeaponFamily.SpikedMace => Definition(id, name, family, tier, damageBonus,
+                .72f, 1f, 1f, 1.55f, 1.72f, false, .12f,
+                "Committed poise destruction", WeaponMoveSets.GreatSword,
+                WeaponTechniqueCatalog.Breaker),
+            WeaponFamily.ChainFlail => Definition(id, name, family, tier, damageBonus,
+                .92f, 1f, 1.25f, 1.18f, 1.14f, false, .30f,
+                "Procedural mid-range chain control", WeaponMoveSets.Spear,
+                WeaponTechniqueCatalog.Reckoner),
             _ => Definition(id, name, WeaponFamily.LongSword, tier, damageBonus,
                 1f, 1f, 1f, 1f, 1f, true, .35f,
-                "Precise committed thrust", WeaponMoveSets.LongSword)
+                "Balanced defense and counterplay", WeaponMoveSets.LongSword,
+                WeaponTechniqueCatalog.Knight)
         };
     }
 
     private static WeaponDefinition Definition(
         string id, string name, WeaponFamily family, int tier, int damageBonus,
         float speed, float stamina, float range, float knockback, float poise,
-        bool shield, float movement, string heavy, WeaponMoveSet moveSet)
+        bool shield, float movement, string heavy, WeaponMoveSet moveSet,
+        WeaponCombatProfile combatProfile)
     {
         return new WeaponDefinition(
             id, name, family, tier, damageBonus, speed, stamina, range,
-            knockback, poise, shield, movement, heavy, moveSet);
+            knockback, poise, shield, movement, heavy, moveSet, combatProfile);
     }
 }

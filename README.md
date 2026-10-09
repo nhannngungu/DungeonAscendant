@@ -13,8 +13,8 @@ Armor now drops with an independent C1-C5 progression Grade, three identical une
 ## Current Features
 
 - Frame-rate-independent left/right movement, gravity, jumping, falling, and grounded state
-- Data-driven per-family combos with one-input buffering and distinct finisher timing
-- Heavy sword attack with higher damage, knockback, poise damage, and stamina cost
+- Data-driven J/K/L weapon techniques with buffered dual and triple combinations
+- Seven staged weapon profiles with distinct timing, movement, poise, and resource rules
 - Stamina-powered dodge, directional block, and guard break
 - Enemy windup/active/recovery phases with shared poise recovery and stagger
 - Left/right facing with directional, multi-target melee combat and horizontal knockback
@@ -41,8 +41,8 @@ Armor now drops with an independent C1-C5 progression Grade, three identical une
 - Boss-only, explicitly assigned weapon reward architecture
 - Manual nearby loot pickup and a 12-slot normal run inventory
 - Equipment swapping with derived damage and maximum-health bonuses
-- Seven distinct weapon families: Long Sword + Shield, Great Sword, Battle Axe, Spear, Dual Daggers, Bow, and Arcane Staff
-- Charged-release Bow arrows and Arcane Staff bolts with dungeon-wall and enemy collision
+- Seven official weapon families: Long Sword + Shield, Dual Swords, Hunter Bow, War Axe + Buckler, Arcane War Staff, Spiked Mace, and Chain Flail
+- Ranger arrows and Spellblade arcane bolts with dungeon-wall and enemy collision
 - Light, Medium, and Heavy armor classes with distinct defense, mobility, stamina, and silhouettes
 - Shield/block availability derived from the equipped weapon family
 - Code-rendered inventory, equipment, comparison, and loot visuals
@@ -59,18 +59,21 @@ Armor now drops with an independent C1-C5 progression Grade, three identical une
 | Enter | Start from the start screen |
 | A/D or Left/Right Arrow | Move and change facing direction |
 | Space | Jump while grounded |
-| Left Mouse or J | Light attack / continue the equipped weapon's combo |
-| Right Mouse or K | Heavy attack; hold and release to charge Bow/Arcane attacks |
-| Left or Right Shift | Dodge in the held movement direction, or facing direction |
-| Left Ctrl (hold) | Directional block |
+| Left Mouse or J | Skill 1 |
+| Right Mouse or K | Skill 2 |
+| L | Skill 3 |
+| J+K / J+L / K+L | Buffered two-skill technique |
+| J+K+L | Ultimate; requires full stamina and consumes all stamina |
+| Left or Right Shift | Dodge; hold with the weapon's one compatible skill for its mobility technique |
+| Left Ctrl (hold) | Knight directional shield block |
 | F3 | Toggle combat hitbox debugging |
 | F5 | Cycle milestone sample weapons for testing |
-| F6 | Cycle Light / Medium / Heavy sample armor for testing |
-| F7 | Restart the sequential Wild Forest enemy test when its debug flag is enabled |
+| F6 | Restart the Wild Forest showcase when its debug flag is enabled |
+| F7 | Cycle Light / Medium / Heavy sample armor for testing |
 | E | Open a nearby chest, use an unlocked Exit, or pick up nearby loot |
 | I | Open or close inventory |
 | Q/E (Inventory open) | Previous/next Inventory tab |
-| W/S or Up/Down | Move inventory selection one row up/down |
+| W/S or Up/Down | Ranger slight vertical aim; move inventory selection one row up/down while Inventory is open |
 | A/D or Left/Right | Move inventory selection one column left/right |
 | Enter | Equip the selected inventory item |
 | F (Inventory open) | Prepare fusion of three eligible matching Armor pieces |
@@ -79,9 +82,9 @@ Armor now drops with an independent C1-C5 progression Grade, three identical une
 | Escape | Pause or resume during gameplay |
 | R | Restart after Game Over |
 
-## Combat 2.0
+## Definitive Weapon Combat
 
-The default sword uses three light attacks with progressively stronger damage, poise damage, reach, and recovery. One late light input can be buffered into the next strike; waiting more than 0.55 seconds after a strike resets the chain. Heavy attacks consume 30 stamina and have a visible 0.32-second startup.
+J, K, and L feed a reusable 0.30-second combination buffer. Triple input has priority over dual input, and dual input has priority over a single skill; a resolved chord is consumed atomically so it cannot also fire its component skills. Every technique defines its own windup, active, recovery, stamina, movement, hitbox, knockback, poise, projectile, and staged follow-up data. Every ultimate requires full stamina and spends all 100 points.
 
 The Player has 100 stamina. Dodge costs 24 stamina, lasts 0.34 seconds, and is invulnerable from 0.05 through 0.22 seconds. Stamina begins regenerating after a 0.8-second delay at 30 points per second. Blocking uses an invisible 80-by-90 forward defense zone, only protects the facing side, and consumes one stamina per incoming damage, with a minimum cost of 10. An exhausted guard breaks for 0.7 seconds and allows half damage through. Goblin Hunter arrows are blockable from the front and are consumed on contact with an active guard.
 
@@ -93,13 +96,13 @@ Inventory selection uses a four-column grid. WASD and the arrow keys move in mat
 
 The Inventory has `WEAPONS` and `EQUIPMENT` tabs. Press `Q` or `E` while Inventory is open to switch tabs. Each tab filters the same underlying inventory item references and remembers its own grid selection; Armor fusion is available only from `EQUIPMENT`.
 
-- Long Swords use the balanced three-hit combo and are the only family that renders a shield or accepts normal block input.
-- Great Swords use slower, longer, higher-damage two-handed swings with the most committed movement and a powerful overhead heavy.
-- Battle Axes use medium-slow chops with shorter reach than Great Swords but the strongest knockback and poise pressure.
-- Spears use two long narrow thrusts, a sweep finisher, and a long heavy lunge with the greatest melee reach.
-- Dual Daggers use a low dual-wield stance, a fast five-hit advancing combo, short recovery, and the shortest melee reach.
-- Bows have no melee chain: light fires an arrow and held heavy releases a faster, stronger charged arrow from the visible bow.
-- Arcane Staves use a caster stance and slower, heavier arcane bolts. Their attacks are marked `MagicReady` for a future resource system but currently spend stamina.
+- Long Sword + Shield is the Knight: balanced sword pressure, shield poise attacks, frontal Guard Counter, and the defensive Last Bastion ultimate.
+- Dual Swords is the Duelist: asymmetric blades, multi-hit pressure, physical side-crossing movement, and continuous 0-100 Momentum. J is the five-hit Twin Fang chain, K is Phantom Step, L is Blade Tempest, Shift+J is Cross Fang Dash, and the J+K / J+L / K+L chords are Afterimage Execution / Hundred Fangs / Mirage Cyclone. J+K+L activates Thousand Blades: Final Waltz at full stamina and consumes all snapshotted Momentum.
+- Hunter Bow is the Ranger: a continuous 0-100 Precision meter, mouse or slight vertical directional aim, weak-point rewards, charged Hunter's Shot, deterministic ricochets, ballistic area shots, a capped five-arrow Serpent Rain split, and the three manually aimed shots of Heaven's Fury. J/K/L are Hunter's Shot / Ricochet Arrow / Skyfall Arrow; Shift+J is Windrunner Shot; J+K / J+L / K+L are Piercing Ricochet / Falling Comet / Serpent Rain. J+K+L spends full stamina to enter Heaven's Fury.
+- War Axe + Buckler is the Raider: three-hit weighted cleaves, hook pulls, offensive buckler impacts, terrain-safe throws, collision Stagger, and four-phase formation breaking.
+- Arcane War Staff is the Spellblade: mark enemies with up to three temporary Arcane Imprints, place up to three Ground Runes, connect them, then detonate the prepared battlefield.
+- Spiked Mace is the Breaker: high-commitment poise destruction, continuous 0-100 Inertia, staged Pendulum rotation, physical ground shockwaves, and a one-hit Worldbreaker ultimate.
+- Chain Flail is the Reckoner: deterministic linked-chain arcs, moving-head collision, hook control, and 0-3 Chain Momentum for reach and flow.
 - Scout Armor has the narrowest silhouette, fastest movement/dodge, and strongest stamina regeneration, but the least mitigation.
 - Knight Armor retains the established balanced hero silhouette and baseline mobility.
 - Fortress Armor adds broad plate and greaves, more health and mitigation, cheaper shield guarding, but slower movement/dodge and stamina regeneration.

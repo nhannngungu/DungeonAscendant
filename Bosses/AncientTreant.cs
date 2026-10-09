@@ -28,6 +28,12 @@ public sealed class AncientTreant
     private float _rootVisualTimeRemaining;
     private float _rootVisualDuration;
     private float _deathPresentationElapsed;
+    private float _ultimateHuntMarkTimeRemaining;
+    private int _ultimateHuntShotMask;
+    private int _arcaneImprintCount;
+    private float _arcaneImprintTimeRemaining;
+    private float _arcaneSlowTimeRemaining;
+    private float _arcaneSlowMultiplier = 1f;
 
     public Vector2 Position { get; private set; }
     public Vector2 Size { get; } = new(110f, 126f);
@@ -45,6 +51,8 @@ public sealed class AncientTreant
     public float MaxPoise { get; }
     public float CurrentPoise { get; private set; }
     public bool IsStaggered => _staggerTimeRemaining > 0f;
+    public int ArcaneImprintCount => _arcaneImprintCount;
+    public float ArcaneImprintTimeRemaining => _arcaneImprintTimeRemaining;
     public bool FacesLeft => _attackDirection < 0f;
     public float VisualVelocityX { get; private set; }
     public bool IsPhaseTransitioning => _phaseTransitionTimeRemaining > 0f;
@@ -80,6 +88,15 @@ public sealed class AncientTreant
         (int)(Position.Y - Size.Y / 2f),
         (int)MathF.Ceiling(Size.X),
         (int)MathF.Ceiling(Size.Y));
+    public Rectangle WeakPointBounds => new(
+        Bounds.Center.X - 18,
+        Bounds.Y + 28,
+        36,
+        30);
+    public bool IsUltimateHuntMarked =>
+        _ultimateHuntMarkTimeRemaining > 0f && _ultimateHuntShotMask != 0;
+    public bool HasBothOpeningUltimateShots =>
+        IsUltimateHuntMarked && (_ultimateHuntShotMask & 3) == 3;
 
     public AncientTreant(
         Vector2 position,
@@ -120,6 +137,21 @@ public sealed class AncientTreant
         float? proximityActivationDistance = null)
     {
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _arcaneImprintTimeRemaining = MathF.Max(
+            0f,
+            _arcaneImprintTimeRemaining - elapsedSeconds);
+        _arcaneSlowTimeRemaining = MathF.Max(
+            0f,
+            _arcaneSlowTimeRemaining - elapsedSeconds);
+        if (_arcaneImprintTimeRemaining <= 0f)
+            _arcaneImprintCount = 0;
+        if (_arcaneSlowTimeRemaining <= 0f)
+            _arcaneSlowMultiplier = 1f;
+        _ultimateHuntMarkTimeRemaining = MathF.Max(
+            0f,
+            _ultimateHuntMarkTimeRemaining - elapsedSeconds);
+        if (_ultimateHuntMarkTimeRemaining <= 0f)
+            _ultimateHuntShotMask = 0;
 
         if (!IsAlive)
         {
@@ -242,7 +274,7 @@ public sealed class AncientTreant
             _ => 45f
         };
         float movementDistance = MathF.Min(
-            speed * elapsedSeconds,
+            speed * _arcaneSlowMultiplier * elapsedSeconds,
             horizontalDistance - Attack.Range);
         Vector2 desiredPosition = Position +
             new Vector2(MathF.Sign(toPlayer.X) * movementDistance, 0f);
@@ -275,6 +307,10 @@ public sealed class AncientTreant
         if (!IsAlive)
         {
             Attack.Cancel();
+            _arcaneImprintCount = 0;
+            _arcaneImprintTimeRemaining = 0f;
+            _arcaneSlowTimeRemaining = 0f;
+            _arcaneSlowMultiplier = 1f;
             VisualVelocityX = 0f;
             _phaseTransitionTimeRemaining = 0f;
             RootVisualState = AncientTreantRootVisualState.Ready;
@@ -309,6 +345,57 @@ public sealed class AncientTreant
         _staggerTimeRemaining = 0.55f;
         _staggerResistanceTimeRemaining = 2.5f;
         Attack.Cancel();
+    }
+
+    public int AddArcaneImprint()
+    {
+        if (!IsAlive)
+            return _arcaneImprintCount;
+        _arcaneImprintCount = Math.Min(
+            SpellbladeTuning.MaximumImprints,
+            _arcaneImprintCount + 1);
+        _arcaneImprintTimeRemaining = SpellbladeTuning.ImprintLifetimeSeconds;
+        return _arcaneImprintCount;
+    }
+
+    public bool RefreshArcaneImprints()
+    {
+        if (!IsAlive || _arcaneImprintCount <= 0)
+            return false;
+        _arcaneImprintTimeRemaining = MathF.Min(
+            SpellbladeTuning.MaximumRefreshedLifetimeSeconds,
+            _arcaneImprintTimeRemaining +
+                SpellbladeTuning.ImprintRefreshSeconds);
+        return true;
+    }
+
+    public int ConsumeArcaneImprints()
+    {
+        int count = _arcaneImprintCount;
+        _arcaneImprintCount = 0;
+        _arcaneImprintTimeRemaining = 0f;
+        return count;
+    }
+
+    public void ApplyArcaneSlow(float multiplier, float durationSeconds)
+    {
+        if (!IsAlive || durationSeconds <= 0f)
+            return;
+        _arcaneSlowMultiplier = MathF.Min(
+            _arcaneSlowMultiplier,
+            Math.Clamp(multiplier, .55f, 1f));
+        _arcaneSlowTimeRemaining = MathF.Max(
+            _arcaneSlowTimeRemaining,
+            durationSeconds);
+    }
+
+    public void RegisterUltimateHuntShot(int shotIndex)
+    {
+        if (!IsAlive || shotIndex < 0 || shotIndex > 1)
+            return;
+
+        _ultimateHuntShotMask |= 1 << shotIndex;
+        _ultimateHuntMarkTimeRemaining = 8f;
     }
 
     public void ApplyKnockback(
@@ -414,13 +501,16 @@ public sealed class AncientTreant
         if (!canContact || !Attack.TryConsumeActiveHit())
             return false;
 
-        player.ReceiveMeleeAttack(
+        AttackResolution resolution = player.ReceiveMeleeAttack(
             new AttackContact(
                 AttackDamage,
                 Position,
                 Attack.IsBlockable,
                 Attack.IsUnblockable,
                 attackArea));
+
+        if (resolution == AttackResolution.PerfectGuard)
+            ApplyPoiseDamage(24f);
         return true;
     }
 

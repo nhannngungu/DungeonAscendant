@@ -57,13 +57,15 @@ public sealed class AttackDefinition
         HitboxShape = delivery == AttackDelivery.Melee
             ? hitboxShape
             : AttackHitboxShape.None;
-        ForwardMovementSpeed = MathF.Max(0f, forwardMovementSpeed);
+        ForwardMovementSpeed = forwardMovementSpeed;
         Projectile = projectile;
         ResourceKind = resourceKind;
     }
 
     public int CalculateDamage(int baseDamage)
     {
-        return Math.Max(1, (int)MathF.Round(baseDamage * DamageMultiplier));
+        return DamageMultiplier <= 0f
+            ? 0
+            : Math.Max(1, (int)MathF.Round(baseDamage * DamageMultiplier));
     }
 }

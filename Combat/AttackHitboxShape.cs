@@ -7,5 +7,9 @@ public enum AttackHitboxShape
     WideArc,
     Chop,
     Thrust,
+    Circular,
+    FrontalFan,
+    Cross,
+    TargetZone,
     None
 }

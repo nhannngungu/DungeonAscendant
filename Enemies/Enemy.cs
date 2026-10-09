@@ -27,13 +27,25 @@ public abstract class Enemy
     private float _staggerTimeRemaining;
     private EnemyFacingDirection _attackFacing = EnemyFacingDirection.Right;
     private float _deathPresentationTimeRemaining;
+    private float _hunterMarkTimeRemaining;
+    private float _ultimateHuntMarkTimeRemaining;
+    private int _ultimateHuntShotMask;
+    private float _brokenArmorTimeRemaining;
+    private float _physicalDamageTakenMultiplier = 1f;
+    private float _controlTimeRemaining;
+    private float _controlMovementMultiplier = 1f;
+    private float _displacementImpactCooldownRemaining;
+    private int _arcaneImprintCount;
+    private float _arcaneImprintTimeRemaining;
+    private float _arcaneStunTimeRemaining;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
     public Vector2 Size { get; protected set; }
     public float MovementSpeed { get; protected set; }
     public float EffectiveMovementSpeed => MovementSpeed *
-        (100 + (IsBuffed ? _movementBuffPercent : 0)) / 100f;
+        (100 + (IsBuffed ? _movementBuffPercent : 0)) / 100f *
+        (_controlTimeRemaining > 0f ? _controlMovementMultiplier : 1f);
     public float DetectionRange { get; }
     public int MaxHealth { get; protected set; }
     public int CurrentHealth { get; private set; }
@@ -45,6 +57,9 @@ public abstract class Enemy
     public float MaxPoise { get; }
     public float CurrentPoise { get; private set; }
     public bool IsStaggered => _staggerTimeRemaining > 0f;
+    public bool IsArcaneStunned => _arcaneStunTimeRemaining > 0f;
+    public int ArcaneImprintCount => _arcaneImprintCount;
+    public float ArcaneImprintTimeRemaining => _arcaneImprintTimeRemaining;
     public int Level { get; }
     public int WorldTier { get; }
     public int AttackDamage { get; protected set; }
@@ -53,6 +68,20 @@ public abstract class Enemy
     public int ExperienceReward { get; protected set; }
     public bool IsElite { get; }
     public bool IsBuffed => _buffTimeRemaining > 0f;
+    public bool IsHunterMarked => _hunterMarkTimeRemaining > 0f;
+    public bool IsUltimateHuntMarked =>
+        _ultimateHuntMarkTimeRemaining > 0f && _ultimateHuntShotMask != 0;
+    public bool HasBothOpeningUltimateShots =>
+        IsUltimateHuntMarked && (_ultimateHuntShotMask & 3) == 3;
+    public bool HasBrokenArmor => _brokenArmorTimeRemaining > 0f;
+    public bool IsHeavyPullAnchor => Type is EnemyType.CorruptedTreant or
+        EnemyType.MotherSpider;
+    public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
+        MaxPoise,
+        IsFlying);
+    public float PhysicalDamageTakenMultiplier => HasBrokenArmor
+        ? _physicalDamageTakenMultiplier
+        : 1f;
     public virtual bool CanBeTargeted => IsAlive;
     public virtual bool CountsForProgression => true;
     public virtual bool CanDropLoot => true;
@@ -70,6 +99,20 @@ public abstract class Enemy
         (int)MathF.Ceiling(Size.X),
         (int)MathF.Ceiling(Size.Y));
     public virtual Rectangle MeleeTargetBounds => Bounds;
+    public virtual Rectangle WeakPointBounds
+    {
+        get
+        {
+            Rectangle target = MeleeTargetBounds;
+            int width = Math.Max(10, (int)MathF.Round(target.Width * .44f));
+            int height = Math.Max(8, (int)MathF.Round(target.Height * .26f));
+            return new Rectangle(
+                target.Center.X - width / 2,
+                target.Top + Math.Max(2, target.Height / 12),
+                width,
+                height);
+        }
+    }
 
     protected Enemy(
         EnemyType type,
@@ -130,7 +173,7 @@ public abstract class Enemy
 
         UpdateTimers(gameTime);
 
-        if (player.IsAlive && !IsStaggered)
+        if (player.IsAlive && !IsStaggered && !IsArcaneStunned)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -161,7 +204,7 @@ public abstract class Enemy
     {
         float startingX = Position.X;
 
-        if (IsAlive && player.IsAlive && !IsStaggered)
+        if (IsAlive && player.IsAlive && !IsStaggered && !IsArcaneStunned)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -199,6 +242,36 @@ public abstract class Enemy
         _poiseRecoveryDelayRemaining = MathF.Max(
             0f,
             _poiseRecoveryDelayRemaining - elapsedSeconds);
+        _hunterMarkTimeRemaining = MathF.Max(
+            0f,
+            _hunterMarkTimeRemaining - elapsedSeconds);
+        _ultimateHuntMarkTimeRemaining = MathF.Max(
+            0f,
+            _ultimateHuntMarkTimeRemaining - elapsedSeconds);
+        if (_ultimateHuntMarkTimeRemaining <= 0f)
+            _ultimateHuntShotMask = 0;
+        _brokenArmorTimeRemaining = MathF.Max(
+            0f,
+            _brokenArmorTimeRemaining - elapsedSeconds);
+        _controlTimeRemaining = MathF.Max(
+            0f,
+            _controlTimeRemaining - elapsedSeconds);
+        _displacementImpactCooldownRemaining = MathF.Max(
+            0f,
+            _displacementImpactCooldownRemaining - elapsedSeconds);
+        _arcaneImprintTimeRemaining = MathF.Max(
+            0f,
+            _arcaneImprintTimeRemaining - elapsedSeconds);
+        _arcaneStunTimeRemaining = MathF.Max(
+            0f,
+            _arcaneStunTimeRemaining - elapsedSeconds);
+        if (_arcaneImprintTimeRemaining <= 0f)
+            _arcaneImprintCount = 0;
+
+        if (_controlTimeRemaining <= 0f)
+            _controlMovementMultiplier = 1f;
+        if (_brokenArmorTimeRemaining <= 0f)
+            _physicalDamageTakenMultiplier = 1f;
 
         if (wasStaggered && !IsStaggered)
             CurrentPoise = MaxPoise;
@@ -246,6 +319,9 @@ public abstract class Enemy
         if (wasAlive && !IsAlive)
         {
             Attack.Cancel();
+            _arcaneImprintCount = 0;
+            _arcaneImprintTimeRemaining = 0f;
+            _arcaneStunTimeRemaining = 0f;
             VisualVelocityX = 0f;
             _deathPresentationTimeRemaining =
                 DeathPresentationDurationSeconds;
@@ -281,6 +357,47 @@ public abstract class Enemy
         Attack.Cancel();
     }
 
+    public int AddArcaneImprint()
+    {
+        if (!CanBeTargeted)
+            return _arcaneImprintCount;
+        _arcaneImprintCount = Math.Min(
+            SpellbladeTuning.MaximumImprints,
+            _arcaneImprintCount + 1);
+        _arcaneImprintTimeRemaining = SpellbladeTuning.ImprintLifetimeSeconds;
+        return _arcaneImprintCount;
+    }
+
+    public bool RefreshArcaneImprints()
+    {
+        if (!CanBeTargeted || _arcaneImprintCount <= 0)
+            return false;
+        _arcaneImprintTimeRemaining = MathF.Min(
+            SpellbladeTuning.MaximumRefreshedLifetimeSeconds,
+            _arcaneImprintTimeRemaining +
+                SpellbladeTuning.ImprintRefreshSeconds);
+        return true;
+    }
+
+    public int ConsumeArcaneImprints()
+    {
+        int count = _arcaneImprintCount;
+        _arcaneImprintCount = 0;
+        _arcaneImprintTimeRemaining = 0f;
+        return count;
+    }
+
+    public void ApplyArcaneStun(float durationSeconds)
+    {
+        if (!CanBeTargeted || durationSeconds <= 0f ||
+            WeightClass == EnemyWeightClass.Heavy)
+            return;
+        _arcaneStunTimeRemaining = MathF.Max(
+            _arcaneStunTimeRemaining,
+            durationSeconds);
+        Attack.Cancel();
+    }
+
     public virtual void ApplyKnockback(
         Vector2 sourcePosition,
         float distance,
@@ -291,6 +408,91 @@ public abstract class Enemy
 
         float direction = Position.X < sourcePosition.X ? -1f : 1f;
         MoveBy(new Vector2(direction * distance, 0f), dungeon);
+    }
+
+    public EnemyDisplacementResult DisplaceHorizontally(
+        float direction,
+        float distance,
+        DungeonMap dungeon)
+    {
+        Vector2 start = Position;
+        if (!CanBeTargeted || dungeon == null || distance <= 0f ||
+            MathF.Abs(direction) <= .01f)
+        {
+            return new EnemyDisplacementResult(start, start, 0f, false);
+        }
+
+        float scaledDistance = distance *
+            RaiderTuning.GetDisplacementMultiplier(WeightClass);
+        if (scaledDistance <= 0f)
+            return new EnemyDisplacementResult(start, start, 0f, false);
+
+        MoveBy(
+            new Vector2(MathF.Sign(direction) * scaledDistance, 0f),
+            dungeon);
+        float moved = MathF.Abs(Position.X - start.X);
+        bool hitWall = moved + 1f < scaledDistance;
+        return new EnemyDisplacementResult(
+            start,
+            Position,
+            scaledDistance,
+            hitWall);
+    }
+
+    public EnemyDisplacementResult PullTowardSafe(
+        Vector2 targetPosition,
+        float distance,
+        float minimumSeparation,
+        DungeonMap dungeon)
+    {
+        float horizontal = targetPosition.X - Position.X;
+        float allowedDistance = MathF.Max(
+            0f,
+            MathF.Abs(horizontal) - MathF.Max(0f, minimumSeparation));
+        float displacementMultiplier =
+            RaiderTuning.GetDisplacementMultiplier(WeightClass);
+        float baseAllowedDistance = displacementMultiplier <= 0f
+            ? 0f
+            : allowedDistance / displacementMultiplier;
+        return DisplaceHorizontally(
+            horizontal,
+            MathF.Min(distance, baseAllowedDistance),
+            dungeon);
+    }
+
+    public bool ApplyDisplacementImpact(float poiseDamage, int damage = 0)
+    {
+        if (!CanBeTargeted || _displacementImpactCooldownRemaining > 0f)
+            return false;
+
+        _displacementImpactCooldownRemaining =
+            RaiderTuning.DisplacementImpactCooldownSeconds;
+        float weightScale = WeightClass == EnemyWeightClass.Heavy ? .55f : 1f;
+        if (damage > 0)
+            ReceiveDamage(damage, poiseDamage * weightScale);
+        else
+            ApplyPoiseDamage(poiseDamage * weightScale);
+        return true;
+    }
+
+    public void ApplyRaiderLaunch(float upwardVelocity)
+    {
+        if (!CanBeTargeted || IsFlying ||
+            WeightClass == EnemyWeightClass.Heavy || upwardVelocity >= 0f)
+        {
+            return;
+        }
+
+        _verticalVelocity = MathF.Min(_verticalVelocity, upwardVelocity);
+        IsGrounded = false;
+    }
+
+    public void PullToward(Vector2 sourcePosition, float distance, DungeonMap dungeon)
+    {
+        if (!CanBeTargeted || distance <= 0f || IsHeavyPullAnchor)
+            return;
+
+        PullTowardSafe(sourcePosition, MathF.Min(distance, 36f), 0f, dungeon);
     }
 
     public void ApplyTemporaryBuff(
@@ -317,6 +519,65 @@ public abstract class Enemy
         _buffTimeRemaining = 0f;
         _damageBuffPercent = 0;
         _movementBuffPercent = 0;
+    }
+
+    public void ApplyHunterMark(float durationSeconds = 6f)
+    {
+        if (IsAlive)
+            _hunterMarkTimeRemaining = MathF.Max(
+                _hunterMarkTimeRemaining,
+                MathF.Max(0f, durationSeconds));
+    }
+
+    public bool ConsumeHunterMark()
+    {
+        if (!IsHunterMarked)
+            return false;
+
+        _hunterMarkTimeRemaining = 0f;
+        return true;
+    }
+
+    public void RegisterUltimateHuntShot(int shotIndex)
+    {
+        if (!IsAlive || shotIndex < 0 || shotIndex > 1)
+            return;
+
+        _ultimateHuntShotMask |= 1 << shotIndex;
+        _ultimateHuntMarkTimeRemaining = 8f;
+    }
+
+    public void ApplyBrokenArmor(float durationSeconds = 5f)
+    {
+        ApplyDefenseWeakening(1.18f, durationSeconds);
+    }
+
+    public void ApplyDefenseWeakening(
+        float physicalDamageTakenMultiplier,
+        float durationSeconds)
+    {
+        if (!IsAlive || durationSeconds <= 0f)
+            return;
+
+        _physicalDamageTakenMultiplier = MathF.Max(
+            _physicalDamageTakenMultiplier,
+            Math.Clamp(physicalDamageTakenMultiplier, 1f, 1.35f));
+        _brokenArmorTimeRemaining = MathF.Max(
+            _brokenArmorTimeRemaining,
+            durationSeconds);
+    }
+
+    public void ApplyControl(float movementMultiplier, float durationSeconds)
+    {
+        if (!IsAlive || durationSeconds <= 0f)
+            return;
+
+        _controlMovementMultiplier = MathF.Min(
+            _controlMovementMultiplier,
+            Math.Clamp(movementMultiplier, .25f, 1f));
+        _controlTimeRemaining = MathF.Max(
+            _controlTimeRemaining,
+            durationSeconds);
     }
 
     protected virtual void OnDamaged()
@@ -348,13 +609,16 @@ public abstract class Enemy
         if (!canContact || !Attack.TryConsumeActiveHit())
             return false;
 
-        player.ReceiveMeleeAttack(
+        AttackResolution resolution = player.ReceiveMeleeAttack(
             new AttackContact(
                 EffectiveAttackDamage,
                 Position,
                 Attack.IsBlockable,
                 Attack.IsUnblockable,
                 attackArea));
+
+        if (resolution == AttackResolution.PerfectGuard)
+            ApplyPoiseDamage(MaxPoise * .55f);
         return true;
     }
 

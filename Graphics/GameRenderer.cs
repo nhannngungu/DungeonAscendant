@@ -146,12 +146,28 @@ public sealed class GameRenderer : IDisposable
             gameSession.Player.Combat.CurrentAttack?.Delivery == AttackDelivery.Melee)
             DrawAttackArea(gameSession.PlayerAttackArea);
 
-        _playerSpriteRenderer.Draw(gameSession.Player, gameTime);
+        DrawRangerTrajectoryGuide(gameSession);
+        DrawSpellbladeWorld(gameSession);
+        DrawBreakerWorld(gameSession);
+
+        _playerSpriteRenderer.Draw(
+            gameSession.Player,
+            gameTime,
+            gameSession.Player.WeaponFamily == WeaponFamily.ChainFlail
+                ? gameSession.PlayerAttackArea.Center.ToVector2()
+                : null);
 
         foreach (Enemy enemy in gameSession.Enemies.DefeatPresentations)
         {
             if (enemy.Bounds.Intersects(gameSession.Camera.ViewBounds))
                 DrawEnemy(enemy, gameTime);
+                DrawArcaneImprints(
+                    GetEnemyVisualBounds(enemy),
+                    enemy.ArcaneImprintCount,
+                    bound: enemy.IsArcaneStunned ||
+                        IsDominionBindingVisible(
+                            gameSession,
+                            enemy.Position));
         }
 
         foreach (Enemy enemy in gameSession.Enemies.Enemies)
@@ -177,12 +193,21 @@ public sealed class GameRenderer : IDisposable
                 DrawProjectile(projectile);
         }
 
+        foreach (ProjectileImpact impact in gameSession.Projectiles.Impacts)
+            DrawRangerImpact(impact);
+
         if (gameSession.ShouldRenderBoss &&
             (gameSession.Boss.IsAlive ||
              gameSession.Boss.DeathPresentationProgress < 1f) &&
             gameSession.Boss.Bounds.Intersects(gameSession.Camera.ViewBounds))
         {
             DrawAncientTreant(gameSession.Boss, gameTime);
+            DrawArcaneImprints(
+                gameSession.Boss.Bounds,
+                gameSession.Boss.ArcaneImprintCount,
+                bound: IsDominionBindingVisible(
+                    gameSession,
+                    gameSession.Boss.Position));
 
             if (gameSession.IsWildForestShowcaseMode)
             {
@@ -214,6 +239,8 @@ public sealed class GameRenderer : IDisposable
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerStamina(gameSession.Player);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
+        DrawWeaponResource(gameSession.Player);
+        DrawTechniqueFeedback(gameSession.Player);
         DrawDungeonStatus(gameSession);
 
         if (gameSession.IsWildForestShowcaseMode)
@@ -1194,20 +1221,32 @@ public sealed class GameRenderer : IDisposable
 
         if (projectile.Type == ProjectileType.ArcaneBolt)
         {
+            if (projectile.TechniqueEffect ==
+                WeaponTechniqueEffect.SpellbladeRunicSpear)
+            {
+                DrawRunicSpearProjectile(projectile);
+                return;
+            }
+
             Rectangle glow = projectile.Bounds;
             glow.Inflate(7, 7);
             _spriteBatch.Draw(_pixel, glow, new Color(126, 72, 177, 50));
-            _spriteBatch.Draw(_pixel, projectile.Bounds, new Color(75, 43, 105, 230));
-            var core = new Rectangle(
-                projectile.Bounds.Center.X - 4,
-                projectile.Bounds.Center.Y - 4,
-                8,
-                8);
-            _spriteBatch.Draw(_pixel, core, new Color(210, 159, 241));
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(glow.X - 7, glow.Center.Y - 1, glow.Width + 14, 3),
-                new Color(177, 117, 220, 150));
+            Vector2 center = projectile.Position;
+            float half = MathF.Max(7f, projectile.Size.X * .45f);
+            Color edge = new(135, 105, 188, 225);
+            Color core = new(218, 208, 235, 235);
+            DrawWorldLine(center + new Vector2(0f, -half),
+                center + new Vector2(half, 0f), 2f, edge);
+            DrawWorldLine(center + new Vector2(half, 0f),
+                center + new Vector2(0f, half), 2f, edge);
+            DrawWorldLine(center + new Vector2(0f, half),
+                center + new Vector2(-half, 0f), 2f, edge);
+            DrawWorldLine(center + new Vector2(-half, 0f),
+                center + new Vector2(0f, -half), 2f, edge);
+            DrawWorldLine(center - new Vector2(half * .55f, 0f),
+                center + new Vector2(half * .55f, 0f), 1f, core);
+            DrawWorldLine(center - new Vector2(0f, half * .55f),
+                center + new Vector2(0f, half * .55f), 1f, core);
             return;
         }
 
@@ -1216,6 +1255,36 @@ public sealed class GameRenderer : IDisposable
         float rotation = MathF.Atan2(direction.Y, direction.X);
         float shaftLength = MathF.Max(projectile.Size.X, projectile.Size.Y);
         Vector2 shaftStart = projectile.Position - direction * (shaftLength / 2f);
+        if (projectile.IsRangerProjectile)
+        {
+            Color trail = projectile.TechniqueEffect ==
+                WeaponTechniqueEffect.RangerHeavensFury
+                    ? new Color(239, 215, 122, 180)
+                    : projectile.RicochetCount > 0
+                        ? new Color(132, 214, 196, 145)
+                        : new Color(211, 191, 135, 105);
+            DrawWorldLine(
+                projectile.PreviousPosition,
+                projectile.Position,
+                projectile.TechniqueEffect ==
+                    WeaponTechniqueEffect.RangerHeavensFury ? 4f : 2f,
+                trail);
+
+            if (projectile.RicochetVisualTimeRemaining > 0f)
+            {
+                float spark = 7f + projectile.RicochetCount * 2f;
+                DrawWorldLine(
+                    projectile.LastRicochetPosition + new Vector2(-spark, -spark),
+                    projectile.LastRicochetPosition + new Vector2(spark, spark),
+                    2f,
+                    new Color(245, 218, 126, 220));
+                DrawWorldLine(
+                    projectile.LastRicochetPosition + new Vector2(-spark, spark),
+                    projectile.LastRicochetPosition + new Vector2(spark, -spark),
+                    2f,
+                    new Color(170, 231, 215, 215));
+            }
+        }
         _spriteBatch.Draw(
             _pixel,
             shaftStart,
@@ -1246,6 +1315,382 @@ public sealed class GameRenderer : IDisposable
             new Vector2(6f, 2f),
             SpriteEffects.None,
             layerDepth: 0f);
+    }
+
+    private void DrawRunicSpearProjectile(Projectile projectile)
+    {
+        Vector2 direction = projectile.Velocity;
+        if (direction.LengthSquared() <= .01f)
+            direction = Vector2.UnitX;
+        else
+            direction.Normalize();
+        Vector2 perpendicular = new(-direction.Y, direction.X);
+        float halfLength = MathF.Max(26f, projectile.Size.X / 2f);
+        Vector2 tail = projectile.Position - direction * halfLength;
+        Vector2 neck = projectile.Position + direction * (halfLength - 10f);
+        Vector2 tip = projectile.Position + direction * (halfLength + 8f);
+        Color glow = new(118, 92, 173, 80);
+        Color edge = new(145, 119, 202, 220);
+        Color core = new(224, 218, 237, 235);
+        DrawWorldLine(tail, neck, 8f, glow);
+        DrawWorldLine(tail, neck, 3f, edge);
+        DrawWorldLine(tail + direction * 7f, neck, 1f, core);
+        DrawWorldLine(neck + perpendicular * 8f, tip, 3f, edge);
+        DrawWorldLine(neck - perpendicular * 8f, tip, 3f, edge);
+        DrawWorldLine(neck, tip, 1f, core);
+    }
+
+    private void DrawSpellbladeWorld(GameSession gameSession)
+    {
+        var networkRunes = new List<GroundRune>();
+        foreach (GroundRune rune in gameSession.GroundRunes.Runes)
+        {
+            if (rune.State == GroundRuneState.Network)
+                networkRunes.Add(rune);
+        }
+        networkRunes.Sort((left, right) =>
+            left.Position.X.CompareTo(right.Position.X));
+
+        for (int index = 0; index < networkRunes.Count - 1; index++)
+            DrawRuneNetworkLink(
+                networkRunes[index].Position,
+                networkRunes[index + 1].Position);
+        if (networkRunes.Count == 3)
+            DrawRuneNetworkArc(
+                networkRunes[0].Position,
+                networkRunes[2].Position);
+
+        foreach (GroundRune rune in gameSession.GroundRunes.Runes)
+            DrawGroundRune(rune);
+
+        foreach (RuneDetonationVisual visual in
+            gameSession.GroundRunes.DetonationVisuals)
+        {
+            float radius = 9f + SpellbladeTuning.RuneBlastRadius *
+                visual.Progress;
+            int alpha = Math.Clamp(
+                (int)MathF.Round(205f * (1f - visual.Progress)), 0, 255);
+            DrawArcaneRing(
+                visual.Position - new Vector2(0f, 8f),
+                radius,
+                new Color(166, 132, 213, alpha),
+                12,
+                2f);
+        }
+
+        WeaponTechnique technique = gameSession.Player.Combat.CurrentTechnique;
+        if (gameSession.Player.WeaponFamily != WeaponFamily.ArcaneWarStaff ||
+            technique == null)
+            return;
+
+        if (technique.Effect == WeaponTechniqueEffect.SpellbladeArcaneDominion)
+        {
+            float phase = (gameSession.Player.Combat.TechniqueStageIndex + 1) /
+                4f;
+            DrawArcaneRing(
+                gameSession.Player.Position,
+                SpellbladeTuning.DominionRadius * (.72f + phase * .28f),
+                new Color(131, 105, 179, 105),
+                24,
+                2f);
+        }
+        else if (technique.Effect ==
+                WeaponTechniqueEffect.SpellbladeArcaneDetonation &&
+            gameSession.Player.Combat.IsAttackActive)
+        {
+            DrawArcaneRing(
+                gameSession.Player.Position,
+                SpellbladeTuning.ArcaneDetonationRadius,
+                new Color(176, 150, 213, 115),
+                18,
+                2f);
+        }
+    }
+
+    private void DrawBreakerWorld(GameSession gameSession)
+    {
+        foreach (BreakerShockwave wave in gameSession.BreakerShockwaves)
+        {
+            Vector2 ground = wave.Position;
+            float direction = wave.Direction;
+            float fade = 1f - wave.Progress * .55f;
+            Color crack = new(
+                (int)(96f * fade),
+                (int)(82f * fade),
+                (int)(67f * fade),
+                220);
+            Color dust = new(122, 105, 82, (int)(145f * fade));
+            DrawWorldLine(
+                ground - new Vector2(direction * 25f, 2f),
+                ground + new Vector2(direction * 22f, -1f),
+                4f,
+                crack);
+            DrawWorldLine(
+                ground - new Vector2(direction * 4f, 1f),
+                ground + new Vector2(direction * 13f, -12f),
+                2f,
+                crack);
+            DrawWorldLine(
+                ground + new Vector2(direction * 5f, 0f),
+                ground + new Vector2(direction * 17f, -7f),
+                2f,
+                crack);
+            for (int debris = 0; debris < 3; debris++)
+            {
+                int size = 3 + debris;
+                Vector2 position = ground + new Vector2(
+                    -direction * (8f + debris * 8f),
+                    -9f - debris * 5f);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle((int)position.X, (int)position.Y, size, size),
+                    dust);
+            }
+        }
+
+        foreach (BreakerImpactVisual visual in gameSession.BreakerImpactVisuals)
+        {
+            float progress = visual.Progress;
+            float radius = visual.Radius * (.22f + progress * .78f);
+            float fade = 1f - progress;
+            Color crack = new(91, 76, 61, (int)(220f * fade));
+            Color dust = new(135, 112, 84, (int)(165f * fade));
+            Vector2 left = visual.Position - new Vector2(radius, 0f);
+            Vector2 right = visual.Position + new Vector2(radius, 0f);
+            DrawWorldLine(left, right, 3f + visual.Strength * 2f, crack);
+            for (int index = 0; index < 6; index++)
+            {
+                float side = index % 2 == 0 ? -1f : 1f;
+                float distance = radius * (.20f + index * .12f);
+                Vector2 root = visual.Position + new Vector2(
+                    side * distance,
+                    -1f);
+                Vector2 tip = root + new Vector2(
+                    side * (7f + index * 2f),
+                    -5f - index % 3 * 4f);
+                DrawWorldLine(root, tip, index < 2 ? 3f : 2f, crack);
+                int fragment = 3 + index % 3;
+                Vector2 fragmentPosition = tip - new Vector2(
+                    0f,
+                    (8f + index * 3f) * fade);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(
+                        (int)fragmentPosition.X,
+                        (int)fragmentPosition.Y,
+                        fragment,
+                        fragment),
+                    dust);
+            }
+        }
+    }
+
+    private void DrawGroundRune(GroundRune rune)
+    {
+        Vector2 center = rune.Position - new Vector2(0f, 6f);
+        float half = SpellbladeTuning.RuneWidth / 2f;
+        Color edge = rune.State switch
+        {
+            GroundRuneState.Network => new Color(173, 151, 220, 235),
+            GroundRuneState.Awakened => new Color(211, 202, 231, 240),
+            _ => new Color(119, 91, 161, 210)
+        };
+        Color core = rune.State == GroundRuneState.Active
+            ? new Color(151, 125, 190, 175)
+            : new Color(225, 220, 237, 215);
+        Vector2 top = center + new Vector2(0f, -11f);
+        Vector2 right = center + new Vector2(half, 0f);
+        Vector2 bottom = center + new Vector2(0f, 5f);
+        Vector2 left = center + new Vector2(-half, 0f);
+        DrawWorldLine(top, right, 2f, edge);
+        DrawWorldLine(right, bottom, 2f, edge);
+        DrawWorldLine(bottom, left, 2f, edge);
+        DrawWorldLine(left, top, 2f, edge);
+        DrawWorldLine(center - new Vector2(7f, 0f),
+            center + new Vector2(7f, 0f), 1f, core);
+        DrawWorldLine(center - new Vector2(0f, 7f),
+            center + new Vector2(0f, 4f), 1f, core);
+    }
+
+    private void DrawRuneNetworkLink(Vector2 start, Vector2 end)
+    {
+        start -= new Vector2(0f, 8f);
+        end -= new Vector2(0f, 8f);
+        DrawWorldLine(start, end, 7f, new Color(92, 70, 139, 65));
+        DrawWorldLine(start, end, 2f, new Color(177, 154, 220, 205));
+        Vector2 midpoint = Vector2.Lerp(start, end, .5f);
+        DrawWorldLine(midpoint - new Vector2(5f, 5f),
+            midpoint + new Vector2(5f, 5f), 1f,
+            new Color(229, 222, 239, 210));
+    }
+
+    private void DrawRuneNetworkArc(Vector2 start, Vector2 end)
+    {
+        start -= new Vector2(0f, 9f);
+        end -= new Vector2(0f, 9f);
+        Vector2 previous = start;
+        for (int segment = 1; segment <= 8; segment++)
+        {
+            float amount = segment / 8f;
+            Vector2 point = Vector2.Lerp(start, end, amount);
+            point.Y -= MathF.Sin(amount * MathF.PI) * 24f;
+            DrawWorldLine(previous, point, 1f,
+                new Color(145, 126, 196, 145));
+            previous = point;
+        }
+    }
+
+    private void DrawArcaneImprints(Rectangle bounds, int count, bool bound)
+    {
+        count = Math.Clamp(count, 0, SpellbladeTuning.MaximumImprints);
+        int spacing = 11;
+        int startX = bounds.Center.X - (count - 1) * spacing / 2;
+        int y = bounds.Top - 12;
+        for (int index = 0; index < count; index++)
+        {
+            Vector2 center = new(startX + index * spacing, y);
+            Color color = new(185, 159, 220, 230);
+            DrawWorldLine(center + new Vector2(0f, -4f),
+                center + new Vector2(4f, 0f), 2f, color);
+            DrawWorldLine(center + new Vector2(4f, 0f),
+                center + new Vector2(0f, 4f), 2f, color);
+            DrawWorldLine(center + new Vector2(0f, 4f),
+                center + new Vector2(-4f, 0f), 2f, color);
+            DrawWorldLine(center + new Vector2(-4f, 0f),
+                center + new Vector2(0f, -4f), 2f, color);
+        }
+        if (bound)
+        {
+            DrawArcaneRing(bounds.Center.ToVector2(),
+                MathF.Max(bounds.Width, bounds.Height) * .56f,
+                new Color(137, 111, 184, 125), 12, 2f);
+        }
+    }
+
+    private static bool IsDominionBindingVisible(
+        GameSession gameSession,
+        Vector2 target) =>
+        gameSession.Player.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.SpellbladeArcaneDominion &&
+        gameSession.Player.Combat.TechniqueStageIndex >= 2 &&
+        Vector2.DistanceSquared(gameSession.Player.Position, target) <=
+            SpellbladeTuning.DominionRadius * SpellbladeTuning.DominionRadius;
+
+    private void DrawArcaneRing(
+        Vector2 center,
+        float radius,
+        Color color,
+        int segments,
+        float thickness)
+    {
+        Vector2 previous = center + new Vector2(radius, 0f);
+        for (int index = 1; index <= segments; index++)
+        {
+            float angle = MathHelper.TwoPi * index / segments;
+            Vector2 next = center + new Vector2(
+                MathF.Cos(angle) * radius,
+                MathF.Sin(angle) * radius * .34f);
+            DrawWorldLine(previous, next, thickness, color);
+            previous = next;
+        }
+    }
+
+    private void DrawRangerTrajectoryGuide(GameSession gameSession)
+    {
+        PlayerCharacter player = gameSession.Player;
+        if (player.WeaponFamily != WeaponFamily.HunterBow ||
+            !player.Combat.IsRangerTrajectoryAiming ||
+            player.Combat.CurrentTechnique == null)
+            return;
+
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        if (effect is not WeaponTechniqueEffect.RangerSkyfallMarker and
+            not WeaponTechniqueEffect.RangerFallingStar)
+            return;
+
+        Vector2 origin = player.Position + new Vector2(0f, -10f);
+        float facing = player.Facing == FacingDirection.Left ? -1f : 1f;
+        Vector2 direction;
+        float speed;
+        float gravity;
+        float duration;
+
+        if (effect == WeaponTechniqueEffect.RangerSkyfallMarker)
+        {
+            direction = player.Combat.RangerSkyfallDistance switch
+            {
+                SkyfallDistance.Near => Vector2.Normalize(
+                    new Vector2(facing * .21f, -.978f)),
+                SkyfallDistance.Far => Vector2.Normalize(
+                    new Vector2(facing * .555f, -.832f)),
+                _ => Vector2.Normalize(new Vector2(facing * .355f, -.935f))
+            };
+            speed = 650f;
+            gravity = 780f;
+            duration = 1.55f;
+        }
+        else
+        {
+            direction = Vector2.Normalize(new Vector2(
+                facing * .48f,
+                -.88f));
+            speed = 690f;
+            gravity = 940f;
+            duration = 1.30f;
+        }
+
+        Vector2 velocity = direction * speed;
+        Vector2 previous = origin;
+        Vector2 final = origin;
+        const int segments = 14;
+        for (int index = 1; index <= segments; index++)
+        {
+            float time = duration * index / segments;
+            Vector2 point = origin + velocity * time +
+                new Vector2(0f, gravity * time * time * .5f);
+            if (!SideScrollingCollision.IsPositionFree(
+                    point,
+                    new Vector2(10f, 6f),
+                    gameSession.CurrentDungeon))
+            {
+                final = previous;
+                break;
+            }
+            if (index % 2 == 1)
+            {
+                DrawWorldLine(
+                    previous,
+                    point,
+                    1.5f,
+                    new Color(221, 205, 148, 125));
+            }
+            previous = point;
+            final = point;
+        }
+
+        Rectangle marker = new((int)final.X - 7, (int)final.Y - 3, 14, 6);
+        DrawRectangleOutline(marker, 1, new Color(234, 213, 139, 175));
+    }
+
+    private void DrawRangerImpact(ProjectileImpact impact)
+    {
+        float radius = MathF.Max(12f, impact.Projectile.ImpactRadius);
+        Rectangle outer = new(
+            (int)(impact.Position.X - radius),
+            (int)(impact.Position.Y - radius * .42f),
+            (int)(radius * 2f),
+            (int)(radius * .84f));
+        DrawRectangleOutline(outer, 2, new Color(229, 186, 94, 170));
+        DrawWorldLine(
+            impact.Position + new Vector2(-radius * .55f, 0f),
+            impact.Position + new Vector2(radius * .55f, 0f),
+            3f,
+            new Color(236, 218, 155, 185));
+        DrawWorldLine(
+            impact.Position + new Vector2(0f, -radius * .45f),
+            impact.Position + new Vector2(0f, radius * .25f),
+            2f,
+            new Color(164, 222, 187, 165));
     }
 
     private void DrawWebPatch(WebPatch patch)
@@ -2062,6 +2507,34 @@ public sealed class GameRenderer : IDisposable
                 return;
             }
 
+            if (item.WeaponDefinition.Family == WeaponFamily.ChainFlail)
+            {
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX - 2, top + 14, 5, height - 3),
+                    new Color(105, 68, 45));
+                for (int link = 0; link < 4; link++)
+                {
+                    _spriteBatch.Draw(_pixel,
+                        new Rectangle(centerX + 3 + link * 4, top + 12 - link * 3, 4, 3),
+                        new Color(112, 119, 126));
+                }
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX + 17, top - 4, 13, 13), color);
+                return;
+            }
+
+            if (item.WeaponDefinition.Family == WeaponFamily.GreatSword)
+            {
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX - 2, top + 10, 5, height + 3),
+                    new Color(105, 68, 45));
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX - 9, top - 2, 19, 19), color);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX - 13, top + 5, 27, 5), color);
+                return;
+            }
+
             int bladeWidth = item.WeaponDefinition.Family == WeaponFamily.GreatSword
                 ? 9
                 : 5;
@@ -2603,6 +3076,280 @@ public sealed class GameRenderer : IDisposable
                 new Rectangle(background.X, background.Y, fillWidth, background.Height),
                 new Color(83, 190, 112));
         }
+    }
+
+    private void DrawWeaponResource(PlayerCharacter player)
+    {
+        int maximum = player.Combat.Resources.ActiveMaximum;
+        if (maximum <= 0)
+            return;
+
+        if (player.WeaponFamily == WeaponFamily.DualSwords)
+        {
+            DrawDuelistMomentum(player);
+            return;
+        }
+
+        if (player.WeaponFamily == WeaponFamily.HunterBow)
+        {
+            DrawHunterFocus(player);
+            return;
+        }
+
+        if (player.WeaponFamily == WeaponFamily.SpikedMace)
+        {
+            DrawBreakerInertia(player);
+            return;
+        }
+
+        if (player.WeaponFamily == WeaponFamily.ChainFlail)
+        {
+            DrawChainMomentum(player);
+            return;
+        }
+
+        int value = player.Combat.Resources.ActiveValue;
+        Color color = player.WeaponFamily switch
+        {
+            WeaponFamily.DualSwords => new Color(214, 113, 90),
+            WeaponFamily.ArcaneWarStaff => new Color(151, 104, 214),
+            WeaponFamily.ChainFlail => new Color(190, 154, 86),
+            _ => new Color(154, 158, 164)
+        };
+
+        for (int index = 0; index < maximum; index++)
+        {
+            Rectangle pip = new(42 + index * 15, 91, 11, 6);
+            _spriteBatch.Draw(
+                _pixel,
+                pip,
+                index < value ? color : new Color(54, 59, 64));
+            DrawRectangleOutline(pip, 1, new Color(190, 194, 191));
+        }
+    }
+
+    private void DrawBreakerInertia(PlayerCharacter player)
+    {
+        const int barX = 42;
+        const int barY = 91;
+        const int barWidth = 198;
+        const int barHeight = 7;
+        float ratio = player.Combat.Resources.BreakerInertiaRatio;
+        Rectangle border = new(barX, barY, barWidth, barHeight);
+        Rectangle background = new(
+            barX + 1,
+            barY + 1,
+            barWidth - 2,
+            barHeight - 2);
+        _spriteBatch.Draw(_pixel, border, new Color(118, 109, 99));
+        _spriteBatch.Draw(_pixel, background, new Color(38, 31, 29));
+        int fillWidth = (int)MathF.Round(background.Width * ratio);
+        if (fillWidth > 0)
+        {
+            Color fill = Color.Lerp(
+                new Color(126, 84, 61),
+                new Color(174, 61, 45),
+                ratio);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(
+                    background.X,
+                    background.Y,
+                    fillWidth,
+                    background.Height),
+                fill);
+        }
+        for (int segment = 1; segment < 10; segment++)
+        {
+            int x = background.X + background.Width * segment / 10;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, background.Y, 1, background.Height),
+                new Color(28, 24, 23, 150));
+        }
+    }
+
+    private void DrawChainMomentum(PlayerCharacter player)
+    {
+        const int barX = 42;
+        const int barY = 78;
+        const int barWidth = 198;
+        const int barHeight = 8;
+        float ratio = player.Combat.Resources.ChainMomentumRatio;
+        Rectangle border = new(barX, barY, barWidth, barHeight);
+        Rectangle background = new(
+            barX + 1,
+            barY + 1,
+            barWidth - 2,
+            barHeight - 2);
+        _spriteBatch.Draw(_pixel, border, new Color(135, 126, 112));
+        _spriteBatch.Draw(_pixel, background, new Color(34, 31, 29));
+        int fillWidth = (int)MathF.Round(background.Width * ratio);
+        if (fillWidth > 0)
+        {
+            Color fill = Color.Lerp(
+                new Color(132, 116, 83),
+                new Color(203, 155, 78),
+                ratio);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(
+                    background.X,
+                    background.Y,
+                    fillWidth,
+                    background.Height),
+                fill);
+        }
+
+        for (int marker = 1; marker < 4; marker++)
+        {
+            int x = background.X + background.Width * marker / 4;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, background.Y, 1, background.Height),
+                new Color(218, 201, 168, 150));
+        }
+
+        int activeSegments = player.Combat.Resources.ActiveValue;
+        for (int segment = 0; segment < 10; segment++)
+        {
+            Rectangle pip = new(42 + segment * 15, 91, 11, 6);
+            _spriteBatch.Draw(
+                _pixel,
+                pip,
+                segment < activeSegments
+                    ? new Color(190, 154, 86)
+                    : new Color(54, 59, 64));
+            DrawRectangleOutline(pip, 1, new Color(164, 157, 143));
+        }
+    }
+
+    private void DrawDuelistMomentum(PlayerCharacter player)
+    {
+        const int barX = 42;
+        const int barY = 78;
+        const int barWidth = 198;
+        const int barHeight = 8;
+        float ratio = player.Combat.Resources.DuelistMomentumRatio;
+        Color momentum = Color.Lerp(
+            new Color(164, 77, 72),
+            new Color(245, 174, 104),
+            ratio);
+        Rectangle border = new(barX, barY, barWidth, barHeight);
+        Rectangle background = new(barX + 1, barY + 1, barWidth - 2, barHeight - 2);
+        _spriteBatch.Draw(_pixel, border, new Color(177, 187, 181));
+        _spriteBatch.Draw(_pixel, background, new Color(48, 29, 32));
+
+        int fillWidth = (int)MathF.Round(background.Width * ratio);
+        if (fillWidth > 0)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(background.X, background.Y, fillWidth, background.Height),
+                momentum);
+        }
+
+        for (int index = 1; index < 3; index++)
+        {
+            int markerX = background.X + background.Width * index / 3;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(markerX, background.Y, 1, background.Height),
+                new Color(231, 219, 191, 175));
+        }
+
+        int tier = player.Combat.Resources.DuelistMomentumTier;
+        for (int index = 0; index < 3; index++)
+        {
+            Rectangle pip = new(42 + index * 15, 91, 11, 6);
+            bool active = ratio > 0f && index <= tier;
+            _spriteBatch.Draw(
+                _pixel,
+                pip,
+                active ? momentum : new Color(54, 59, 64));
+            DrawRectangleOutline(pip, 1, new Color(190, 194, 191));
+        }
+    }
+
+    private void DrawHunterFocus(PlayerCharacter player)
+    {
+        const int barX = 42;
+        const int barY = 78;
+        const int barWidth = 198;
+        const int barHeight = 8;
+        float ratio = player.Combat.Resources.HunterFocusRatio;
+        Color focus = Color.Lerp(
+            new Color(99, 139, 113),
+            new Color(225, 205, 112),
+            ratio);
+        Rectangle border = new(barX, barY, barWidth, barHeight);
+        Rectangle background = new(barX + 1, barY + 1, barWidth - 2, barHeight - 2);
+        _spriteBatch.Draw(_pixel, border, new Color(177, 187, 181));
+        _spriteBatch.Draw(_pixel, background, new Color(30, 47, 37));
+        int fillWidth = (int)MathF.Round(background.Width * ratio);
+        if (fillWidth > 0)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(background.X, background.Y, fillWidth, background.Height),
+                focus);
+        }
+
+        for (int index = 1; index < 4; index++)
+        {
+            int markerX = background.X + background.Width * index / 4;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(markerX, background.Y, 1, background.Height),
+                new Color(226, 219, 177, 155));
+        }
+
+        int segments = player.Combat.Resources.ActiveValue;
+        for (int index = 0; index < 4; index++)
+        {
+            Rectangle pip = new(42 + index * 15, 91, 11, 6);
+            _spriteBatch.Draw(
+                _pixel,
+                pip,
+                index < segments ? focus : new Color(54, 59, 64));
+            DrawRectangleOutline(pip, 1, new Color(190, 194, 191));
+        }
+
+        if (player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.RangerSkyfallMarker &&
+            player.Combat.State == CombatState.ChargingHeavy)
+        {
+            int active = player.Combat.RangerSkyfallDistance switch
+            {
+                SkyfallDistance.Near => 0,
+                SkyfallDistance.Medium => 1,
+                _ => 2
+            };
+            for (int index = 0; index < 3; index++)
+            {
+                Rectangle distance = new(112 + index * 14, 91, 9, 6);
+                _spriteBatch.Draw(
+                    _pixel,
+                    distance,
+                    index == active
+                        ? new Color(239, 205, 104)
+                        : new Color(79, 77, 65));
+                DrawRectangleOutline(distance, 1, new Color(213, 201, 163));
+            }
+        }
+    }
+
+    private void DrawTechniqueFeedback(PlayerCharacter player)
+    {
+        if (!player.Combat.IsTechniqueFeedbackVisible ||
+            string.IsNullOrWhiteSpace(player.Combat.TechniqueFeedback))
+            return;
+
+        DrawDebugLabel(
+            player.Combat.TechniqueFeedback,
+            270,
+            64,
+            new Color(229, 207, 139));
     }
 
     private void DrawPlayerHealth(PlayerCharacter player)

@@ -16,6 +16,7 @@ public sealed class WeaponDefinition : EquipmentDefinition
     public float AttackMovementMultiplier { get; }
     public string HeavyAttackProfile { get; }
     public WeaponMoveSet MoveSet { get; }
+    public WeaponCombatProfile CombatProfile { get; }
 
     public WeaponDefinition(
         string id,
@@ -31,7 +32,8 @@ public sealed class WeaponDefinition : EquipmentDefinition
         bool usesShield,
         float attackMovementMultiplier,
         string heavyAttackProfile,
-        WeaponMoveSet moveSet)
+        WeaponMoveSet moveSet,
+        WeaponCombatProfile combatProfile = null)
         : base(id, name, tier, EquipmentSlot.Weapon)
     {
         Family = family;
@@ -45,5 +47,6 @@ public sealed class WeaponDefinition : EquipmentDefinition
         AttackMovementMultiplier = Math.Clamp(attackMovementMultiplier, 0f, 1f);
         HeavyAttackProfile = heavyAttackProfile ?? string.Empty;
         MoveSet = moveSet ?? WeaponMoveSets.LongSword;
+        CombatProfile = combatProfile ?? WeaponTechniqueCatalog.Knight;
     }
 }

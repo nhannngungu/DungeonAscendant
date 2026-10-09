@@ -13,6 +13,7 @@ public sealed class PlayerStamina
     public float Maximum { get; }
     public float Current { get; private set; }
     public float Ratio => Current / Maximum;
+    public bool IsFull => Current + 0.001f >= Maximum;
 
     public PlayerStamina(float maximum = DefaultMaximum)
     {
