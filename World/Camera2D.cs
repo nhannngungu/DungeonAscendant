@@ -34,9 +34,13 @@ public sealed class Camera2D
         Vector2 targetPosition,
         FacingDirection facing,
         Rectangle worldBounds,
-        float elapsedSeconds)
+        float elapsedSeconds,
+        float forwardViewRatio = .57f)
     {
-        float playerScreenRatio = facing == FacingDirection.Right ? 0.43f : 0.57f;
+        forwardViewRatio = MathHelper.Clamp(forwardViewRatio, .50f, .62f);
+        float playerScreenRatio = facing == FacingDirection.Right
+            ? 1f - forwardViewRatio
+            : forwardViewRatio;
         float desiredX = targetPosition.X - _viewportWidth * playerScreenRatio;
         float desiredY = targetPosition.Y - _viewportHeight / 2f;
         float maximumX = MathHelper.Max(
@@ -74,9 +78,13 @@ public sealed class Camera2D
     public void Snap(
         Vector2 targetPosition,
         FacingDirection facing,
-        Rectangle worldBounds)
+        Rectangle worldBounds,
+        float forwardViewRatio = .57f)
     {
-        float playerScreenRatio = facing == FacingDirection.Right ? 0.43f : 0.57f;
+        forwardViewRatio = MathHelper.Clamp(forwardViewRatio, .50f, .62f);
+        float playerScreenRatio = facing == FacingDirection.Right
+            ? 1f - forwardViewRatio
+            : forwardViewRatio;
         float maximumX = MathHelper.Max(worldBounds.Left, worldBounds.Right - _viewportWidth);
         float maximumY = MathHelper.Max(worldBounds.Top, worldBounds.Bottom - _viewportHeight);
         Position = new Vector2(

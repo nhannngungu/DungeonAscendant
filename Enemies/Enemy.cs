@@ -736,6 +736,28 @@ public abstract class Enemy
         IsGrounded = true;
     }
 
+    internal void PlaceAtAuthoredSocket(Vector2 footPosition, bool aerial)
+    {
+        Position = aerial
+            ? footPosition
+            : new Vector2(footPosition.X, footPosition.Y - Size.Y / 2f);
+        _verticalVelocity = 0f;
+        IsGrounded = !aerial;
+    }
+
+    internal void ConstrainToAuthoredArena(Rectangle arenaBounds)
+    {
+        if (!IsAlive)
+            return;
+        float halfWidth = Size.X / 2f;
+        Position = new Vector2(
+            MathHelper.Clamp(
+                Position.X,
+                arenaBounds.Left + halfWidth + 12f,
+                arenaBounds.Right - halfWidth - 12f),
+            Position.Y);
+    }
+
     private void ApplySideViewPhysics(GameTime gameTime, DungeonMap dungeon)
     {
         if (IsFlying)

@@ -35,7 +35,7 @@ public static class SequentialEnemyTestValidation
             GameSession.DebugWildForestShowcase = true;
             ValidateSequence();
             GameSession.DebugWildForestShowcase = false;
-            ValidateNormalSpawnRestoration();
+            ValidateAuthoredMapSpawnDeferral();
         }
         finally
         {
@@ -152,13 +152,30 @@ public static class SequentialEnemyTestValidation
             "F6 returns player to test start");
     }
 
-    private static void ValidateNormalSpawnRestoration()
+    private static void ValidateAuthoredMapSpawnDeferral()
     {
         GameSession session = StartSession(randomSeed: 90210);
         Require(!session.IsWildForestShowcaseMode, "debug mode disabled");
-        Require(session.Enemies.Enemies.Count > 1,
-            "procedural population restored");
-        Require(session.ShouldRenderBoss, "normal boss restored");
+        Require(session.CurrentDungeon.IsAuthoredWildForest,
+            "authored Map 1 active");
+        Require(session.Enemies.Enemies.Count == 0,
+            "legacy random population deferred");
+        Require(session.CurrentDungeon.EncounterZones.Count > 0 &&
+            session.CurrentDungeon.SpawnSockets.Count > 0,
+            "future encounter metadata retained");
+        Require(session.ShouldRenderBoss, "authored boss retained");
+        Require(!session.ShowMapDebug,
+            "environment debug overlay disabled at startup");
+        Press(session, Keys.F3);
+        Require(session.ShowCombatDebug && !session.ShowMapDebug,
+            "combat debug does not enable environment guides");
+        Press(session, Keys.F3);
+        Press(session, Keys.F8);
+        Require(session.ShowMapDebug,
+            "F8 enables environment debug overlay");
+        Press(session, Keys.F8);
+        Require(!session.ShowMapDebug,
+            "F8 restores clean gameplay view");
     }
 
     private static GameSession StartSession(int randomSeed)

@@ -38,6 +38,25 @@ if (System.Array.Exists(
 
 if (System.Array.Exists(
     args,
+    argument => argument == "--validate-map"))
+{
+    DungeonAscendant.Dungeon.WildForestMapValidation.ValidateOrThrow();
+    System.Console.WriteLine("Authored Wild Forest map validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-wilderness"))
+{
+    DungeonAscendant.Dungeon.WildForestMapValidation.ValidateOrThrow();
+    DungeonAscendant.World.WildForestEncounterValidation.ValidateOrThrow();
+    System.Console.WriteLine("Wild Forest map, encounter, and introduction validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
     argument => argument == "--validate-equipment"))
 {
     DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();

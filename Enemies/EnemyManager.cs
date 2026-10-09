@@ -229,6 +229,86 @@ public sealed class EnemyManager
         return enemy;
     }
 
+    public Enemy SpawnAuthoredEnemy(
+        EnemyType type,
+        SpawnSocket socket,
+        DungeonRoom room,
+        DungeonMap dungeon,
+        int enemyLevel,
+        int worldTier)
+    {
+        if (socket == null || room == null || dungeon == null ||
+            type == EnemyType.Spiderling)
+            return null;
+
+        bool aerial = type == EnemyType.BloodBat ||
+            socket.Role == SpawnSocketRole.Flying;
+        bool elite = type is EnemyType.GoblinChief or EnemyType.MotherSpider;
+        var context = new EnemySpawnContext(
+            socket.Position,
+            enemyLevel,
+            worldTier,
+            room.Id,
+            elite,
+            GoblinVariant.Normal);
+        Enemy enemy = EnemyFactory.Create(type, context);
+        float[] offsets = { 0f, -28f, 28f, -56f, 56f };
+        bool placed = false;
+        foreach (float offset in offsets)
+        {
+            float x = socket.Position.X + offset;
+            float footY = aerial
+                ? socket.Position.Y
+                : FindAuthoredSupportTop(
+                    room, x, enemy.Size.X, socket.Position.Y);
+            Vector2 foot = new(x, footY);
+            enemy.PlaceAtAuthoredSocket(foot, aerial);
+            if (!socket.PlacementBounds.Contains(enemy.Position.ToPoint()) ||
+                !SideScrollingCollision.IsPositionFree(
+                    enemy.Position, enemy.Size, dungeon))
+                continue;
+            if (!aerial && !SideScrollingCollision.IsSupported(
+                    enemy.Position, enemy.Size, dungeon))
+                continue;
+            placed = true;
+            break;
+        }
+
+        if (!placed)
+            return null;
+
+        _enemies.Add(enemy);
+        if (enemy is Goblin goblin)
+            _goblins.Add(goblin);
+        return enemy;
+    }
+
+    private static float FindAuthoredSupportTop(
+        DungeonRoom room,
+        float x,
+        float enemyWidth,
+        float desiredTop)
+    {
+        float halfWidth = enemyWidth / 2f;
+        float bestTop = desiredTop;
+        float bestDistance = 34f;
+        foreach (Platform platform in room.Platforms)
+        {
+            if (platform.Kind is not
+                    (PlatformKind.Ground or PlatformKind.Transition or
+                     PlatformKind.Raised) ||
+                x - halfWidth < platform.Bounds.Left ||
+                x + halfWidth > platform.Bounds.Right)
+                continue;
+            float distance = MathF.Abs(platform.Bounds.Top - desiredTop);
+            if (distance >= bestDistance)
+                continue;
+            bestDistance = distance;
+            bestTop = platform.Bounds.Top;
+        }
+        return bestTop;
+    }
+
     public void ClearSequentialTestEnemies(
         bool clearDefeatPresentations = true)
     {

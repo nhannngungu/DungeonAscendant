@@ -66,6 +66,14 @@ public sealed class GameRenderer : IDisposable
             ['+'] = new byte[] { 0, 4, 4, 31, 4, 4, 0 },
             ['%'] = new byte[] { 17, 2, 4, 4, 8, 16, 17 }
         };
+    private static readonly Color[] WildForestSkyBands =
+    {
+        new Color(13, 21, 17),
+        new Color(15, 25, 19),
+        new Color(18, 29, 21),
+        new Color(20, 31, 21),
+        new Color(18, 27, 19)
+    };
 
     private readonly GraphicsDevice _graphicsDevice;
     private readonly SpriteBatch _spriteBatch;
@@ -118,6 +126,7 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Begin(
             samplerState: SamplerState.PointClamp,
             transformMatrix: gameSession.Camera.Transform);
+        DrawWildForestDepth(gameSession, gameSession.Camera.ViewBounds);
         DrawDungeon(gameSession, gameSession.Camera.ViewBounds);
 
         foreach (WebPatch patch in gameSession.Projectiles.WebPatches)
@@ -229,6 +238,11 @@ public sealed class GameRenderer : IDisposable
             gameSession.PlayerHitEffectId,
             gameSession.PlayerHitEffectPosition);
 
+        DrawWildForestForeground(gameSession, gameSession.Camera.ViewBounds);
+
+        if (gameSession.ShowMapDebug)
+            DrawWildForestMapDebug(gameSession);
+
         if (gameSession.ShowCombatDebug)
             DrawCombatDebug(gameSession);
 
@@ -242,6 +256,9 @@ public sealed class GameRenderer : IDisposable
         DrawWeaponResource(gameSession.Player);
         DrawTechniqueFeedback(gameSession.Player);
         DrawDungeonStatus(gameSession);
+
+        if (gameSession.EnemyIntroductions.IsPresenting)
+            DrawEnemyIntroduction(gameSession.EnemyIntroductions);
 
         if (gameSession.IsWildForestShowcaseMode)
             DrawSequentialEnemyTestStatus(gameSession);
@@ -265,12 +282,667 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.End();
     }
 
+    private void DrawWildForestDepth(
+        GameSession gameSession,
+        Rectangle cameraBounds)
+    {
+        DungeonMap dungeon = gameSession.CurrentDungeon;
+        if (!dungeon.IsAuthoredWildForest)
+            return;
+
+        _spriteBatch.Draw(
+            _pixel,
+            cameraBounds,
+            new Color(9, 15, 12));
+        int bandHeight = Math.Max(1, cameraBounds.Height / 5);
+        for (int band = 0; band < WildForestSkyBands.Length; band++)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(
+                    cameraBounds.Left,
+                    cameraBounds.Top + band * bandHeight,
+                    cameraBounds.Width,
+                    band == WildForestSkyBands.Length - 1
+                        ? cameraBounds.Bottom -
+                            (cameraBounds.Top + band * bandHeight)
+                        : bandHeight),
+                WildForestSkyBands[band]);
+        }
+
+        Rectangle visible = cameraBounds;
+        visible.Inflate(300, 100);
+        for (int sectionIndex = 0;
+             sectionIndex < dungeon.WildForestSections.Count;
+             sectionIndex++)
+        {
+            WildForestSection section = dungeon.WildForestSections[sectionIndex];
+            if (!section.Bounds.Intersects(visible))
+                continue;
+
+            int farSpacing = section.Kind is
+                WildForestSectionKind.CorruptedGrove or
+                WildForestSectionKind.MothersNest or
+                WildForestSectionKind.AncientSanctuary ? 128 : 180;
+            int farHeight = section.Kind is
+                WildForestSectionKind.CorruptedGrove or
+                WildForestSectionKind.MothersNest or
+                WildForestSectionKind.AncientSanctuary ? 420 : 310;
+            float farShift = cameraBounds.X * .68f;
+            for (int x = section.Bounds.Left - farSpacing;
+                 x < section.Bounds.Right + farSpacing;
+                 x += farSpacing)
+            {
+                int hash = unchecked(x * 73856093 ^ section.Bounds.Left);
+                int width = 28 + Math.Abs(hash % 30);
+                int height = farHeight + Math.Abs(hash / 31 % 100);
+                int drawX = (int)MathF.Round(x + farShift);
+                int bottom = section.GroundY - 54;
+                Color trunk = new(14, 24, 19, 220);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(drawX - width / 2, bottom - height, width, height),
+                    trunk);
+                DrawRootLine(
+                    new Vector2(drawX, bottom - height + 58),
+                    new Vector2(drawX - 68 - Math.Abs(hash % 36), bottom - height + 12),
+                    trunk,
+                    13f);
+                DrawRootLine(
+                    new Vector2(drawX, bottom - height + 92),
+                    new Vector2(drawX + 74 + Math.Abs(hash / 7 % 42), bottom - height + 38),
+                    trunk,
+                    11f);
+            }
+
+            float midShift = cameraBounds.X * .32f;
+            int midSpacing = section.Kind is WildForestSectionKind.Webwood or
+                WildForestSectionKind.MothersNest
+                ? 126
+                : section.Kind is WildForestSectionKind.CorruptedGrove or
+                    WildForestSectionKind.AncientSanctuary ? 155 : 225;
+            for (int x = section.Bounds.Left; x < section.Bounds.Right;
+                 x += midSpacing)
+            {
+                int hash = unchecked(x * 19349663 ^ section.Bounds.Right);
+                int drawX = (int)MathF.Round(x + midShift);
+                int width = 20 + Math.Abs(hash % 24);
+                int top = section.Bounds.Top + 70 + Math.Abs(hash / 17 % 55);
+                int bottom = section.GroundY - 24;
+                Color trunk = section.CorruptionLevel > .55f
+                    ? new Color(29, 31, 24, 225)
+                    : new Color(27, 35, 27, 220);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(drawX - width / 2, top, width, bottom - top),
+                    trunk);
+                if ((hash & 3) == 0)
+                {
+                    DrawRootLine(
+                        new Vector2(drawX, top + 100),
+                        new Vector2(drawX - 58, top + 54),
+                        trunk,
+                        8f);
+                }
+            }
+
+            if (section.FogDensity > .05f)
+            {
+                float fogOpacity =
+                    (18f + section.FogDensity * 46f) / 255f;
+                Color fog = new Color(112, 124, 105) * fogOpacity;
+                int fogY = section.GroundY - 175;
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(
+                        section.Bounds.Left,
+                        fogY,
+                        section.Bounds.Width,
+                        118),
+                    fog);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(
+                        section.Bounds.Left + section.Bounds.Width / 5,
+                        fogY - 54,
+                        section.Bounds.Width * 3 / 5,
+                        72),
+                    new Color(104, 116, 99) * (fogOpacity * .5f));
+            }
+        }
+    }
+
+    private void DrawAuthoredWildForestGameplay(
+        GameSession gameSession,
+        Rectangle visibleBounds,
+        RegionTheme theme)
+    {
+        DungeonMap dungeon = gameSession.CurrentDungeon;
+        for (int sectionIndex = 0;
+             sectionIndex < dungeon.WildForestSections.Count;
+             sectionIndex++)
+        {
+            WildForestSection section = dungeon.WildForestSections[sectionIndex];
+            if (!section.Bounds.Intersects(visibleBounds))
+                continue;
+
+            if (gameSession.ShowMapDebug)
+            {
+                Color plane = Color.Lerp(
+                    new Color(23, 31, 24),
+                    new Color(31, 25, 23),
+                    section.CorruptionLevel * .55f);
+                _spriteBatch.Draw(
+                    _pixel,
+                    section.Bounds,
+                    new Color(plane.R, plane.G, plane.B) * (52f / 255f));
+            }
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(
+                    section.Bounds.Left,
+                    section.Bounds.Top,
+                    section.Bounds.Width,
+                    18),
+                new Color(10, 16, 13));
+        }
+
+        for (int corridorIndex = 0;
+             corridorIndex < dungeon.Corridors.Count;
+             corridorIndex++)
+        {
+            Rectangle corridor = dungeon.Corridors[corridorIndex];
+            if (gameSession.ShowMapDebug && corridor.Intersects(visibleBounds))
+            {
+                _spriteBatch.Draw(
+                    _pixel,
+                    corridor,
+                    new Color(26, 31, 23) * (48f / 255f));
+            }
+        }
+
+        for (int platformIndex = 0;
+             platformIndex < dungeon.Platforms.Count;
+             platformIndex++)
+        {
+            Platform platform = dungeon.Platforms[platformIndex];
+            if (!platform.Bounds.Intersects(visibleBounds))
+                continue;
+            WildForestSection section = FindSectionAtX(
+                dungeon,
+                platform.Bounds.Center.X);
+            DrawWildForestPlatform(platform, section, visibleBounds, theme);
+        }
+
+        for (int sectionIndex = 0;
+             sectionIndex < dungeon.WildForestSections.Count;
+             sectionIndex++)
+        {
+            WildForestSection section = dungeon.WildForestSections[sectionIndex];
+            if (section.Bounds.Intersects(visibleBounds))
+                DrawWildForestSectionStory(section, visibleBounds);
+        }
+
+        for (int landmarkIndex = 0;
+             landmarkIndex < dungeon.Landmarks.Count;
+             landmarkIndex++)
+        {
+            WildForestLandmark landmark = dungeon.Landmarks[landmarkIndex];
+            if (visibleBounds.Contains(landmark.Position.ToPoint()) ||
+                Math.Abs(landmark.Position.X - visibleBounds.Center.X) < 520f)
+            {
+                DrawWildForestLandmark(landmark);
+            }
+        }
+
+        if (gameSession.Chest.Bounds.Intersects(visibleBounds))
+            DrawTreasureRoomMarker(gameSession.Chest.Position);
+        if (gameSession.BossDefeated)
+            DrawExitMarker(gameSession.ExitPosition, isUnlocked: true);
+    }
+
+    private void DrawWildForestPlatform(
+        Platform platform,
+        WildForestSection section,
+        Rectangle visibleBounds,
+        RegionTheme theme)
+    {
+        bool ruins = section?.Kind is WildForestSectionKind.WarCamp or
+            WildForestSectionKind.AncientSanctuary;
+        bool webbed = section?.Kind is WildForestSectionKind.Webwood or
+            WildForestSectionKind.MothersNest;
+        Color body = platform.Kind switch
+        {
+            PlatformKind.Raised when ruins => new Color(62, 64, 56),
+            PlatformKind.Raised when webbed => new Color(61, 55, 46),
+            PlatformKind.Raised => new Color(60, 48, 37),
+            PlatformKind.Obstacle when ruins => new Color(68, 69, 61),
+            PlatformKind.Obstacle => new Color(65, 49, 35),
+            PlatformKind.Transition => new Color(47, 43, 31),
+            _ => section?.Kind == WildForestSectionKind.Thornlands
+                ? new Color(42, 33, 29)
+                : new Color(43, 40, 30)
+        };
+        _spriteBatch.Draw(_pixel, platform.Bounds, body);
+
+        Color surface = ruins
+            ? new Color(94, 97, 79)
+            : section?.Kind is WildForestSectionKind.CorruptedGrove or
+                WildForestSectionKind.AncientSanctuary
+                ? new Color(69, 76, 47)
+                : new Color(76, 78, 48);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(
+                platform.Bounds.Left,
+                platform.Bounds.Top,
+                platform.Bounds.Width,
+                Math.Min(6, platform.Bounds.Height)),
+            surface);
+
+        if (platform.Kind is PlatformKind.Ground or PlatformKind.Transition)
+        {
+            int start = Math.Max(platform.Bounds.Left + 18, visibleBounds.Left - 24);
+            int end = Math.Min(platform.Bounds.Right - 12, visibleBounds.Right + 24);
+            for (int x = start; x < end; x += 54)
+            {
+                int hash = unchecked(x * 83492791 ^ platform.Bounds.Top);
+                int height = 5 + Math.Abs(hash % 11);
+                Color detail = (hash & 3) == 0 &&
+                    (section?.CorruptionLevel ?? 0f) > .35f
+                    ? new Color(77, 40, 39, 135)
+                    : new Color(43, 56, 34, 180);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(x, platform.Bounds.Top - height, 3, height),
+                    detail);
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(x - 3, platform.Bounds.Top - 3, 9, 3),
+                    detail);
+            }
+        }
+        else
+        {
+            DrawRectangleOutline(platform.Bounds, 2, new Color(34, 31, 27));
+        }
+    }
+
+    private static WildForestSection FindSectionAtX(
+        DungeonMap dungeon,
+        int x)
+    {
+        WildForestSection nearest = null;
+        int bestDistance = int.MaxValue;
+        for (int index = 0; index < dungeon.WildForestSections.Count; index++)
+        {
+            WildForestSection section = dungeon.WildForestSections[index];
+            if (x >= section.Bounds.Left && x < section.Bounds.Right)
+                return section;
+            int distance = Math.Abs(section.Bounds.Center.X - x);
+            if (distance < bestDistance)
+            {
+                nearest = section;
+                bestDistance = distance;
+            }
+        }
+        return nearest;
+    }
+
+    private void DrawWildForestSectionStory(
+        WildForestSection section,
+        Rectangle visibleBounds)
+    {
+        switch (section.Kind)
+        {
+            case WildForestSectionKind.ForestOutskirts:
+                DrawOutskirtsStory(section);
+                break;
+            case WildForestSectionKind.GoblinEncampment:
+                DrawGoblinCampStory(section);
+                break;
+            case WildForestSectionKind.Webwood:
+                DrawSpiderGroveStory(section);
+                break;
+            case WildForestSectionKind.Thornlands:
+                DrawThornGroundStory(section);
+                break;
+            case WildForestSectionKind.CorruptedGrove:
+                DrawDeepForestStory(section);
+                break;
+            case WildForestSectionKind.WarCamp:
+                DrawWarCampStory(section);
+                break;
+            case WildForestSectionKind.MothersNest:
+                DrawMothersNestStory(section);
+                break;
+            case WildForestSectionKind.AncientSanctuary:
+                DrawBossArenaStory(section);
+                break;
+        }
+    }
+
+    private void DrawOutskirtsStory(WildForestSection section)
+    {
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        Color wood = new(78, 60, 42);
+        for (int index = 0; index < 4; index++)
+        {
+            int x = left + 145 + index * 72;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, ground - 42, 7, 42), wood);
+            if (index < 3)
+                DrawRootLine(new Vector2(x, ground - 28), new Vector2(x + 72, ground - 20), wood, 5f);
+        }
+        Vector2 wheel = new(left + 620, ground - 20);
+        DrawRectangleOutline(new Rectangle((int)wheel.X - 22, (int)wheel.Y - 22, 44, 44), 5, new Color(69, 53, 39));
+        DrawRootLine(wheel - new Vector2(20, 0), wheel + new Vector2(20, 0), wood, 3f);
+        DrawRootLine(wheel - new Vector2(0, 20), wheel + new Vector2(0, 20), wood, 3f);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 735, ground - 18, 52, 18), new Color(74, 60, 43));
+        for (int index = 0; index < 4; index++)
+        {
+            int x = left + 430 + index * 32;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, ground - 4 - index % 2 * 3, 10, 4), new Color(47, 39, 31));
+        }
+        DrawRootLine(new Vector2(left + 820, ground), new Vector2(left + 850, ground - 25), new Color(55, 76, 44), 7f);
+        DrawRootLine(new Vector2(left + 850, ground - 25), new Vector2(left + 875, ground), new Color(55, 76, 44), 7f);
+    }
+
+    private void DrawBrokenTrailStory(WildForestSection section)
+    {
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        DrawRootLine(
+            new Vector2(left + 565, ground - 18),
+            new Vector2(left + 785, ground - 62),
+            new Color(72, 53, 37),
+            31f);
+        DrawRootLine(
+            new Vector2(left + 610, ground - 30),
+            new Vector2(left + 570, ground - 108),
+            new Color(62, 47, 34),
+            17f);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 380, ground - 78, 34, 78), new Color(75, 77, 67));
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 373, ground - 79, 48, 9), new Color(91, 91, 76));
+        for (int x = left + 90; x < section.Bounds.Right - 40; x += 120)
+            DrawRootLine(new Vector2(x, ground), new Vector2(x + 30, ground - 20), new Color(54, 45, 33), 6f);
+    }
+
+    private void DrawGoblinCampStory(WildForestSection section)
+    {
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        Color crudeWood = new(78, 54, 36);
+        for (int index = 0; index < 5; index++)
+        {
+            int x = left + 160 + index * 34;
+            DrawRootLine(new Vector2(x, ground), new Vector2(x + (index % 2 == 0 ? -4 : 5), ground - 54), crudeWood, 7f);
+            DrawRootLine(new Vector2(x - 7, ground - 48), new Vector2(x + 12, ground - 48), new Color(99, 69, 42), 3f);
+        }
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 500, ground - 8, 78, 8), new Color(46, 39, 31));
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 522, ground - 15, 34, 7), new Color(89, 54, 34));
+        for (int index = 0; index < 4; index++)
+        {
+            int x = left + 795 + index * 18;
+            DrawRootLine(new Vector2(x, ground), new Vector2(x + 7, ground - 42), crudeWood, 5f);
+        }
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 1010, ground - 34, 48, 34), new Color(76, 58, 39));
+        DrawRectangleOutline(new Rectangle(left + 1010, ground - 34, 48, 34), 3, new Color(48, 39, 31));
+        for (int index = 0; index < 3; index++)
+            DrawRootLine(new Vector2(left + 620 + index * 16, ground - 4), new Vector2(left + 630 + index * 19, ground - 22), new Color(131, 120, 91), 2f);
+        DrawRootLine(new Vector2(left + 390, ground), new Vector2(left + 450, ground - 78), new Color(87, 58, 38), 6f);
+        DrawRootLine(new Vector2(left + 450, ground - 78), new Vector2(left + 515, ground), new Color(87, 58, 38), 6f);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 420, ground - 48, 64, 48), new Color(75, 48, 38));
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 524, ground - 28, 30, 12), new Color(164, 75, 39, 180));
+    }
+
+    private void DrawSpiderGroveStory(WildForestSection section)
+    {
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        Color web = new(151, 158, 151, 105);
+        for (int cluster = 0; cluster < 4; cluster++)
+        {
+            Vector2 top = new(left + 150 + cluster * 270, section.Bounds.Top + 115 + cluster % 2 * 34);
+            Vector2 bottomLeft = new(top.X - 86, ground - 86);
+            Vector2 bottomRight = new(top.X + 94, ground - 68);
+            DrawRootLine(top, bottomLeft, web, 2f);
+            DrawRootLine(top, bottomRight, web, 2f);
+            DrawRootLine(bottomLeft, bottomRight, web, 2f);
+            DrawRootLine(Vector2.Lerp(top, bottomLeft, .45f), Vector2.Lerp(top, bottomRight, .45f), web, 1f);
+            DrawRootLine(Vector2.Lerp(top, bottomLeft, .72f), Vector2.Lerp(top, bottomRight, .72f), web, 1f);
+        }
+        for (int index = 0; index < 3; index++)
+        {
+            int x = left + 380 + index * 210;
+            DrawRootLine(new Vector2(x, section.Bounds.Top + 70), new Vector2(x, section.Bounds.Top + 190), web, 2f);
+            _spriteBatch.Draw(_pixel, new Rectangle(x - 10, section.Bounds.Top + 184, 20, 39), new Color(111, 117, 108, 150));
+        }
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 52, ground - 90, 74, 90), new Color(34, 29, 25));
+        DrawRectangleOutline(new Rectangle(left + 70, ground - 68, 38, 54), 4, new Color(64, 52, 39));
+    }
+
+    private void DrawThornGroundStory(WildForestSection section)
+    {
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        for (int patch = 0; patch < 9; patch++)
+        {
+            int x = left + 85 + patch * 116;
+            int hash = unchecked(x * 486187739);
+            Color soil = (hash & 1) == 0
+                ? new Color(54, 36, 31)
+                : new Color(46, 34, 29);
+            _spriteBatch.Draw(_pixel, new Rectangle(x - 30, ground - 5, 66, 7), soil);
+            for (int thorn = 0; thorn < 3; thorn++)
+            {
+                DrawRootLine(
+                    new Vector2(x + thorn * 12 - 12, ground),
+                    new Vector2(x + thorn * 10 - 18, ground - 20 - thorn * 5),
+                    new Color(62, 48, 34),
+                    3f);
+            }
+            if (patch % 3 == 1)
+                _spriteBatch.Draw(_pixel, new Rectangle(x + 8, ground - 13, 5, 5), new Color(91, 42, 43, 135));
+        }
+    }
+
+    private void DrawRuinsStory(WildForestSection section)
+    {
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        Color stone = new(72, 75, 67);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 120, ground - 92, 46, 92), stone);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 1010, ground - 68, 54, 68), stone);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 1080, ground - 38, 94, 38), new Color(62, 65, 58));
+        for (int x = left + 80; x < section.Bounds.Right - 70; x += 150)
+            _spriteBatch.Draw(_pixel, new Rectangle(x, ground - 8, 108, 8), new Color(82, 82, 69));
+        DrawRootLine(new Vector2(left + 90, ground - 25), new Vector2(left + 360, ground - 4), new Color(58, 68, 42), 7f);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 1240, ground - 55, 10, 55), new Color(78, 57, 44));
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 1234, ground - 58, 22, 7), new Color(91, 63, 44));
+    }
+
+    private void DrawDeepForestStory(WildForestSection section)
+    {
+        int ground = section.GroundY;
+        for (int index = 0; index < 5; index++)
+        {
+            int x = section.Bounds.Left + 120 + index * 280;
+            int width = index % 2 == 0 ? 70 : 52;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, section.Bounds.Top + 25, width, ground - section.Bounds.Top - 25), new Color(49, 42, 31));
+            DrawRootLine(new Vector2(x + width / 2, ground - 10), new Vector2(x - 64, ground), new Color(60, 46, 32), 16f);
+            DrawRootLine(new Vector2(x + width / 2, ground - 8), new Vector2(x + width + 70, ground), new Color(60, 46, 32), 15f);
+            if (index % 2 == 0)
+                _spriteBatch.Draw(_pixel, new Rectangle(x + width / 2 - 2, ground - 190, 4, 68), new Color(88, 39, 40, 90));
+        }
+        for (int index = 0; index < 6; index++)
+        {
+            int x = section.Bounds.Left + 205 + index * 168;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, ground - 9, 12, 6), new Color(86, 142, 83, 145));
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 5, ground - 4, 3, 6), new Color(132, 125, 84));
+        }
+        _spriteBatch.Draw(_pixel, new Rectangle(section.Bounds.Left + 760, ground - 62, 38, 62), new Color(77, 79, 68));
+        DrawRootLine(new Vector2(section.Bounds.Left + 765, ground - 42), new Vector2(section.Bounds.Left + 790, ground - 27), new Color(107, 116, 83), 3f);
+    }
+
+    private void DrawWarCampStory(WildForestSection section)
+    {
+        DrawGoblinCampStory(section);
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        Color wood = new(72, 48, 32);
+        for (int index = 0; index < 7; index++)
+        {
+            int x = left + 70 + index * 32;
+            DrawRootLine(new Vector2(x, ground), new Vector2(x + 5, ground - 72), wood, 8f);
+        }
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 680, ground - 52, 72, 52), new Color(76, 55, 38));
+        DrawRectangleOutline(new Rectangle(left + 680, ground - 52, 72, 52), 4, new Color(43, 34, 27));
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 885, ground - 42, 58, 42), new Color(91, 58, 38));
+        DrawRectangleOutline(new Rectangle(left + 885, ground - 42, 58, 42), 5, new Color(48, 36, 27));
+        DrawRootLine(new Vector2(left + 970, ground), new Vector2(left + 970, ground - 106), wood, 7f);
+        _spriteBatch.Draw(_pixel, new Rectangle(left + 974, ground - 100, 54, 34), new Color(91, 38, 39));
+    }
+
+    private void DrawMothersNestStory(WildForestSection section)
+    {
+        DrawSpiderGroveStory(section);
+        DrawBossApproachStory(section);
+        int left = section.Bounds.Left;
+        int ground = section.GroundY;
+        Color egg = new(126, 132, 115, 185);
+        for (int index = 0; index < 5; index++)
+        {
+            int x = left + 465 + index * 94;
+            int y = index % 2 == 0 ? ground - 205 : ground - 166;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, y, 24, 36), egg);
+            DrawRectangleOutline(new Rectangle(x, y, 24, 36), 2, new Color(76, 72, 61));
+        }
+    }
+
+    private void DrawBossApproachStory(WildForestSection section)
+    {
+        int ground = section.GroundY;
+        for (int index = 0; index < 4; index++)
+        {
+            int x = section.Bounds.Left + 70 + index * 250;
+            DrawRootLine(new Vector2(x, ground), new Vector2(x + 145, ground - 105 - index * 10), new Color(68, 49, 34), 20f);
+        }
+        _spriteBatch.Draw(_pixel, new Rectangle(section.Bounds.Left + 420, ground - 45, 38, 45), new Color(69, 70, 61));
+        _spriteBatch.Draw(_pixel, new Rectangle(section.Bounds.Left + 750, ground - 28, 72, 28), new Color(62, 63, 55));
+        DrawRootLine(new Vector2(section.Bounds.Left + 255, ground - 3), new Vector2(section.Bounds.Left + 274, ground - 15), new Color(126, 116, 91), 3f);
+    }
+
+    private void DrawBossArenaStory(WildForestSection section)
+    {
+        int ground = section.GroundY;
+        _spriteBatch.Draw(_pixel, new Rectangle(section.Bounds.Left + 42, section.Bounds.Top + 30, 84, ground - section.Bounds.Top - 30), new Color(43, 37, 29));
+        _spriteBatch.Draw(_pixel, new Rectangle(section.Bounds.Right - 126, section.Bounds.Top + 22, 84, ground - section.Bounds.Top - 22), new Color(43, 37, 29));
+        for (int index = 0; index < 11; index++)
+        {
+            int x = section.Bounds.Left + 110 + index * 143;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, ground - 6, 82, 6), new Color(72, 51, 39));
+            if (index % 3 == 0)
+                DrawRootLine(new Vector2(x + 20, ground), new Vector2(x + 55, ground - 24), new Color(65, 48, 33), 7f);
+        }
+        Color ancientStone = new(73, 78, 67);
+        for (int index = 0; index < 4; index++)
+        {
+            int x = section.Bounds.Left + 250 + index * 350;
+            _spriteBatch.Draw(_pixel, new Rectangle(x, ground - 150, 34, 150), ancientStone);
+            _spriteBatch.Draw(_pixel, new Rectangle(x - 10, ground - 158, 54, 12), new Color(91, 96, 79));
+        }
+        Rectangle rune = new(section.Bounds.Center.X - 155, ground - 15, 310, 13);
+        DrawRectangleOutline(rune, 3, new Color(73, 116, 82, 155));
+        DrawRectangleOutline(new Rectangle(rune.X + 48, rune.Y + 3, rune.Width - 96, 7), 2, new Color(95, 142, 94, 140));
+    }
+
+    private void DrawWildForestLandmark(WildForestLandmark landmark)
+    {
+        Vector2 p = landmark.Position;
+        switch (landmark.Kind)
+        {
+            case WildForestLandmarkKind.FallenWatchTree:
+                DrawRootLine(p + new Vector2(-110, -5), p + new Vector2(105, -82), new Color(71, 51, 35), 34f);
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 96, (int)p.Y - 118, 38, 64), new Color(64, 57, 46));
+                break;
+            case WildForestLandmarkKind.SpiderGroveDeadTree:
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 25, (int)p.Y - 250, 50, 250), new Color(55, 47, 36));
+                DrawRootLine(p + new Vector2(0, -205), p + new Vector2(-120, -285), new Color(55, 47, 36), 17f);
+                DrawRootLine(p + new Vector2(0, -175), p + new Vector2(132, -252), new Color(55, 47, 36), 15f);
+                break;
+            case WildForestLandmarkKind.WarCampGate:
+                Color stone = new(84, 85, 75);
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 125, (int)p.Y - 178, 38, 178), stone);
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X + 87, (int)p.Y - 178, 38, 178), stone);
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 125, (int)p.Y - 190, 250, 34), stone);
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 18, (int)p.Y - 190, 32, 18), new Color(37, 38, 34));
+                break;
+            case WildForestLandmarkKind.GiganticRootGate:
+                DrawRootLine(p + new Vector2(-62, 0), p + new Vector2(-24, -245), new Color(67, 48, 33), 31f);
+                DrawRootLine(p + new Vector2(115, 0), p + new Vector2(42, -245), new Color(67, 48, 33), 31f);
+                DrawRootLine(p + new Vector2(-24, -245), p + new Vector2(42, -245), new Color(67, 48, 33), 28f);
+                break;
+            case WildForestLandmarkKind.MothersNestMaw:
+                DrawRootLine(p + new Vector2(-105, 0), p + new Vector2(-35, -105), new Color(55, 45, 35), 30f);
+                DrawRootLine(p + new Vector2(105, 0), p + new Vector2(35, -105), new Color(55, 45, 35), 30f);
+                DrawRootLine(p + new Vector2(-35, -105), p + new Vector2(35, -105), new Color(55, 45, 35), 22f);
+                break;
+            case WildForestLandmarkKind.TreantArenaHeart:
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 74, (int)p.Y - 58, 148, 58), new Color(61, 45, 32));
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 54, (int)p.Y - 65, 108, 14), new Color(83, 65, 43));
+                DrawRootLine(p + new Vector2(-50, -12), p + new Vector2(-145, 0), new Color(67, 48, 33), 15f);
+                DrawRootLine(p + new Vector2(50, -12), p + new Vector2(145, 0), new Color(67, 48, 33), 15f);
+                _spriteBatch.Draw(_pixel, new Rectangle((int)p.X - 4, (int)p.Y - 36, 8, 14), new Color(93, 40, 39, 125));
+                break;
+        }
+    }
+
+    private void DrawWildForestForeground(
+        GameSession gameSession,
+        Rectangle cameraBounds)
+    {
+        DungeonMap dungeon = gameSession.CurrentDungeon;
+        if (!dungeon.IsAuthoredWildForest)
+            return;
+
+        WildForestSection section = dungeon.FindWildForestSection(
+            gameSession.Player.Position);
+        if (section == null)
+            return;
+        int firstX = cameraBounds.Left - cameraBounds.Left % 96;
+        Color grass = section.CorruptionLevel > .55f
+            ? new Color(35, 42, 31, 115)
+            : new Color(42, 58, 37, 105);
+        for (int x = firstX; x < cameraBounds.Right + 96; x += 96)
+        {
+            int hash = unchecked(x * 19349663);
+            int height = 11 + Math.Abs(hash % 17);
+            DrawRootLine(
+                new Vector2(x, section.GroundY + 2),
+                new Vector2(x - 7, section.GroundY - height),
+                grass,
+                4f);
+            DrawRootLine(
+                new Vector2(x + 6, section.GroundY + 2),
+                new Vector2(x + 13, section.GroundY - height + 4),
+                grass,
+                3f);
+        }
+    }
+
     private void DrawDungeon(GameSession gameSession, Rectangle cameraBounds)
     {
         DungeonMap dungeon = gameSession.CurrentDungeon;
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         Rectangle visibleBounds = cameraBounds;
         visibleBounds.Inflate(80, 80);
+
+        if (dungeon.IsAuthoredWildForest)
+        {
+            DrawAuthoredWildForestGameplay(gameSession, visibleBounds, theme);
+            return;
+        }
 
         foreach (DungeonRoom room in dungeon.Rooms)
         {
@@ -647,6 +1319,85 @@ public sealed class GameRenderer : IDisposable
                         (byte)(gameSession.Boss.Attack.IsActive ? 42 : 20)),
                     attackColor);
             }
+        }
+    }
+
+    private void DrawWildForestMapDebug(GameSession gameSession)
+    {
+        DungeonMap dungeon = gameSession.CurrentDungeon;
+        Rectangle visibleBounds = gameSession.Camera.ViewBounds;
+
+        for (int sectionIndex = 0;
+             sectionIndex < dungeon.WildForestSections.Count;
+             sectionIndex++)
+        {
+            WildForestSection section = dungeon.WildForestSections[sectionIndex];
+            if (!section.Bounds.Intersects(visibleBounds))
+                continue;
+
+            Color outline = section.Kind == WildForestSectionKind.AncientSanctuary
+                ? new Color(235, 92, 72, 230)
+                : new Color(115, 210, 178, 175);
+            DrawRectangleOutline(section.Bounds, 2, outline);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(section.Bounds.Left, section.Bounds.Top, 3, section.Bounds.Height),
+                outline);
+        }
+
+        for (int platformIndex = 0;
+             platformIndex < dungeon.Platforms.Count;
+             platformIndex++)
+        {
+            Platform platform = dungeon.Platforms[platformIndex];
+            if (platform.Bounds.Intersects(visibleBounds))
+                DrawRectangleOutline(platform.Bounds, 1, new Color(238, 221, 112, 190));
+        }
+
+        for (int zoneIndex = 0;
+             zoneIndex < dungeon.EncounterZones.Count;
+             zoneIndex++)
+        {
+            EncounterZone zone = dungeon.EncounterZones[zoneIndex];
+            if (!zone.ActivationBounds.Intersects(visibleBounds))
+                continue;
+
+            Color outline = zone.IsBossZone
+                ? new Color(255, 75, 75, 235)
+                : zone.IsEliteZone
+                    ? new Color(226, 102, 232, 225)
+                    : new Color(76, 165, 245, 205);
+            DrawDebugZone(
+                zone.ActivationBounds,
+                new Color(outline.R, outline.G, outline.B, (byte)15),
+                outline);
+            DrawRectangleOutline(zone.GroundBounds, 2, new Color(98, 214, 133, 210));
+        }
+
+        for (int socketIndex = 0;
+             socketIndex < dungeon.SpawnSockets.Count;
+             socketIndex++)
+        {
+            SpawnSocket socket = dungeon.SpawnSockets[socketIndex];
+            if (!visibleBounds.Contains(socket.Position.ToPoint()))
+                continue;
+
+            Color color = socket.Role switch
+            {
+                SpawnSocketRole.GroundMelee => new Color(112, 229, 132),
+                SpawnSocketRole.Ranged => new Color(92, 179, 255),
+                SpawnSocketRole.Flying => new Color(126, 225, 241),
+                SpawnSocketRole.Ambush => new Color(229, 180, 72),
+                SpawnSocketRole.Heavy => new Color(236, 119, 75),
+                SpawnSocketRole.Elite => new Color(224, 101, 235),
+                SpawnSocketRole.Boss => new Color(255, 62, 62),
+                _ => Color.White
+            };
+            int x = (int)socket.Position.X;
+            int y = (int)socket.Position.Y;
+            _spriteBatch.Draw(_pixel, new Rectangle(x - 8, y - 2, 17, 4), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x - 2, y - 8, 4, 17), color);
+            DrawRectangleOutline(socket.PlacementBounds, 1, new Color(color.R, color.G, color.B, (byte)145));
         }
     }
 
@@ -2770,6 +3521,52 @@ public sealed class GameRenderer : IDisposable
             panel.Right - 58,
             panel.Bottom - 10,
             new Color(113, 126, 135),
+            scale: 1);
+    }
+
+    private void DrawEnemyIntroduction(EnemyIntroductionManager introductions)
+    {
+        EnemyIntroductionDefinition intro = introductions.Active;
+        if (intro == null)
+            return;
+
+        Viewport viewport = _graphicsDevice.Viewport;
+        int width = intro.PresentationStrength == 3 ? 520 : 450;
+        int height = intro.PresentationStrength == 1 ? 78 : 88;
+        var panel = new Rectangle(
+            viewport.Width / 2 - width / 2,
+            72,
+            width,
+            height);
+        Color border = intro.PresentationStrength switch
+        {
+            3 => new Color(182, 142, 75),
+            2 => new Color(156, 91, 76),
+            _ => new Color(113, 142, 121)
+        };
+        _spriteBatch.Draw(_pixel, panel, new Color(12, 16, 17, 232));
+        DrawRectangleOutline(panel, intro.PresentationStrength + 1, border);
+
+        int nameWidth = intro.Name.Length * 6 * 2;
+        DrawDebugText(
+            intro.Name,
+            panel.Center.X - nameWidth / 2,
+            panel.Y + 10,
+            new Color(237, 226, 190),
+            scale: 2);
+        int titleWidth = intro.Title.Length * 6;
+        DrawDebugText(
+            intro.Title,
+            panel.Center.X - titleWidth / 2,
+            panel.Y + 38,
+            border,
+            scale: 1);
+        int descriptionWidth = intro.Description.Length * 6;
+        DrawDebugText(
+            intro.Description,
+            Math.Max(panel.X + 10, panel.Center.X - descriptionWidth / 2),
+            panel.Y + 57,
+            new Color(183, 190, 184),
             scale: 1);
     }
 

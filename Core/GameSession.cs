@@ -20,7 +20,7 @@ namespace DungeonAscendant.Core;
 public sealed class GameSession
 {
     public const bool DebugCombatHitboxes = false;
-    public static bool DebugWildForestShowcase { get; set; } = true;
+    public static bool DebugWildForestShowcase { get; set; } = false;
 
     private const float ExitInteractionRadius = 72f;
     private const float WorldTierTransitionDurationSeconds = 1.4f;
@@ -116,6 +116,8 @@ public sealed class GameSession
 
     public PlayerCharacter Player { get; private set; }
     public EnemyManager Enemies { get; }
+    public WildForestEncounterDirector WildForestEncounters { get; }
+    public EnemyIntroductionManager EnemyIntroductions { get; }
     public ProjectileManager Projectiles { get; }
     public GroundRuneManager GroundRunes { get; }
     public IReadOnlyList<BreakerShockwave> BreakerShockwaves =>
@@ -135,10 +137,11 @@ public sealed class GameSession
     public RegionType CurrentRegion => Region.Type;
     public bool BossDefeated { get; private set; }
     public bool IsExitUnlocked => BossDefeated;
-    public Vector2 ExitPosition => SideScrollingCollision.PlaceOnGround(
-        CurrentDungeon.ExitRoom.Bounds.Center.X,
-        new Vector2(40f, 56f),
-        CurrentDungeon.ExitRoom);
+    public Vector2 ExitPosition => CurrentDungeon.AuthoredExitPosition ??
+        SideScrollingCollision.PlaceOnGround(
+            CurrentDungeon.ExitRoom.Bounds.Center.X,
+            new Vector2(40f, 56f),
+            CurrentDungeon.ExitRoom);
     public float WorldTierTransitionProgress =>
         _worldTierTransitionTimeRemaining /
         WorldTierTransitionDurationSeconds;
@@ -148,6 +151,7 @@ public sealed class GameSession
     public GameState State { get; private set; }
     public bool IsInventoryOpen { get; private set; }
     public bool ShowCombatDebug { get; private set; } = DebugCombatHitboxes;
+    public bool ShowMapDebug { get; private set; }
     public InventoryTab ActiveInventoryTab { get; private set; } =
         InventoryTab.Weapons;
     public IReadOnlyList<EquipmentItem> ActiveInventoryItems =>
@@ -207,8 +211,11 @@ public sealed class GameSession
         ArmorProgressionValidation.ValidateOrThrow();
         InventoryGridNavigation.ValidateOrThrow();
         InventoryTabRules.ValidateOrThrow();
+        WildForestMapValidation.ValidateOrThrow();
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         Enemies = new EnemyManager(randomSeed);
+        WildForestEncounters = new WildForestEncounterDirector();
+        EnemyIntroductions = new EnemyIntroductionManager();
         Projectiles = new ProjectileManager();
         GroundRunes = new GroundRuneManager();
         RootHazards = new RootHazardManager();
@@ -240,6 +247,7 @@ public sealed class GameSession
             keyboardState,
             Keys.F6);
         bool debugArmorPressed = WasKeyPressed(keyboardState, Keys.F7);
+        bool environmentDebugPressed = WasKeyPressed(keyboardState, Keys.F8);
         bool fusePressed = WasKeyPressed(keyboardState, Keys.F);
         bool previousTabPressed = WasKeyPressed(keyboardState, Keys.Q);
         bool nextTabPressed = WasKeyPressed(keyboardState, Keys.E);
@@ -250,6 +258,9 @@ public sealed class GameSession
 
         if (debugPressed)
             ShowCombatDebug = !ShowCombatDebug;
+
+        if (environmentDebugPressed)
+            ShowMapDebug = !ShowMapDebug;
 
         if (State == GameState.Start)
         {
@@ -406,35 +417,62 @@ public sealed class GameSession
             return;
         }
 
-        UpdatePlayerAttackArea();
-        ProcessPlayerAttack();
+        int activeEnemyLevel = WorldProgression.GetEnemyLevel(
+            Player.Level, DungeonDepth, WorldTier);
+        WildForestEncounters.Update(
+            gameTime,
+            Player.Position,
+            CurrentDungeon,
+            Enemies,
+            activeEnemyLevel,
+            WorldTier);
+        if (CurrentDungeon.IsAuthoredWildForest)
+        {
+            EnemyIntroductions.Update(
+                gameTime,
+                Player.Position,
+                Enemies.Enemies,
+                Boss,
+                allowBossIntroduction: true);
+        }
+        if (EnemyIntroductions.JustTriggered)
+        {
+            Projectiles.Clear();
+            RootHazards.Clear();
+        }
 
+        UpdatePlayerAttackArea();
         ProcessDefeatedEnemies();
         ProcessBossDefeat();
-        Enemies.UpdateCombatAndAi(
-            gameTime,
-            Player,
-            CurrentDungeon,
-            Projectiles,
-            RootHazards);
-        Projectiles.Update(gameTime, Player, CurrentDungeon);
-        ProcessPlayerProjectileImpacts();
-        ProcessPlayerProjectileHits();
-        ProcessSpellbladeRunePlacement();
-        RootHazards.Update(gameTime, Player);
-        if (ShouldRenderBoss)
+        if (!EnemyIntroductions.IsPresenting)
         {
-            Boss.Update(
+            ProcessPlayerAttack();
+            Enemies.UpdateCombatAndAi(
                 gameTime,
                 Player,
                 CurrentDungeon,
-                IsWildForestShowcaseMode
-                    ? _sequentialTestRoom
-                    : CurrentDungeon.BossRoom,
-                RootHazards,
-                IsWildForestShowcaseMode
-                    ? EnemyManager.WildForestShowcaseActivationDistance
-                    : null);
+                Projectiles,
+                RootHazards);
+            WildForestEncounters.EnforceArenaBounds();
+            Projectiles.Update(gameTime, Player, CurrentDungeon);
+            ProcessPlayerProjectileImpacts();
+            ProcessPlayerProjectileHits();
+            ProcessSpellbladeRunePlacement();
+            RootHazards.Update(gameTime, Player);
+            if (ShouldRenderBoss)
+            {
+                Boss.Update(
+                    gameTime,
+                    Player,
+                    CurrentDungeon,
+                    IsWildForestShowcaseMode
+                        ? _sequentialTestRoom
+                        : CurrentDungeon.BossRoom,
+                    RootHazards,
+                    IsWildForestShowcaseMode
+                        ? EnemyManager.WildForestShowcaseActivationDistance
+                        : null);
+            }
         }
 
         if (!Player.IsAlive)
@@ -452,7 +490,8 @@ public sealed class GameSession
             Player.Position,
             Player.Facing,
             CurrentDungeon.WorldBounds,
-            elapsedSeconds);
+            elapsedSeconds,
+            CurrentDungeon.IsAuthoredWildForest ? .54f : .57f);
         StoreInputStates(keyboardState, mouseState);
     }
 
@@ -502,12 +541,13 @@ public sealed class GameSession
         _worldTierTransitionTimeRemaining = 0f;
         CurrentDungeon = IsWildForestShowcaseMode
             ? _dungeonGenerator.GenerateWildForestShowcase()
-            : _dungeonGenerator.Generate();
+            : _dungeonGenerator.GenerateWildForest();
         Player = new PlayerCharacter(GetRoomEntranceSpawn(CurrentDungeon.StartRoom));
         _lastSafePlayerPosition = Player.Position;
         KillCount = 0;
         IsInventoryOpen = false;
         ShowCombatDebug = DebugCombatHitboxes;
+        ShowMapDebug = false;
         SelectedInventoryIndex = 0;
         ActiveInventoryTab = InventoryTab.Weapons;
         _selectedWeaponIndex = 0;
@@ -571,7 +611,10 @@ public sealed class GameSession
             WorldTier,
             CurrentRegion,
             isFirstDungeonOfRun: DungeonDepth == 1,
-            suppressProceduralSpawns: IsWildForestShowcaseMode);
+            suppressProceduralSpawns: IsWildForestShowcaseMode ||
+                CurrentDungeon.IsAuthoredWildForest);
+        WildForestEncounters.Reset(CurrentDungeon);
+        EnemyIntroductions.Reset();
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
                 CurrentDungeon.TreasureRoom.Bounds.Center.X,
@@ -590,7 +633,8 @@ public sealed class GameSession
         Camera.Snap(
             Player.Position,
             Player.Facing,
-            CurrentDungeon.WorldBounds);
+            CurrentDungeon.WorldBounds,
+            CurrentDungeon.IsAuthoredWildForest ? .54f : .57f);
     }
 
     private AncientTreant CreateRegionBoss()
@@ -734,7 +778,9 @@ public sealed class GameSession
         if (IsWildForestShowcaseMode)
             return false;
 
-        if (Chest.TryOpen(
+        bool canOpenChest = !CurrentDungeon.IsAuthoredWildForest ||
+            WildForestEncounters.WarCampRewardUnlocked;
+        if (canOpenChest && Chest.TryOpen(
             Player.Position,
             Loot,
             Player.Level,
