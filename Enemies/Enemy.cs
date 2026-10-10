@@ -14,7 +14,10 @@ namespace DungeonAscendant.Enemies;
 public abstract class Enemy
 {
     private const float HitFeedbackDurationSeconds = 0.14f;
-    private const float DeathPresentationDurationSeconds = 0.57f;
+    private const float DefaultDeathPresentationDurationSeconds = 0.57f;
+    private const float HealthBarLingerSeconds = 1.45f;
+    private const float HealthBarDamageLingerSeconds = 1.85f;
+    private const float HealthBarFadeSeconds = .35f;
     private const float TargetFacingDeadzone = 2f;
     private const float MovementFacingDeadzone = 0.5f;
 
@@ -38,6 +41,8 @@ public abstract class Enemy
     private int _arcaneImprintCount;
     private float _arcaneImprintTimeRemaining;
     private float _arcaneStunTimeRemaining;
+    private bool _lastHitWasHeavy;
+    private float _healthBarTimeRemaining;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
@@ -51,8 +56,18 @@ public abstract class Enemy
     public int CurrentHealth { get; private set; }
     public bool IsAlive => CurrentHealth > 0;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
+    public bool IsHeavyHitReaction => IsHitFlashing && _lastHitWasHeavy;
+    public bool IsHealthBarVisible => IsAlive && _healthBarTimeRemaining > 0f;
+    public float HealthBarOpacity => IsHealthBarVisible
+        ? Math.Clamp(_healthBarTimeRemaining / HealthBarFadeSeconds, 0f, 1f)
+        : 0f;
     public bool IsDeathPresentationComplete =>
         _deathPresentationTimeRemaining <= 0f;
+    public float DeathPresentationProgress => Math.Clamp(
+        1f - _deathPresentationTimeRemaining /
+            MathF.Max(.01f, DeathPresentationDurationSeconds),
+        0f,
+        1f);
     public float VisualVelocityX { get; private set; }
     public float MaxPoise { get; }
     public float CurrentPoise { get; private set; }
@@ -95,12 +110,17 @@ public abstract class Enemy
         EnemyFacingDirection.Right;
     public MeleeAttack Attack { get; }
     public Rectangle AttackArea => CreateAttackArea(_attackFacing);
+    public virtual bool IsCombatAttackActive => Attack.IsActive;
+    public virtual bool IsCombatAttackTelegraphing => Attack.IsTelegraphing;
+    public virtual Rectangle ActiveAttackArea => AttackArea;
     public Rectangle Bounds => new(
         (int)(Position.X - Size.X / 2f),
         (int)(Position.Y - Size.Y / 2f),
         (int)MathF.Ceiling(Size.X),
         (int)MathF.Ceiling(Size.Y));
     public virtual Rectangle MeleeTargetBounds => Bounds;
+    protected virtual float DeathPresentationDurationSeconds =>
+        DefaultDeathPresentationDurationSeconds;
     public virtual Rectangle WeakPointBounds
     {
         get
@@ -311,10 +331,18 @@ public abstract class Enemy
             return;
 
         bool wasAlive = IsAlive;
+        int healthBefore = CurrentHealth;
         CurrentHealth = Math.Max(0, CurrentHealth - damage);
+        if (CurrentHealth < healthBefore)
+        {
+            _healthBarTimeRemaining = MathF.Max(
+                _healthBarTimeRemaining,
+                HealthBarDamageLingerSeconds);
+        }
         _hitFeedbackTimeRemaining = poiseDamage >= 45f
             ? HitFeedbackDurationSeconds * 1.55f
             : HitFeedbackDurationSeconds;
+        _lastHitWasHeavy = poiseDamage >= 45f;
         ApplyPoiseDamage(poiseDamage);
         OnDamaged();
 
@@ -330,6 +358,14 @@ public abstract class Enemy
         }
     }
 
+    public virtual void ReceiveDamageFrom(
+        int damage,
+        float poiseDamage,
+        Vector2 sourcePosition)
+    {
+        ReceiveDamage(damage, poiseDamage);
+    }
+
     internal void UpdateDeathPresentation(GameTime gameTime)
     {
         if (IsAlive || IsDeathPresentationComplete)
@@ -339,6 +375,47 @@ public abstract class Enemy
             0f,
             _deathPresentationTimeRemaining -
                 (float)gameTime.ElapsedGameTime.TotalSeconds);
+    }
+
+    internal void UpdateHealthBarPresentation(
+        GameTime gameTime,
+        Vector2 playerPosition,
+        bool isActive)
+    {
+        if (!IsAlive)
+        {
+            _healthBarTimeRemaining = 0f;
+            return;
+        }
+
+        float elapsedSeconds = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            .05f);
+        _healthBarTimeRemaining = MathF.Max(
+            0f,
+            _healthBarTimeRemaining - elapsedSeconds);
+
+        bool withinDetectionRange = Vector2.DistanceSquared(
+            Position,
+            playerPosition) <= DetectionRange * DetectionRange;
+        bool authoredCatacombAggro = Type is
+            EnemyType.Skeleton or
+            EnemyType.SkeletonArcher or
+            EnemyType.RottenCorpse or
+            EnemyType.Wraith or
+            EnemyType.UndeadGuard or
+            EnemyType.CursedKnight or
+            EnemyType.GraveBat or
+            EnemyType.DeathKnight or
+            EnemyType.SoulCollector or
+            EnemyType.FallenKnight;
+
+        if (isActive && (withinDetectionRange || authoredCatacombAggro))
+        {
+            _healthBarTimeRemaining = MathF.Max(
+                _healthBarTimeRemaining,
+                HealthBarLingerSeconds);
+        }
     }
 
     public void ApplyPoiseDamage(float amount)
@@ -357,6 +434,7 @@ public abstract class Enemy
 
         _staggerTimeRemaining = GetStaggerDuration(Type);
         Attack.Cancel();
+        OnCombatInterrupted();
     }
 
     public int AddArcaneImprint()
@@ -398,6 +476,7 @@ public abstract class Enemy
             _arcaneStunTimeRemaining,
             durationSeconds);
         Attack.Cancel();
+        OnCombatInterrupted();
     }
 
     public virtual void ApplyKnockback(
@@ -583,6 +662,10 @@ public abstract class Enemy
     }
 
     protected virtual void OnDamaged()
+    {
+    }
+
+    protected virtual void OnCombatInterrupted()
     {
     }
 
@@ -876,6 +959,8 @@ public abstract class Enemy
         {
             EnemyType.CorruptedTreant => 0.42f,
             EnemyType.MotherSpider => 0.46f,
+            EnemyType.FallenKnight => 0.82f,
+            EnemyType.DeathKnight => 1.35f,
             EnemyType.GoblinChief => 0.52f,
             EnemyType.DireWolf => 0.58f,
             EnemyType.GiantSpider => 0.65f,

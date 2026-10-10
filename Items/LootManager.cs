@@ -135,6 +135,20 @@ public sealed class LootManager
         return true;
     }
 
+    public bool CreateRewardDrop(
+        EquipmentItem item,
+        Vector2 position,
+        DungeonMap dungeon)
+    {
+        if (item == null || dungeon == null)
+            return false;
+
+        _worldLoot.Add(new WorldLoot(
+            item,
+            FindSafeDropPosition(position, dungeon)));
+        return true;
+    }
+
     public bool TryCollectNearest(Vector2 playerPosition, Inventory inventory)
     {
         if (inventory == null || inventory.IsFull)

@@ -329,6 +329,7 @@ public sealed class EnemyManager
         ProjectileManager projectiles,
         RootHazardManager rootHazards)
     {
+        UpdateHealthBarPresentation(gameTime, player.Position, dungeon);
         int activeCount = _enemies.Count;
 
         for (int index = 0; index < activeCount; index++)
@@ -372,6 +373,7 @@ public sealed class EnemyManager
         PlayerCharacter player,
         DungeonMap dungeon)
     {
+        UpdateHealthBarPresentation(gameTime, player.Position, dungeon);
         foreach (Enemy enemy in _enemies)
         {
             if (IsActive(enemy, player.Position, dungeon))
@@ -390,6 +392,20 @@ public sealed class EnemyManager
         _compatibilityProjectiles.Update(gameTime, player, dungeon);
         _compatibilityRootHazards.Update(gameTime, player);
         UpdateDeathPresentations(gameTime);
+    }
+
+    private void UpdateHealthBarPresentation(
+        GameTime gameTime,
+        Vector2 playerPosition,
+        DungeonMap dungeon)
+    {
+        foreach (Enemy enemy in _enemies)
+        {
+            enemy.UpdateHealthBarPresentation(
+                gameTime,
+                playerPosition,
+                IsActive(enemy, playerPosition, dungeon));
+        }
     }
 
     public bool RequestSpiderlingSummon(MotherSpider mother)
@@ -432,7 +448,17 @@ public sealed class EnemyManager
                 enemy.Type == EnemyType.ThornCrawler ||
                 enemy.Type == EnemyType.CorruptedTreant ||
                 enemy.Type == EnemyType.GoblinChief ||
-                enemy.Type == EnemyType.MotherSpider)
+                enemy.Type == EnemyType.MotherSpider ||
+                enemy.Type == EnemyType.Skeleton ||
+                 enemy.Type == EnemyType.SkeletonArcher ||
+                 enemy.Type == EnemyType.RottenCorpse ||
+                 enemy.Type == EnemyType.Wraith ||
+                 enemy.Type == EnemyType.UndeadGuard ||
+                 enemy.Type == EnemyType.GraveBat ||
+                 enemy.Type == EnemyType.CursedKnight ||
+                 enemy.Type == EnemyType.SoulCollector ||
+                 enemy.Type == EnemyType.DeathKnight ||
+                 enemy.Type == EnemyType.FallenKnight)
             {
                 _defeatPresentations.Add(enemy);
             }

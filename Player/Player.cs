@@ -293,6 +293,27 @@ public sealed class Player
             dungeon);
     }
 
+    public void PushAwayFrom(
+        Vector2 source,
+        float distance,
+        DungeonMap dungeon)
+    {
+        if (!IsAlive || dungeon == null || distance <= 0f)
+            return;
+
+        float horizontal = Position.X - source.X;
+        if (MathF.Abs(horizontal) <= 1f)
+            horizontal = Facing == FacingDirection.Left ? -1f : 1f;
+        Position = DungeonCollision.ResolveMovement(
+            Position,
+            Position + new Vector2(
+                MathF.Sign(horizontal) * MathF.Min(distance, 28f),
+                0f),
+            Size,
+            dungeon);
+        Velocity = new Vector2(0f, Velocity.Y);
+    }
+
     public Vector2 MoveThroughCombatTechnique(
         Vector2 desiredPosition,
         DungeonMap dungeon)

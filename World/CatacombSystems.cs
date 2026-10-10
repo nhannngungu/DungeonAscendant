@@ -8,8 +8,23 @@ namespace DungeonAscendant.World;
 
 public sealed class RottenCorpseBurst
 {
-    public Vector2 Position{get;} public float TimeRemaining{get;set;}=.85f;
-    public RottenCorpseBurst(Vector2 position){Position=position;}
+    public const float WarningSeconds = .90f;
+    public const float AftermathSeconds = .32f;
+
+    public Vector2 Position { get; }
+    public float TimeUntilBurst { get; set; } = WarningSeconds;
+    public float AftermathTimeRemaining { get; set; } = AftermathSeconds;
+    public bool HasBurst { get; set; }
+    public bool IsComplete => HasBurst && AftermathTimeRemaining <= 0f;
+    public float WarningProgress => Math.Clamp(
+        1f - TimeUntilBurst / WarningSeconds, 0f, 1f);
+    public float AftermathProgress => Math.Clamp(
+        1f - AftermathTimeRemaining / AftermathSeconds, 0f, 1f);
+
+    public RottenCorpseBurst(Vector2 position)
+    {
+        Position = position;
+    }
 }
 
 public sealed class CurseSystem

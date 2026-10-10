@@ -76,6 +76,18 @@ public sealed class GameSession
 
     private const float WildForestShowcaseBossOffset = 8900f;
 
+    private static readonly ArmorDefinition AncientScholarMedallion = new(
+        "ancient-scholar-medallion",
+        "Ancient Scholar Medallion",
+        ArmorClass.Light,
+        3,
+        18,
+        .91f,
+        1.04f,
+        1.12f,
+        .88f,
+        .92f);
+
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly CatacombMapGenerator _catacombGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
@@ -130,6 +142,7 @@ public sealed class GameSession
     public EnemyIntroductionManager EnemyIntroductions { get; }
     public CurseSystem Curse { get; }
     public TombInteractionManager Tombs { get; }
+    public AncientScholarTombSystem ScholarTomb { get; }
     public DeveloperPanel DeveloperPanel { get; } = new();
     public IReadOnlyList<RottenCorpseBurst> RottenCorpseBursts => _rottenCorpseBursts;
     public bool Map01Cleared { get; private set; }
@@ -242,6 +255,7 @@ public sealed class GameSession
         EnemyIntroductions = new EnemyIntroductionManager();
         Curse = new CurseSystem();
         Tombs = new TombInteractionManager();
+        ScholarTomb = new AncientScholarTombSystem();
         Projectiles = new ProjectileManager();
         GroundRunes = new GroundRuneManager();
         RootHazards = new RootHazardManager();
@@ -327,6 +341,13 @@ public sealed class GameSession
                 State = GameState.Playing;
             }
 
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
+
+        if (ScholarTomb.IsModalActive)
+        {
+            UpdateScholarTombModal(gameTime, keyboardState);
             StoreInputStates(keyboardState, mouseState);
             return;
         }
@@ -472,18 +493,31 @@ public sealed class GameSession
 
         int activeEnemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level, DungeonDepth, WorldTier);
+        bool insideScholarSafeZone =
+            ScholarTomb.IsPlayerInsideSafeZone(Player.Position);
         WildForestEncounters.Update(
             gameTime,
             Player.Position,
             CurrentDungeon,
             Enemies,
             activeEnemyLevel,
-            WorldTier);
+            WorldTier,
+            suppressActivation: insideScholarSafeZone);
         Tombs.Update(gameTime,Player,CurrentDungeon,Enemies,activeEnemyLevel,WorldTier);
         if (Tombs.LootOpenedPosition.HasValue)
             Loot.CreateTreasureChestDrops(Tombs.LootOpenedPosition.Value,
                 Player.Level,DungeonDepth,WorldTier,CurrentRegion,CurrentDungeon);
-        Curse.Update(gameTime,Player,CurrentDungeon);
+        if (insideScholarSafeZone)
+        {
+            Curse.Reduce(6f * elapsedSeconds);
+            Projectiles.ClearEnemyThreats();
+            RootHazards.Clear();
+            _rottenCorpseBursts.Clear();
+        }
+        else
+        {
+            Curse.Update(gameTime,Player,CurrentDungeon);
+        }
         UpdateRottenCorpseBursts(gameTime);
         if (CurrentDungeon.IsAncientCatacombs)
         {
@@ -491,10 +525,21 @@ public sealed class GameSession
             foreach (Enemy enemy in Enemies.Enemies)
             {
                 float distance = Vector2.Distance(enemy.Position, Player.Position);
-                if (enemy.Type == EnemyType.GraveBat && distance < 260f)
-                    Player.Combat.ExternalStaminaRegenMultiplier *= .72f;
-                if (enemy.Type is EnemyType.Wraith or EnemyType.SoulCollector && distance < 135f)
+                if (enemy is CatacombEnemy graveBat &&
+                    graveBat.Type == EnemyType.GraveBat)
+                {
+                    Player.Combat.ExternalStaminaRegenMultiplier *=
+                        graveBat.GraveBatStaminaPressureMultiplier;
+                }
+                if (enemy.Type == EnemyType.Wraith && distance < 135f)
                     Curse.Add(5f * curseDelta);
+                if (enemy is CatacombEnemy collector &&
+                    collector.Type == EnemyType.SoulCollector &&
+                    collector.HasActiveSoulField &&
+                    collector.SoulFieldBounds.Intersects(Player.Bounds))
+                {
+                    Curse.Add(10f * curseDelta);
+                }
             }
         }
         if (CurrentDungeon.IsAuthoredWildForest || CurrentDungeon.IsAncientCatacombs)
@@ -518,18 +563,23 @@ public sealed class GameSession
         if (!EnemyIntroductions.IsPresenting)
         {
             ProcessPlayerAttack();
-            Enemies.UpdateCombatAndAi(
-                gameTime,
-                Player,
-                CurrentDungeon,
-                Projectiles,
-                RootHazards);
-            WildForestEncounters.EnforceArenaBounds();
-            Projectiles.Update(gameTime, Player, CurrentDungeon);
-            ProcessPlayerProjectileImpacts();
-            ProcessPlayerProjectileHits();
-            ProcessSpellbladeRunePlacement();
-            RootHazards.Update(gameTime, Player);
+            if (!insideScholarSafeZone)
+            {
+                Enemies.UpdateCombatAndAi(
+                    gameTime,
+                    Player,
+                    CurrentDungeon,
+                    Projectiles,
+                    RootHazards);
+                ApplyCatacombEnemyCursePressure();
+                WildForestEncounters.EnforceArenaBounds();
+                Projectiles.Update(gameTime, Player, CurrentDungeon);
+                Curse.Add(Projectiles.ConsumeEnemyCursePressure());
+                ProcessPlayerProjectileImpacts();
+                ProcessPlayerProjectileHits();
+                ProcessSpellbladeRunePlacement();
+                RootHazards.Update(gameTime, Player);
+            }
             if (ShouldRenderBoss)
             {
                 Boss.Update(
@@ -567,15 +617,36 @@ public sealed class GameSession
         for (int index = _rottenCorpseBursts.Count - 1; index >= 0; index--)
         {
             RottenCorpseBurst burst = _rottenCorpseBursts[index];
-            burst.TimeRemaining -= elapsed;
-            if (burst.TimeRemaining > 0f)
+            if (burst.HasBurst)
+            {
+                burst.AftermathTimeRemaining -= elapsed;
+                if (burst.IsComplete)
+                    _rottenCorpseBursts.RemoveAt(index);
                 continue;
+            }
+
+            burst.TimeUntilBurst -= elapsed;
+            if (burst.TimeUntilBurst > 0f)
+                continue;
+
+            burst.HasBurst = true;
             if (Vector2.DistanceSquared(Player.Position, burst.Position) < 190f * 190f)
                 Curse.Add(12f);
             foreach (Enemy nearby in Enemies.Enemies)
                 if (Vector2.DistanceSquared(nearby.Position, burst.Position) < 150f * 150f)
-                    nearby.ReceiveDamage(18, 32f);
-            _rottenCorpseBursts.RemoveAt(index);
+                    nearby.ReceiveDamage(14, 38f);
+        }
+    }
+
+    private void ApplyCatacombEnemyCursePressure()
+    {
+        if (CurrentDungeon?.IsAncientCatacombs != true)
+            return;
+
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (enemy is CatacombEnemy catacomb)
+                Curse.Add(catacomb.ConsumeCursePressure());
         }
     }
 
@@ -639,6 +710,7 @@ public sealed class GameSession
 
     private void ResetRun()
     {
+        ScholarTomb.ResetForNewRun();
         DungeonDepth = 1;
         Map01Cleared = false;
         Map02Cleared = false;
@@ -726,6 +798,7 @@ public sealed class GameSession
         EnemyIntroductions.Reset();
         Curse.Reset();
         Tombs.Reset(CurrentDungeon);
+        ScholarTomb.Configure(CurrentDungeon);
         _rottenCorpseBursts.Clear();
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
@@ -890,6 +963,15 @@ public sealed class GameSession
         if (IsWildForestShowcaseMode)
             return false;
 
+        if (ScholarTomb.TryInspect(Player.Position))
+        {
+            Player.Combat.CancelActions(restoreStamina: false);
+            Projectiles.Clear();
+            RootHazards.Clear();
+            _rottenCorpseBursts.Clear();
+            return true;
+        }
+
         bool canOpenChest = !CurrentDungeon.IsAuthoredWildForest ||
             WildForestEncounters.WarCampRewardUnlocked;
         if (canOpenChest && Chest.TryOpen(
@@ -912,6 +994,79 @@ public sealed class GameSession
 
         Loot.TryCollectNearest(Player.Position, Player.Inventory);
         return false;
+    }
+
+    private void UpdateScholarTombModal(
+        GameTime gameTime,
+        KeyboardState keyboardState)
+    {
+        ScholarTomb.Update(
+            gameTime,
+            keyboardState,
+            _previousKeyboardState);
+        float elapsedSeconds = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            .05f);
+        Curse.Reduce(6f * elapsedSeconds);
+        Player.Combat.CancelActions(restoreStamina: false);
+        Projectiles.Clear();
+        RootHazards.Clear();
+        _rottenCorpseBursts.Clear();
+
+        if (ScholarTomb.TryConsumeRewardRequest(
+            out int score,
+            out AncientScholarRewardCategory category))
+        {
+            GrantScholarReward(score, category);
+        }
+
+        FollowPlayerWithCamera(elapsedSeconds);
+    }
+
+    private void GrantScholarReward(
+        int score,
+        AncientScholarRewardCategory category)
+    {
+        EquipmentItem reward = score switch
+        {
+            1 => new EquipmentItem(
+                EquipmentCatalog.ScoutArmor,
+                ItemRarity.Uncommon,
+                ArmorGrade.C2),
+            2 => new EquipmentItem(
+                EquipmentCatalog.KnightArmor,
+                ItemRarity.Rare,
+                ArmorGrade.C3),
+            _ => category switch
+            {
+                AncientScholarRewardCategory.Weapon => new EquipmentItem(
+                    EquipmentCatalog.ReckonerChainFlail,
+                    ItemRarity.Legendary),
+                AncientScholarRewardCategory.Relic => new EquipmentItem(
+                    AncientScholarMedallion,
+                    ItemRarity.Legendary,
+                    ArmorGrade.C5),
+                _ => new EquipmentItem(
+                    EquipmentCatalog.FortressArmor,
+                    ItemRarity.Legendary,
+                    ArmorGrade.C5)
+            }
+        };
+
+        bool stored = Player.Inventory.TryAdd(reward);
+        if (!stored)
+        {
+            Loot.CreateRewardDrop(
+                reward,
+                ScholarTomb.Position,
+                CurrentDungeon);
+        }
+
+        RefreshInventoryView();
+        ScholarTomb.SetCompletionText(
+            stored
+                ? $"Reward granted: {reward.Name}."
+                : $"Inventory full. {reward.Name} rests beside the tomb.");
     }
 
     private bool IsPlayerNearExit()
@@ -1001,6 +1156,9 @@ public sealed class GameSession
             case DeveloperCommand.ResetCurrentEncounter:
                 DeveloperResetCurrentEncounter();
                 break;
+            case DeveloperCommand.ResetScholarChallenge:
+                ScholarTomb.ResetChallengeForDebug();
+                break;
             case DeveloperCommand.KillActiveEnemies:
                 DeveloperKillActiveEnemies();
                 break;
@@ -1064,6 +1222,29 @@ public sealed class GameSession
 
     private void DeveloperTeleportToZone(int zoneIndex)
     {
+        if (CurrentDungeon.IsAncientCatacombs &&
+            zoneIndex == CatacombMapGenerator.ZoneCount &&
+            ScholarTomb.IsAvailable)
+        {
+            ClearDeveloperTransientState();
+            Vector2 scholarSpawn = SideScrollingCollision.ResolveSafeEntrySpawn(
+                ScholarTomb.Position.X - 82f,
+                Player.Size,
+                CurrentDungeon,
+                MapEntryDropOffset);
+            Player.MoveTo(scholarSpawn);
+            Player.RestoreHealth();
+            Player.Combat.Stamina.Restore();
+            _lastSafePlayerPosition = scholarSpawn;
+            _mapEntryFallActive = true;
+            Camera.Snap(
+                Player.Position,
+                Player.Facing,
+                CurrentDungeon.WorldBounds,
+                .55f);
+            return;
+        }
+
         int count = CurrentDungeon.IsAncientCatacombs
             ? CurrentDungeon.CatacombZones.Count
             : CurrentDungeon.WildForestSections.Count;
@@ -1527,8 +1708,8 @@ public sealed class GameSession
 
         foreach (Enemy enemy in Enemies.Enemies)
         {
-            if (enemy.CanBeTargeted && enemy.Attack.IsActive &&
-                sweptBounds.Intersects(enemy.AttackArea))
+            if (enemy.CanBeTargeted && enemy.IsCombatAttackActive &&
+                sweptBounds.Intersects(enemy.ActiveAttackArea))
             {
                 return true;
             }
@@ -1570,10 +1751,10 @@ public sealed class GameSession
 
         foreach (Enemy enemy in Enemies.Enemies)
         {
-            if (!enemy.CanBeTargeted || !enemy.Attack.IsActive)
+            if (!enemy.CanBeTargeted || !enemy.IsCombatAttackActive)
                 continue;
 
-            Consider(enemy.AttackArea);
+            Consider(enemy.ActiveAttackArea);
         }
 
         if (ShouldRenderBoss && Boss.IsAlive && Boss.Attack.IsActive)
@@ -1753,9 +1934,10 @@ public sealed class GameSession
                 isBoss: false,
                 ref targetDamage,
                 ref targetPoiseDamage);
-            enemy.ReceiveDamage(
+            enemy.ReceiveDamageFrom(
                 targetDamage,
-                targetPoiseDamage);
+                targetPoiseDamage,
+                Player.Position);
             ApplyTechniqueEffect(enemy, technique?.Effect ?? WeaponTechniqueEffect.None);
             ResolveSpellbladeEnemyHit(
                 enemy,
@@ -3205,9 +3387,10 @@ public sealed class GameSession
                         projectile,
                         enemy,
                         isBoss: false);
-                    enemy.ReceiveDamage(
+                    enemy.ReceiveDamageFrom(
                         rangerDamage,
-                        poiseDamage);
+                        poiseDamage,
+                        projectile.SourcePosition);
                     enemy.ApplyKnockback(
                         projectile.SourcePosition,
                         projectile.Knockback,
@@ -3233,10 +3416,11 @@ public sealed class GameSession
                     RegisterPlayerHitEffect(
                         projectile.SweptBounds,
                         enemy.MeleeTargetBounds);
-                    enemy.ReceiveDamage(
+                    enemy.ReceiveDamageFrom(
                         Math.Max(1, (int)MathF.Round(
                             projectile.Damage * spellbladeMultiplier)),
-                        projectile.PoiseDamage);
+                        projectile.PoiseDamage,
+                        projectile.SourcePosition);
                     enemy.AddArcaneImprint();
                     Player.Combat.RegisterExternalHit(
                         projectile.WeaponResourceGain);
@@ -3255,10 +3439,11 @@ public sealed class GameSession
                 if (projectile.TechniqueEffect ==
                     WeaponTechniqueEffect.ConsumeHunterMark && enemy.IsHunterMarked)
                     damageMultiplier *= 1.45f;
-                enemy.ReceiveDamage(
+                enemy.ReceiveDamageFrom(
                     System.Math.Max(0, (int)System.MathF.Round(
                         projectile.Damage * damageMultiplier)),
-                    projectile.PoiseDamage);
+                    projectile.PoiseDamage,
+                    projectile.SourcePosition);
                 ApplyTechniqueEffect(enemy, projectile.TechniqueEffect);
                 enemy.ApplyKnockback(
                     projectile.SourcePosition,
@@ -3701,8 +3886,8 @@ public sealed class GameSession
 
         foreach (Enemy enemy in Enemies.Enemies)
         {
-            if (enemy.CanBeTargeted && enemy.Attack.IsActive &&
-                opportunity.Intersects(enemy.AttackArea))
+            if (enemy.CanBeTargeted && enemy.IsCombatAttackActive &&
+                opportunity.Intersects(enemy.ActiveAttackArea))
             {
                 return true;
             }

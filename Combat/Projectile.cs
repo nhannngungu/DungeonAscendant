@@ -50,6 +50,7 @@ public sealed class Projectile
     public float SurfaceSeparationRemaining { get; internal set; }
     public bool IsRangerProjectile { get; }
     public float PlacementDistance { get; }
+    public float CursePressure { get; }
     public bool IsSpellbladeProjectile => TechniqueEffect is
         WeaponTechniqueEffect.SpellbladeRuneBrand or
         WeaponTechniqueEffect.SpellbladeRunicSpear;
@@ -102,7 +103,8 @@ public sealed class Projectile
         int techniqueUseId = -1,
         int spreadArrowIndex = -1,
         bool isRangerProjectile = false,
-        float placementDistance = 0f)
+        float placementDistance = 0f,
+        float cursePressure = 0f)
     {
         Type = type;
         SourcePosition = position;
@@ -139,5 +141,6 @@ public sealed class Projectile
         SpreadArrowIndex = spreadArrowIndex;
         IsRangerProjectile = isRangerProjectile;
         PlacementDistance = MathF.Max(0f, placementDistance);
+        CursePressure = MathF.Max(0f, cursePressure);
     }
 }

@@ -20,6 +20,7 @@ public sealed class ProjectileManager
     private readonly List<Projectile> _projectiles = new(32);
     private readonly List<WebPatch> _webPatches = new(16);
     private readonly List<ProjectileImpact> _impacts = new(8);
+    private float _pendingCursePressure;
 
     public IReadOnlyList<Projectile> Projectiles => _projectiles;
     public IReadOnlyList<WebPatch> WebPatches => _webPatches;
@@ -31,18 +32,29 @@ public sealed class ProjectileManager
         int damage,
         int roomId)
     {
+        SpawnEnemyArrow(position, direction, damage, roomId, heavy: false);
+    }
+
+    public void SpawnEnemyArrow(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId,
+        bool heavy)
+    {
         _projectiles.Add(new Projectile(
             ProjectileType.Arrow,
             position,
-            NormalizeOrDefault(direction) * ArrowSpeed,
-            new Vector2(16f, 7f),
+            NormalizeOrDefault(direction) * ArrowSpeed * (heavy ? 1.16f : 1f),
+            heavy ? new Vector2(20f, 8f) : new Vector2(16f, 7f),
             lifetimeSeconds: 2.4f,
             damage,
             blockable: true,
             unblockable: false,
             slowDurationSeconds: 0f,
             slowMovementMultiplier: 1f,
-            roomId));
+            roomId,
+            empoweredVisual: heavy));
     }
 
     public void SpawnPlayerProjectile(
@@ -125,6 +137,34 @@ public sealed class ProjectileManager
             empoweredVisual: empoweredVisual));
     }
 
+    public void SpawnSoulBolt(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.SoulBolt,
+            position,
+            NormalizeOrDefault(direction) * 215f,
+            new Vector2(15f, 13f),
+            lifetimeSeconds: 2.8f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            cursePressure: 7f));
+    }
+
+    public float ConsumeEnemyCursePressure()
+    {
+        float pressure = _pendingCursePressure;
+        _pendingCursePressure = 0f;
+        return pressure;
+    }
+
     public bool TryCreateWebPatch(
         Vector2 position,
         int roomId,
@@ -204,6 +244,9 @@ public sealed class ProjectileManager
                         projectile.Unblockable,
                         projectile.Bounds));
 
+                if (resolution != AttackResolution.Ignored)
+                    _pendingCursePressure += projectile.CursePressure;
+
                 if (resolution == AttackResolution.Ignored &&
                     !intersectsBody)
                 {
@@ -247,6 +290,25 @@ public sealed class ProjectileManager
         _projectiles.Clear();
         _webPatches.Clear();
         _impacts.Clear();
+        _pendingCursePressure = 0f;
+    }
+
+    public void ClearEnemyThreats()
+    {
+        for (int index = _projectiles.Count - 1; index >= 0; index--)
+        {
+            if (!_projectiles[index].IsPlayerOwned)
+                _projectiles.RemoveAt(index);
+        }
+
+        for (int index = _impacts.Count - 1; index >= 0; index--)
+        {
+            if (!_impacts[index].Projectile.IsPlayerOwned)
+                _impacts.RemoveAt(index);
+        }
+
+        _webPatches.Clear();
+        _pendingCursePressure = 0f;
     }
 
     public void SpawnArrowRainAtImpact(Projectile projectile, Vector2 impact)
@@ -316,7 +378,9 @@ public sealed class ProjectileManager
                 projectile.HasSplit = true;
             }
 
-            if (projectile.ImpactRadius > 0f)
+            if (projectile.ImpactRadius > 0f ||
+                (!projectile.IsPlayerOwned &&
+                 projectile.Type == ProjectileType.Arrow))
                 _impacts.Add(new ProjectileImpact(projectile, projectile.Position));
             return false;
         }

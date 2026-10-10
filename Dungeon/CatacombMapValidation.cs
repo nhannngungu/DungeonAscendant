@@ -18,6 +18,8 @@ public static class CatacombMapValidation
         Need(map.EncounterZones.Count==10&&map.SpawnProfiles.Count==10&&map.SpawnSockets.Count>=24,"Map 2 encounter ecology is incomplete.");
         Need(map.CurseZones.Count==6&&map.SafeShrines.Count==3&&map.Tombs.Count==8,"Curse, shrine, or tomb metadata is incomplete.");
         ValidateGround(map);ValidatePhysicalTraversal(map);ValidateRoster(map);ValidateSpawns(map);ValidateCurseAndTombs(map);ValidatePhases();
+        DungeonAscendant.Core.CatacombEnemyPolishValidation.ValidateOrThrow();
+        DungeonAscendant.Core.AncientScholarTombValidation.ValidateOrThrow();
         ValidateProgression();
         for(int seed=0;seed<100;seed++){DungeonMap other=new CatacombMapGenerator().Generate();Need(other.WorldBounds==map.WorldBounds&&other.Platforms.Count==map.Platforms.Count,"Authored Catacomb macro changed unexpectedly.");}
     }

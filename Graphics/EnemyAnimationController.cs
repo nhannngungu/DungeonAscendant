@@ -76,6 +76,21 @@ public sealed class EnemyAnimationController
             return;
         }
 
+        if (enemy is CatacombEnemy catacomb &&
+            catacomb.IsPolishedCatacombEnemy &&
+            catacomb.CombatState != CatacombCombatState.Ready &&
+            catacomb.CombatState != CatacombCombatState.GuardApproach &&
+            catacomb.CombatState != CatacombCombatState.KnightApproach &&
+            catacomb.CombatState != CatacombCombatState.SoulApproach &&
+            State is not EnemyVisualState.Hurt and
+                not EnemyVisualState.Stagger and
+                not EnemyVisualState.Death and
+                not EnemyVisualState.BlockReaction)
+        {
+            _elapsed = catacomb.ActionProgress * animation.Duration;
+            return;
+        }
+
         if (UsesAttackClock(State))
         {
             _elapsed = enemy.Attack.PhaseProgress * animation.Duration;
@@ -95,11 +110,268 @@ public sealed class EnemyAnimationController
         if (!enemy.IsAlive)
             return EnemyVisualState.Death;
 
+        if (enemy is CatacombEnemy guardReaction &&
+            guardReaction.Type == EnemyType.UndeadGuard)
+        {
+            if (guardReaction.IsGuardBroken)
+                return EnemyVisualState.GuardBreak;
+            if (guardReaction.IsGuardBlockReacting)
+                return EnemyVisualState.BlockReaction;
+        }
+
+        if (enemy is CatacombEnemy brokenKnight &&
+            brokenKnight.Type == EnemyType.CursedKnight &&
+            brokenKnight.IsCursedArmorBroken)
+        {
+            return EnemyVisualState.CursedArmorBreak;
+        }
+
         if (enemy.IsStaggered)
             return EnemyVisualState.Stagger;
 
         if (enemy.IsHitFlashing)
             return EnemyVisualState.Hurt;
+
+        if (enemy is CatacombEnemy rotten &&
+            rotten.Type == EnemyType.RottenCorpse)
+        {
+            return rotten.CombatState switch
+            {
+                CatacombCombatState.CorpseWindup when
+                    rotten.RottenCorpseAttack ==
+                        RottenCorpseAttackKind.BodySlam =>
+                    EnemyVisualState.BodySlamWindup,
+                CatacombCombatState.CorpseWindup when
+                    rotten.RottenCorpseAttack ==
+                        RottenCorpseAttackKind.RotVomit =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.CorpseWindup =>
+                    EnemyVisualState.GrabWindup,
+                CatacombCombatState.CorpseActive when
+                    rotten.RottenCorpseAttack ==
+                        RottenCorpseAttackKind.BodySlam =>
+                    EnemyVisualState.BodySlamAttack,
+                CatacombCombatState.CorpseActive when
+                    rotten.RottenCorpseAttack ==
+                        RottenCorpseAttackKind.RotVomit =>
+                    EnemyVisualState.RotVomit,
+                CatacombCombatState.CorpseActive =>
+                    EnemyVisualState.GrabAttack,
+                CatacombCombatState.CorpseRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => MathF.Abs(enemy.VisualVelocityX) > 1f
+                    ? EnemyVisualState.Walk
+                    : EnemyVisualState.Idle
+            };
+        }
+
+        if (enemy is CatacombEnemy wraith &&
+            wraith.Type == EnemyType.Wraith)
+        {
+            return wraith.CombatState switch
+            {
+                CatacombCombatState.WraithEthereal =>
+                    EnemyVisualState.Ethereal,
+                CatacombCombatState.WraithMaterialize =>
+                    EnemyVisualState.Materialize,
+                CatacombCombatState.WraithFade =>
+                    EnemyVisualState.PhaseOut,
+                CatacombCombatState.WraithWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.WraithActive when
+                    wraith.WraithAttack == WraithAttackKind.SpectralDash =>
+                    EnemyVisualState.SpectralDash,
+                CatacombCombatState.WraithActive when
+                    wraith.WraithAttack == WraithAttackKind.CurseWave =>
+                    EnemyVisualState.CurseWave,
+                CatacombCombatState.WraithActive =>
+                    EnemyVisualState.SpectralClaw,
+                CatacombCombatState.WraithRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => EnemyVisualState.IdleHover
+            };
+        }
+
+        if (enemy is CatacombEnemy guard &&
+            guard.Type == EnemyType.UndeadGuard)
+        {
+            return guard.CombatState switch
+            {
+                CatacombCombatState.GuardApproach =>
+                    MathF.Abs(enemy.VisualVelocityX) > 1f
+                        ? EnemyVisualState.Walk
+                        : EnemyVisualState.ShieldReady,
+                CatacombCombatState.GuardStance =>
+                    EnemyVisualState.ShieldReady,
+                CatacombCombatState.GuardWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.GuardActive when
+                    guard.UndeadGuardAttack ==
+                        UndeadGuardAttackKind.ShieldBash =>
+                    EnemyVisualState.ShieldBash,
+                CatacombCombatState.GuardActive when
+                    guard.UndeadGuardAttack ==
+                        UndeadGuardAttackKind.HeavyCleave =>
+                    EnemyVisualState.HeavyMeleeAttack,
+                CatacombCombatState.GuardActive =>
+                    EnemyVisualState.GuardedStrike,
+                CatacombCombatState.GuardRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                CatacombCombatState.GuardBroken =>
+                    EnemyVisualState.GuardBreak,
+                _ => EnemyVisualState.ShieldReady
+            };
+        }
+
+        if (enemy is CatacombEnemy graveBat &&
+            graveBat.Type == EnemyType.GraveBat)
+        {
+            return graveBat.CombatState switch
+            {
+                CatacombCombatState.GraveHover =>
+                    EnemyVisualState.GraveHover,
+                CatacombCombatState.GraveCircle =>
+                    EnemyVisualState.GraveCircle,
+                CatacombCombatState.GraveWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.GraveActive when
+                    graveBat.GraveBatAttack ==
+                        GraveBatAttackKind.GraveScreech =>
+                    EnemyVisualState.GraveScreech,
+                CatacombCombatState.GraveActive when
+                    graveBat.GraveBatAttack ==
+                        GraveBatAttackKind.SwarmFeint =>
+                    EnemyVisualState.GraveFeint,
+                CatacombCombatState.GraveActive =>
+                    EnemyVisualState.GraveClawPass,
+                CatacombCombatState.GraveRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                CatacombCombatState.GraveRetreat =>
+                    EnemyVisualState.GraveRetreat,
+                _ => EnemyVisualState.GraveHover
+            };
+        }
+
+        if (enemy is CatacombEnemy knight &&
+            knight.Type == EnemyType.CursedKnight)
+        {
+            return knight.CombatState switch
+            {
+                CatacombCombatState.KnightDormant =>
+                    EnemyVisualState.KnightDormant,
+                CatacombCombatState.KnightApproach =>
+                    MathF.Abs(enemy.VisualVelocityX) > 1f
+                        ? EnemyVisualState.Walk
+                        : EnemyVisualState.SwordReady,
+                CatacombCombatState.KnightReady =>
+                    EnemyVisualState.SwordReady,
+                CatacombCombatState.KnightWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.KnightActive when
+                    knight.CursedKnightAttack ==
+                        CursedKnightAttackKind.ExecutionStrike =>
+                    EnemyVisualState.ExecutionStrike,
+                CatacombCombatState.KnightActive when
+                    knight.CursedKnightAttack ==
+                        CursedKnightAttackKind.AdvancingThrust =>
+                    EnemyVisualState.AdvancingThrust,
+                CatacombCombatState.KnightActive =>
+                    EnemyVisualState.CursedSweep,
+                CatacombCombatState.KnightRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => EnemyVisualState.SwordReady
+            };
+        }
+
+        if (enemy is CatacombEnemy deathKnight &&
+            deathKnight.Type == EnemyType.DeathKnight)
+        {
+            return deathKnight.CombatState switch
+            {
+                CatacombCombatState.KnightDormant =>
+                    EnemyVisualState.KnightDormant,
+                CatacombCombatState.KnightApproach =>
+                    MathF.Abs(enemy.VisualVelocityX) > 1f
+                        ? EnemyVisualState.Walk
+                        : EnemyVisualState.SwordReady,
+                CatacombCombatState.KnightReady =>
+                    EnemyVisualState.SwordReady,
+                CatacombCombatState.KnightWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.KnightActive when
+                    deathKnight.DeathKnightAttack ==
+                        DeathKnightAttackKind.ExecutionCrush =>
+                    EnemyVisualState.ExecutionCrush,
+                CatacombCombatState.KnightActive when
+                    deathKnight.DeathKnightAttack ==
+                        DeathKnightAttackKind.DreadCharge =>
+                    EnemyVisualState.DreadCharge,
+                CatacombCombatState.KnightActive when
+                    deathKnight.DeathKnightAttack ==
+                        DeathKnightAttackKind.TombbreakerSlam =>
+                    EnemyVisualState.TombbreakerSlam,
+                CatacombCombatState.KnightActive => EnemyVisualState.WarSweep,
+                CatacombCombatState.KnightRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => EnemyVisualState.SwordReady
+            };
+        }
+
+        if (enemy is CatacombEnemy fallenKnight &&
+            fallenKnight.Type == EnemyType.FallenKnight)
+        {
+            return fallenKnight.CombatState switch
+            {
+                CatacombCombatState.KnightDormant =>
+                    EnemyVisualState.KnightDormant,
+                CatacombCombatState.KnightTransition =>
+                    EnemyVisualState.KnightPhaseTransition,
+                CatacombCombatState.KnightApproach =>
+                    MathF.Abs(enemy.VisualVelocityX) > 1f
+                        ? EnemyVisualState.Walk
+                        : EnemyVisualState.SwordReady,
+                CatacombCombatState.KnightReady =>
+                    EnemyVisualState.SwordReady,
+                CatacombCombatState.KnightWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.KnightActive =>
+                    FallenKnightActiveVisual(fallenKnight.FallenKnightAttack),
+                CatacombCombatState.KnightRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => EnemyVisualState.SwordReady
+            };
+        }
+
+        if (enemy is CatacombEnemy collector &&
+            collector.Type == EnemyType.SoulCollector)
+        {
+            return collector.CombatState switch
+            {
+                CatacombCombatState.SoulApproach =>
+                    MathF.Abs(enemy.VisualVelocityX) > 1f
+                        ? EnemyVisualState.Move
+                        : EnemyVisualState.RitualIdle,
+                CatacombCombatState.SoulReady => EnemyVisualState.RitualIdle,
+                CatacombCombatState.SoulWindup => EnemyVisualState.StaffRaise,
+                CatacombCombatState.SoulActive when
+                    collector.SoulCollectorAttack ==
+                        SoulCollectorAttackKind.RitualCurseField =>
+                    EnemyVisualState.RitualField,
+                CatacombCombatState.SoulActive when
+                    collector.SoulCollectorAttack ==
+                        SoulCollectorAttackKind.GravePull =>
+                    EnemyVisualState.GravePull,
+                CatacombCombatState.SoulActive when
+                    collector.SoulCollectorAttack ==
+                        SoulCollectorAttackKind.SoulBurst =>
+                    EnemyVisualState.SoulBurst,
+                CatacombCombatState.SoulActive =>
+                    EnemyVisualState.SoulBoltCast,
+                CatacombCombatState.SoulRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => EnemyVisualState.RitualIdle
+            };
+        }
 
         if (enemy is GoblinHunter)
         {
@@ -113,6 +385,48 @@ public sealed class EnemyAnimationController
                     : MathF.Abs(enemy.VisualVelocityX) > 1f
                         ? EnemyVisualState.Move
                         : EnemyVisualState.Idle
+            };
+        }
+
+        if (enemy is CatacombEnemy catacomb &&
+            catacomb.IsPolishedSkeleton)
+        {
+            if (catacomb.Type == EnemyType.SkeletonArcher)
+            {
+                return catacomb.CombatState switch
+                {
+                    CatacombCombatState.ArcherNock => EnemyVisualState.Aim,
+                    CatacombCombatState.ArcherDraw => EnemyVisualState.Aim,
+                    CatacombCombatState.ArcherRelease => EnemyVisualState.Shoot,
+                    CatacombCombatState.ArcherRecovery =>
+                        EnemyVisualState.AttackRecovery,
+                    CatacombCombatState.BowShoveWindup =>
+                        EnemyVisualState.AttackWindup,
+                    CatacombCombatState.BowShoveActive => EnemyVisualState.Attack,
+                    CatacombCombatState.BowShoveRecovery =>
+                        EnemyVisualState.AttackRecovery,
+                    _ => catacomb.IsRetreating
+                        ? EnemyVisualState.Retreat
+                        : MathF.Abs(enemy.VisualVelocityX) > 1f
+                            ? EnemyVisualState.Move
+                            : EnemyVisualState.Idle
+                };
+            }
+
+            return catacomb.CombatState switch
+            {
+                CatacombCombatState.MeleeWindup =>
+                    EnemyVisualState.AttackWindup,
+                CatacombCombatState.MeleeActive when
+                    catacomb.SkeletonAttack ==
+                        SkeletonAttackKind.OverheadChop =>
+                    EnemyVisualState.HeavyMeleeAttack,
+                CatacombCombatState.MeleeActive => EnemyVisualState.Attack,
+                CatacombCombatState.MeleeRecovery =>
+                    EnemyVisualState.AttackRecovery,
+                _ => MathF.Abs(enemy.VisualVelocityX) > 1f
+                    ? EnemyVisualState.Walk
+                    : EnemyVisualState.Idle
             };
         }
 
@@ -313,6 +627,28 @@ public sealed class EnemyAnimationController
                 : EnemyVisualState.Idle
         };
     }
+
+    private static EnemyVisualState FallenKnightActiveVisual(
+        FallenKnightAttackKind attack) => attack switch
+        {
+            FallenKnightAttackKind.GuardedCounter or
+                FallenKnightAttackKind.CursedCounter =>
+                EnemyVisualState.KnightCounter,
+            FallenKnightAttackKind.AdvancingThrust =>
+                EnemyVisualState.AdvancingThrust,
+            FallenKnightAttackKind.HeavyOverhead =>
+                EnemyVisualState.ExecutionCrush,
+            FallenKnightAttackKind.CursedExtensionSlash =>
+                EnemyVisualState.CursedExtensionSlash,
+            FallenKnightAttackKind.GraveStep => EnemyVisualState.GraveStep,
+            FallenKnightAttackKind.FinalOathCleave =>
+                EnemyVisualState.FinalOathCleave,
+            FallenKnightAttackKind.OathbreakerRush =>
+                EnemyVisualState.OathbreakerRush,
+            FallenKnightAttackKind.LastJudgment =>
+                EnemyVisualState.LastJudgment,
+            _ => EnemyVisualState.RoyalSlash
+        };
 
     private static bool UsesAttackClock(EnemyVisualState state)
     {

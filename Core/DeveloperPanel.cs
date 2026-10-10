@@ -13,6 +13,7 @@ public enum DeveloperCommand
     TeleportMap,
     TeleportZone,
     ResetCurrentEncounter,
+    ResetScholarChallenge,
     KillActiveEnemies,
     ToggleMap01Cleared,
     ToggleMap02Cleared,
@@ -34,6 +35,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.TeleportMap,
         DeveloperCommand.TeleportZone,
         DeveloperCommand.ResetCurrentEncounter,
+        DeveloperCommand.ResetScholarChallenge,
         DeveloperCommand.KillActiveEnemies,
         DeveloperCommand.ToggleMap01Cleared,
         DeveloperCommand.ToggleMap02Cleared,
@@ -62,7 +64,8 @@ public sealed class DeveloperPanel
             "TOMB ENTRANCE", "OSSUARY CORRIDORS", "ARCHER GALLERIES",
             "ROT PITS", "WRAITH HALLS", "GUARD BARRACKS",
             "CURSED KNIGHT MAUSOLEUM", "SOUL CHAPEL",
-            "DEATH KNIGHT WAR TOMB", "FALLEN HALL"
+            "DEATH KNIGHT WAR TOMB", "FALLEN HALL",
+            "ANCIENT SCHOLAR TOMB"
         }
     };
 
@@ -143,6 +146,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.TeleportMap => "TELEPORT MAP",
         DeveloperCommand.TeleportZone => "TELEPORT ZONE",
         DeveloperCommand.ResetCurrentEncounter => "RESET CURRENT ENCOUNTER",
+        DeveloperCommand.ResetScholarChallenge => "RESET SCHOLAR CHALLENGE",
         DeveloperCommand.KillActiveEnemies => "KILL ACTIVE ENEMIES",
         DeveloperCommand.ToggleMap01Cleared => "MAP 1 CLEARED",
         DeveloperCommand.ToggleMap02Cleared => "MAP 2 CLEARED",

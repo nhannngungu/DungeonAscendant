@@ -20,6 +20,33 @@ namespace DungeonAscendant.Graphics;
 /// </summary>
 public sealed class GameRenderer : IDisposable
 {
+    private static readonly string[] ScholarQuestionLabels =
+    {
+        "QUESTION 1 / 3",
+        "QUESTION 2 / 3",
+        "QUESTION 3 / 3"
+    };
+    private static readonly string[] ScholarAnswerLabels =
+    {
+        "ANSWER 1 / 3",
+        "ANSWER 2 / 3",
+        "ANSWER 3 / 3"
+    };
+    private static readonly string[] ScholarTruthLabels =
+    {
+        "TRUTHS REMEMBERED: 0",
+        "TRUTHS REMEMBERED: 1",
+        "TRUTHS REMEMBERED: 2",
+        "TRUTHS REMEMBERED: 3"
+    };
+    private static readonly string[] ScholarFinalScoreLabels =
+    {
+        "FINAL SCORE: 0 / 3",
+        "FINAL SCORE: 1 / 3",
+        "FINAL SCORE: 2 / 3",
+        "FINAL SCORE: 3 / 3"
+    };
+
     private static readonly IReadOnlyDictionary<char, byte[]> DebugGlyphs =
         new Dictionary<char, byte[]>
         {
@@ -65,7 +92,21 @@ public sealed class GameRenderer : IDisposable
             ['!'] = new byte[] { 4, 4, 4, 4, 4, 0, 4 },
             ['+'] = new byte[] { 0, 4, 4, 31, 4, 4, 0 },
             ['%'] = new byte[] { 17, 2, 4, 4, 8, 16, 17 },
-            ['>'] = new byte[] { 16, 8, 4, 2, 4, 8, 16 }
+            ['>'] = new byte[] { 16, 8, 4, 2, 4, 8, 16 },
+            ['<'] = new byte[] { 1, 2, 4, 8, 4, 2, 1 },
+            ['.'] = new byte[] { 0, 0, 0, 0, 0, 6, 6 },
+            [','] = new byte[] { 0, 0, 0, 0, 6, 6, 4 },
+            ['?'] = new byte[] { 14, 17, 1, 2, 4, 0, 4 },
+            ['#'] = new byte[] { 10, 31, 10, 10, 31, 10, 0 },
+            ['='] = new byte[] { 0, 31, 0, 31, 0, 0, 0 },
+            ['('] = new byte[] { 2, 4, 8, 8, 8, 4, 2 },
+            [')'] = new byte[] { 8, 4, 2, 2, 2, 4, 8 },
+            ['{'] = new byte[] { 3, 4, 4, 8, 4, 4, 3 },
+            ['}'] = new byte[] { 24, 4, 4, 2, 4, 4, 24 },
+            ['\"'] = new byte[] { 10, 10, 10, 0, 0, 0, 0 },
+            [';'] = new byte[] { 0, 6, 6, 0, 6, 6, 4 },
+            ['['] = new byte[] { 14, 8, 8, 8, 8, 8, 14 },
+            [']'] = new byte[] { 14, 2, 2, 2, 2, 2, 14 }
         };
     private static readonly Color[] WildForestSkyBands =
     {
@@ -85,6 +126,15 @@ public sealed class GameRenderer : IDisposable
     private readonly WildForestAmbushSpriteRenderer _wildForestAmbushSpriteRenderer;
     private readonly WildForestHeavySpriteRenderer _wildForestHeavySpriteRenderer;
     private readonly WildForestApexSpriteRenderer _wildForestApexSpriteRenderer;
+    private readonly CatacombSkeletonSpriteRenderer
+        _catacombSkeletonSpriteRenderer;
+    private readonly CatacombRotSpriteRenderer _catacombRotSpriteRenderer;
+    private readonly CatacombGuardBatSpriteRenderer
+        _catacombGuardBatSpriteRenderer;
+    private readonly CatacombEliteSpriteRenderer _catacombEliteSpriteRenderer;
+    private readonly CatacombKnightSpriteRenderer _catacombKnightSpriteRenderer;
+    private readonly CatacombEnvironmentRenderer _catacombEnvironmentRenderer;
+    private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
 
     public GameRenderer(GraphicsDevice graphicsDevice)
     {
@@ -108,6 +158,27 @@ public sealed class GameRenderer : IDisposable
         _wildForestApexSpriteRenderer = new WildForestApexSpriteRenderer(
             _spriteBatch,
             _pixel);
+        _catacombSkeletonSpriteRenderer = new CatacombSkeletonSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _catacombRotSpriteRenderer = new CatacombRotSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _catacombGuardBatSpriteRenderer = new CatacombGuardBatSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _catacombEliteSpriteRenderer = new CatacombEliteSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _catacombKnightSpriteRenderer = new CatacombKnightSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _catacombEnvironmentRenderer = new CatacombEnvironmentRenderer(
+            _spriteBatch,
+            _pixel);
+        _ancientScholarTombRenderer = new AncientScholarTombRenderer(
+            _spriteBatch,
+            _pixel);
     }
 
     public void Draw(GameSession gameSession, GameTime gameTime)
@@ -128,8 +199,15 @@ public sealed class GameRenderer : IDisposable
             samplerState: SamplerState.PointClamp,
             transformMatrix: gameSession.Camera.Transform);
         DrawWildForestDepth(gameSession, gameSession.Camera.ViewBounds);
-        DrawCatacombDepth(gameSession, gameSession.Camera.ViewBounds);
-        DrawDungeon(gameSession, gameSession.Camera.ViewBounds);
+        DrawCatacombDepth(
+            gameSession,
+            gameSession.Camera.ViewBounds,
+            gameTime);
+        DrawDungeon(gameSession, gameSession.Camera.ViewBounds, gameTime);
+        _ancientScholarTombRenderer.Draw(
+            gameSession.ScholarTomb,
+            gameSession.Camera.ViewBounds,
+            gameTime);
 
         foreach (WebPatch patch in gameSession.Projectiles.WebPatches)
         {
@@ -195,6 +273,11 @@ public sealed class GameRenderer : IDisposable
                         GameSession.GetWildForestShowcaseLabel(enemy.Type),
                         GetEnemyVisualBounds(enemy));
                 }
+
+                DrawEnemyHealthBar(
+                    enemy,
+                    gameSession.Camera.ViewBounds,
+                    gameSession.IsWildForestShowcaseMode);
             }
         }
 
@@ -205,7 +288,17 @@ public sealed class GameRenderer : IDisposable
         }
 
         foreach (ProjectileImpact impact in gameSession.Projectiles.Impacts)
-            DrawRangerImpact(impact);
+        {
+            if (!impact.Projectile.IsPlayerOwned &&
+                impact.Projectile.Type == ProjectileType.Arrow)
+            {
+                DrawEnemyArrowImpact(impact);
+            }
+            else
+            {
+                DrawRangerImpact(impact);
+            }
+        }
 
         if (gameSession.ShouldRenderBoss &&
             (gameSession.Boss.IsAlive ||
@@ -241,6 +334,10 @@ public sealed class GameRenderer : IDisposable
             gameSession.PlayerHitEffectPosition);
 
         DrawWildForestForeground(gameSession, gameSession.Camera.ViewBounds);
+        _catacombEnvironmentRenderer.DrawForeground(
+            gameSession,
+            gameSession.Camera.ViewBounds,
+            gameTime);
 
         if (gameSession.ShowMapDebug)
             DrawWildForestMapDebug(gameSession);
@@ -259,6 +356,15 @@ public sealed class GameRenderer : IDisposable
         DrawWeaponResource(gameSession.Player);
         DrawTechniqueFeedback(gameSession.Player);
         DrawDungeonStatus(gameSession);
+
+        if (gameSession.ScholarTomb.CanInspect(gameSession.Player.Position))
+        {
+            DrawDebugLabel(
+                "[E] INSPECT THE ANCIENT COFFIN",
+                438,
+                650,
+                new Color(169, 213, 206));
+        }
 
         if (gameSession.DebugGodMode)
             DrawDebugLabel(
@@ -279,7 +385,9 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.WorldTierTransitionProgress > 0f)
             DrawWorldTierTransition(gameSession);
 
-        if (gameSession.IsInventoryOpen)
+        if (gameSession.ScholarTomb.IsModalActive)
+            DrawAncientScholarQuiz(gameSession);
+        else if (gameSession.IsInventoryOpen)
             DrawInventoryOverlay(gameSession);
         else if (gameSession.State == GameState.Paused)
             DrawPauseOverlay();
@@ -944,52 +1052,36 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
-    private void DrawCatacombDepth(GameSession session,Rectangle camera)
+    private void DrawCatacombDepth(
+        GameSession session,
+        Rectangle camera,
+        GameTime gameTime)
     {
-        if(session.CurrentDungeon?.IsAncientCatacombs!=true)return;
-        _spriteBatch.Draw(_pixel,session.CurrentDungeon.WorldBounds,new Color(12,14,19));
-        int far=camera.Left-(camera.Left%240);
-        for(int x=far-240;x<camera.Right+240;x+=240)
-        {
-            int px=(int)(x-camera.X*.18f);
-            _spriteBatch.Draw(_pixel,new Rectangle(px,170,170,460),new Color(24,28,34));
-            _spriteBatch.Draw(_pixel,new Rectangle(px+28,210,114,330),new Color(10,13,18));
-        }
-        int mid=camera.Left-(camera.Left%170);
-        for(int x=mid-170;x<camera.Right+170;x+=170)
-        {
-            int px=(int)(x-camera.X*.08f);
-            _spriteBatch.Draw(_pixel,new Rectangle(px,250,34,410),new Color(39,42,44));
-            _spriteBatch.Draw(_pixel,new Rectangle(px-10,244,54,12),new Color(51,53,52));
-        }
+        _catacombEnvironmentRenderer.DrawDepth(session, camera, gameTime);
     }
 
-    private void DrawAncientCatacombs(GameSession session,Rectangle visible)
+    private void DrawAncientCatacombs(
+        GameSession session,
+        Rectangle visible,
+        GameTime gameTime)
     {
-        DungeonMap map=session.CurrentDungeon;
-        foreach(var zone in map.CatacombZones)
+        DungeonMap map = session.CurrentDungeon;
+        _catacombEnvironmentRenderer.DrawWorld(
+            session,
+            visible,
+            gameTime);
+        foreach (RottenCorpseBurst burst in session.RottenCorpseBursts)
+            _catacombRotSpriteRenderer.DrawBurst(burst);
+        if (session.ShowMapDebug)
         {
-            if(!zone.Bounds.Intersects(visible))continue;
-            Color wall=zone.Kind is CatacombZoneKind.WraithHalls or CatacombZoneKind.SoulChapel?new Color(29,31,39):new Color(38,38,39);
-            _spriteBatch.Draw(_pixel,zone.Bounds,wall);
-            for(int x=zone.Bounds.Left+30;x<zone.Bounds.Right;x+=96)
-            {
-                _spriteBatch.Draw(_pixel,new Rectangle(x,zone.Bounds.Top+90,4,zone.GroundY-zone.Bounds.Top-90),new Color(48,48,47,150));
-                if(zone.Kind is CatacombZoneKind.OssuaryCorridors or CatacombZoneKind.RotPits)
-                    _spriteBatch.Draw(_pixel,new Rectangle(x+18,zone.GroundY-24,18,8),new Color(173,166,143));
-            }
-            if(zone.Kind is CatacombZoneKind.ArcherGalleries or CatacombZoneKind.GuardBarracks)
-                for(int x=zone.Bounds.Left+140;x<zone.Bounds.Right-60;x+=260)_spriteBatch.Draw(_pixel,new Rectangle(x,zone.GroundY-105,12,105),new Color(69,67,62));
-            if(zone.Kind is CatacombZoneKind.WraithHalls or CatacombZoneKind.SoulChapel)
-                for(int x=zone.Bounds.Left+120;x<zone.Bounds.Right;x+=230)_spriteBatch.Draw(_pixel,new Rectangle(x,zone.GroundY-82,10,22),new Color(73,151,157,180));
-            if(zone.Kind is CatacombZoneKind.CursedKnightMausoleum or CatacombZoneKind.DeathKnightWarTomb or CatacombZoneKind.FallenHall)
-                for(int x=zone.Bounds.Left+170;x<zone.Bounds.Right;x+=310){_spriteBatch.Draw(_pixel,new Rectangle(x,zone.GroundY-210,42,210),new Color(61,59,56));_spriteBatch.Draw(_pixel,new Rectangle(x-10,zone.GroundY-220,62,14),new Color(78,73,67));}
+            foreach (CurseZoneDefinition zone in map.CurseZones)
+                DrawRectangleOutline(
+                    zone.Bounds, 2, new Color(155, 85, 180, 190));
+            foreach (EncounterZone zone in map.EncounterZones)
+                DrawRectangleOutline(
+                    zone.ActivationBounds, 2,
+                    new Color(105, 190, 165, 190));
         }
-        foreach(Platform p in map.Platforms)if(p.Bounds.Intersects(visible)){Color c=p.Kind==PlatformKind.Raised?new Color(83,79,70):new Color(55,53,49);_spriteBatch.Draw(_pixel,p.Bounds,c);_spriteBatch.Draw(_pixel,new Rectangle(p.Bounds.X,p.Bounds.Y,p.Bounds.Width,4),new Color(102,98,86));}
-        foreach(var tomb in map.Tombs)if(tomb.Bounds.Intersects(visible)){TombState state=session.Tombs.States.TryGetValue(tomb.Id,out TombRuntime rt)?rt.State:TombState.Sealed;Color c=state==TombState.Disturbed?new Color(128,111,85):new Color(70,67,62);_spriteBatch.Draw(_pixel,tomb.Bounds,c);DrawRectangleOutline(tomb.Bounds,3,new Color(104,98,85));}
-        foreach(var shrine in map.SafeShrines)if(visible.Contains(shrine.Position.ToPoint())){_spriteBatch.Draw(_pixel,new Rectangle((int)shrine.Position.X-28,(int)shrine.Position.Y-34,56,34),new Color(68,67,62));_spriteBatch.Draw(_pixel,new Rectangle((int)shrine.Position.X-4,(int)shrine.Position.Y-56,8,20),new Color(107,190,183));}
-        foreach(var burst in session.RottenCorpseBursts){int size=(int)(34+(1f-burst.TimeRemaining/.85f)*42);var warning=new Rectangle((int)burst.Position.X-size/2,(int)burst.Position.Y-size/2,size,size);DrawRectangleOutline(warning,3,new Color(126,110,66,220));}
-        if(session.ShowMapDebug){foreach(var z in map.CurseZones)DrawRectangleOutline(z.Bounds,2,new Color(155,85,180,190));foreach(var z in map.EncounterZones)DrawRectangleOutline(z.ActivationBounds,2,new Color(105,190,165,190));}
     }
 
     private void DrawCatacombEnemy(CatacombEnemy e)
@@ -1003,7 +1095,6 @@ public sealed class GameRenderer : IDisposable
         if(e.Type is EnemyType.SkeletonArcher or EnemyType.SoulCollector)DrawRootLine(new Vector2(b.Right,b.Y+16),new Vector2(b.Right+18,b.Bottom-8),new Color(119,91,63),3f);
         else DrawRootLine(new Vector2(b.Right-3,b.Y+20),new Vector2(b.Right+25,b.Bottom-12),new Color(135,133,124),4f);
         if(e.Type==EnemyType.FallenKnight)_spriteBatch.Draw(_pixel,new Rectangle(b.X+3,b.Y-5,b.Width-6,5),new Color(133,102,61));
-        if(e.IsSpecialTelegraphing)DrawRectangleOutline(e.SpecialAttackArea,3,e.CombatPhase==3?new Color(161,62,59,220):new Color(121,79,145,190));
     }
 
     private void DrawCurseMeter(GameSession session)
@@ -1012,7 +1103,10 @@ public sealed class GameRenderer : IDisposable
         Rectangle bar=new(270,58,150,8);_spriteBatch.Draw(_pixel,bar,new Color(35,27,42));int fill=(int)((bar.Width-2)*session.Curse.Ratio);if(fill>0)_spriteBatch.Draw(_pixel,new Rectangle(bar.X+1,bar.Y+1,fill,bar.Height-2),new Color(119,73,145));DrawRectangleOutline(bar,1,new Color(151,139,158));DrawDebugText("CURSE",270,46,new Color(182,170,190),1);
     }
 
-    private void DrawDungeon(GameSession gameSession, Rectangle cameraBounds)
+    private void DrawDungeon(
+        GameSession gameSession,
+        Rectangle cameraBounds,
+        GameTime gameTime)
     {
         DungeonMap dungeon = gameSession.CurrentDungeon;
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
@@ -1027,7 +1121,7 @@ public sealed class GameRenderer : IDisposable
 
         if (dungeon.IsAncientCatacombs)
         {
-            DrawAncientCatacombs(gameSession, visibleBounds);
+            DrawAncientCatacombs(gameSession, visibleBounds, gameTime);
             return;
         }
 
@@ -1357,18 +1451,19 @@ public sealed class GameRenderer : IDisposable
                 new Color(225, 77, 181, 190));
 
             if (enemy.Type != EnemyType.GoblinHunter &&
-                (enemy.Attack.IsTelegraphing || enemy.Attack.IsActive))
+                (enemy.IsCombatAttackTelegraphing ||
+                 enemy.IsCombatAttackActive))
             {
-                Color attackColor = enemy.Attack.IsActive
+                Color attackColor = enemy.IsCombatAttackActive
                     ? new Color(237, 73, 64, 230)
                     : new Color(225, 151, 61, 190);
                 DrawDebugZone(
-                    enemy.AttackArea,
+                    enemy.ActiveAttackArea,
                     new Color(
                         attackColor.R,
                         attackColor.G,
                         attackColor.B,
-                        (byte)(enemy.Attack.IsActive ? 42 : 20)),
+                        (byte)(enemy.IsCombatAttackActive ? 42 : 20)),
                     attackColor);
             }
         }
@@ -1716,7 +1811,37 @@ public sealed class GameRenderer : IDisposable
                 _wildForestApexSpriteRenderer.Draw(spiderling, gameTime);
                 break;
             case CatacombEnemy catacomb:
-                DrawCatacombEnemy(catacomb);
+                if (catacomb.Type is EnemyType.Skeleton or
+                    EnemyType.SkeletonArcher)
+                {
+                    _catacombSkeletonSpriteRenderer.Draw(
+                        catacomb,
+                        gameTime);
+                }
+                else if (catacomb.Type is EnemyType.RottenCorpse or
+                    EnemyType.Wraith)
+                {
+                    _catacombRotSpriteRenderer.Draw(catacomb, gameTime);
+                }
+                else if (catacomb.Type is EnemyType.UndeadGuard or
+                    EnemyType.GraveBat)
+                {
+                    _catacombGuardBatSpriteRenderer.Draw(catacomb, gameTime);
+                }
+                else if (catacomb.Type is EnemyType.CursedKnight or
+                    EnemyType.SoulCollector)
+                {
+                    _catacombEliteSpriteRenderer.Draw(catacomb, gameTime);
+                }
+                else if (catacomb.Type is EnemyType.DeathKnight or
+                    EnemyType.FallenKnight)
+                {
+                    _catacombKnightSpriteRenderer.Draw(catacomb, gameTime);
+                }
+                else
+                {
+                    DrawCatacombEnemy(catacomb);
+                }
                 break;
         }
 
@@ -2015,6 +2140,110 @@ public sealed class GameRenderer : IDisposable
             new Rectangle(bounds.Right, bounds.Y + 7, 3, 10), color);
     }
 
+    private void DrawEnemyHealthBar(
+        Enemy enemy,
+        Rectangle cameraBounds,
+        bool leaveRoomForShowcaseLabel)
+    {
+        if (enemy == null ||
+            !enemy.IsAlive ||
+            !enemy.IsHealthBarVisible ||
+            enemy.Type == EnemyType.FallenKnight ||
+            enemy.MaxHealth <= 0)
+        {
+            return;
+        }
+
+        Rectangle visualBounds = GetEnemyVisualBounds(enemy);
+        bool large = enemy.IsElite || visualBounds.Width >= 88;
+        int minimumWidth = large ? 80 : 45;
+        int maximumWidth = large ? 110 : 75;
+        int width = Math.Clamp(
+            (int)MathF.Round(visualBounds.Width * .92f),
+            minimumWidth,
+            maximumWidth);
+        int height = enemy.IsElite ? 10 : 8;
+        int headClearance = enemy.IsElite ? 18 : 14;
+        if (leaveRoomForShowcaseLabel && enemy.Type != EnemyType.Spiderling)
+            headClearance += 18;
+
+        Rectangle frame = new(
+            visualBounds.Center.X - width / 2,
+            visualBounds.Top - headClearance,
+            width,
+            height);
+        Rectangle occupied = new(
+            frame.X - 1,
+            frame.Y - 1,
+            frame.Width + 3,
+            frame.Height + 4);
+        if (occupied.Left < cameraBounds.Left ||
+            occupied.Right > cameraBounds.Right ||
+            occupied.Top < cameraBounds.Top ||
+            occupied.Bottom > cameraBounds.Bottom)
+        {
+            return;
+        }
+
+        float opacity = Math.Clamp(enemy.HealthBarOpacity, 0f, 1f);
+        int shadowAlpha = (int)MathF.Round(145f * opacity);
+        int frameAlpha = (int)MathF.Round(235f * opacity);
+        int fillAlpha = (int)MathF.Round(245f * opacity);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(frame.X + 1, frame.Y + 2, frame.Width, frame.Height),
+            new Color(3, 4, 6, shadowAlpha));
+        _spriteBatch.Draw(
+            _pixel,
+            frame,
+            new Color(18, 15, 18, frameAlpha));
+        DrawRectangleOutline(
+            frame,
+            1,
+            new Color(
+                enemy.IsElite ? 126 : 91,
+                enemy.IsElite ? 96 : 76,
+                enemy.IsElite ? 62 : 65,
+                frameAlpha));
+
+        Rectangle track = new(
+            frame.X + 2,
+            frame.Y + 2,
+            Math.Max(1, frame.Width - 4),
+            Math.Max(1, frame.Height - 4));
+        _spriteBatch.Draw(
+            _pixel,
+            track,
+            new Color(51, 25, 28, frameAlpha));
+
+        float healthRatio = Math.Clamp(
+            enemy.CurrentHealth / (float)enemy.MaxHealth,
+            0f,
+            1f);
+        int fillWidth = Math.Clamp(
+            (int)MathF.Round(track.Width * healthRatio),
+            0,
+            track.Width);
+        if (fillWidth <= 0)
+            return;
+
+        Color healthColor = enemy.IsElite
+            ? new Color(151, 67, 48, fillAlpha)
+            : new Color(126, 52, 49, fillAlpha);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(track.X, track.Y, fillWidth, track.Height),
+            healthColor);
+
+        if (track.Height >= 4)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(track.X, track.Y, fillWidth, 1),
+                new Color(196, 103, 76, (int)MathF.Round(165f * opacity)));
+        }
+    }
+
     private void DrawEliteOutline(Enemy enemy, Color color)
     {
         if (!enemy.IsElite)
@@ -2027,6 +2256,27 @@ public sealed class GameRenderer : IDisposable
 
     private void DrawProjectile(Projectile projectile)
     {
+        if (projectile.Type == ProjectileType.SoulBolt)
+        {
+            Vector2 center = projectile.Position;
+            Vector2 soulDirection = projectile.Velocity;
+            if (soulDirection.LengthSquared() > .01f)
+                soulDirection.Normalize();
+            else
+                soulDirection = Vector2.UnitX;
+            Vector2 normal = new(-soulDirection.Y, soulDirection.X);
+            DrawWorldLine(center - soulDirection * 17f,
+                center + soulDirection * 8f,
+                5f, new Color(61, 66, 91, 155));
+            DrawWorldLine(center - soulDirection * 8f,
+                center + soulDirection * 7f,
+                3f, new Color(129, 121, 165, 225));
+            DrawWorldLine(center - soulDirection * 4f - normal * 5f,
+                center + soulDirection * 5f + normal * 4f,
+                2f, new Color(174, 164, 193, 205));
+            return;
+        }
+
         if (projectile.Type == ProjectileType.WebShot)
         {
             Rectangle bounds = projectile.Bounds;
@@ -2096,6 +2346,14 @@ public sealed class GameRenderer : IDisposable
         float rotation = MathF.Atan2(direction.Y, direction.X);
         float shaftLength = MathF.Max(projectile.Size.X, projectile.Size.Y);
         Vector2 shaftStart = projectile.Position - direction * (shaftLength / 2f);
+        if (!projectile.IsPlayerOwned && projectile.EmpoweredVisual)
+        {
+            DrawWorldLine(
+                projectile.PreviousPosition,
+                projectile.Position,
+                2f,
+                new Color(78, 133, 153, 115));
+        }
         if (projectile.IsRangerProjectile)
         {
             Color trail = projectile.TechniqueEffect ==
@@ -2532,6 +2790,22 @@ public sealed class GameRenderer : IDisposable
             impact.Position + new Vector2(0f, radius * .25f),
             2f,
             new Color(164, 222, 187, 165));
+    }
+
+    private void DrawEnemyArrowImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        Color spark = impact.Projectile.EmpoweredVisual
+            ? new Color(104, 160, 177, 205)
+            : new Color(151, 128, 91, 195);
+        DrawWorldLine(center + new Vector2(-7f, -5f),
+            center + new Vector2(4f, 3f), 2f, spark);
+        DrawWorldLine(center + new Vector2(-3f, 5f),
+            center + new Vector2(5f, -4f), 1.5f,
+            new Color(175, 167, 143, 175));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)center.X - 5, (int)center.Y + 2, 3, 2),
+            new Color(119, 113, 101, 160));
     }
 
     private void DrawWebPatch(WebPatch patch)
@@ -3696,6 +3970,30 @@ public sealed class GameRenderer : IDisposable
             GoblinChief => EnemyVisualProfile.GoblinChief.VisualSize,
             MotherSpider => EnemyVisualProfile.MotherSpider.VisualSize,
             Spiderling => EnemyVisualProfile.Spiderling.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.Skeleton =>
+                EnemyVisualProfile.Skeleton.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.SkeletonArcher =>
+                EnemyVisualProfile.SkeletonArcher.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.RottenCorpse =>
+                EnemyVisualProfile.RottenCorpse.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.Wraith =>
+                EnemyVisualProfile.Wraith.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.UndeadGuard =>
+                EnemyVisualProfile.UndeadGuard.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.GraveBat =>
+                EnemyVisualProfile.GraveBat.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.CursedKnight =>
+                EnemyVisualProfile.CursedKnight.VisualSize,
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.SoulCollector =>
+                EnemyVisualProfile.SoulCollector.VisualSize,
             _ => enemy.Size
         };
         return new Rectangle(
@@ -3854,6 +4152,364 @@ public sealed class GameRenderer : IDisposable
                 new Rectangle(x + 4, y, 8, 50),
                 new Color(211, 169, 247, (int)alpha));
         }
+    }
+
+    private void DrawAncientScholarQuiz(GameSession session)
+    {
+        AncientScholarTombSystem tomb = session.ScholarTomb;
+        Rectangle viewport = _graphicsDevice.Viewport.Bounds;
+        int safeMargin = Math.Max(18, Math.Min(viewport.Width, viewport.Height) / 30);
+        int availableWidth = Math.Max(1, viewport.Width - safeMargin * 2);
+        int availableHeight = Math.Max(1, viewport.Height - safeMargin * 2);
+        int panelWidth = Math.Min(760, (int)MathF.Round(viewport.Width * .72f));
+        int panelHeight = (int)MathF.Round(viewport.Height * .74f);
+        panelWidth = Math.Clamp(panelWidth, Math.Min(480, availableWidth), availableWidth);
+        panelHeight = Math.Clamp(panelHeight, Math.Min(360, availableHeight), availableHeight);
+        Rectangle panel = new(
+            viewport.X + (viewport.Width - panelWidth) / 2,
+            viewport.Y + (viewport.Height - panelHeight) / 2,
+            panelWidth,
+            panelHeight);
+        bool compact = panel.Height < 500;
+        int padding = compact ? 18 : 26;
+        int textScale = panel.Height < 430 || panel.Width < 560 ? 1 : 2;
+        int controlsY = panel.Bottom - padding - 7;
+
+        _spriteBatch.Draw(_pixel, viewport, new Color(5, 9, 13, 205));
+        _spriteBatch.Draw(_pixel, panel, new Color(17, 22, 29, 246));
+        DrawRectangleOutline(panel, 3, new Color(92, 137, 139));
+        Rectangle inset = new(
+            panel.X + 8,
+            panel.Y + 8,
+            Math.Max(1, panel.Width - 16),
+            Math.Max(1, panel.Height - 16));
+        DrawRectangleOutline(inset, 1, new Color(153, 126, 69));
+        DrawCenteredDebugText(
+            "ANCIENT SCHOLAR TOMB",
+            panel.Center.X,
+            panel.Y + padding,
+            new Color(197, 181, 128),
+            textScale);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(
+                panel.X + padding,
+                panel.Y + padding + 25 * textScale / 2,
+                panel.Width - padding * 2,
+                1),
+            new Color(75, 105, 106));
+
+        if (tomb.State == AncientScholarTombState.Opening)
+        {
+            DrawCenteredDebugText(
+                "THE STONE REMEMBERS...",
+                panel.Center.X,
+                panel.Center.Y - 7 * textScale,
+                new Color(139, 205, 205),
+                textScale);
+            return;
+        }
+
+        if (tomb.State == AncientScholarTombState.Question)
+        {
+            DrawScholarQuestion(
+                tomb,
+                panel,
+                padding,
+                compact,
+                textScale,
+                controlsY);
+            return;
+        }
+
+        int contentX = panel.X + padding + 8;
+        int headingY = panel.Y + padding + (compact ? 35 : 46);
+        int fittedBodyScale = FitDebugTextScale(
+            tomb.ReactionText,
+            panel.Width - padding * 2 - 16,
+            textScale);
+
+        if (tomb.State == AncientScholarTombState.Reaction)
+        {
+            DrawDebugText(
+                ScholarAnswerLabels[tomb.QuestionIndex],
+                contentX,
+                headingY,
+                new Color(130, 181, 184),
+                textScale);
+            DrawDebugText(
+                tomb.ReactionText,
+                contentX,
+                headingY + (compact ? 54 : 78),
+                new Color(218, 205, 164),
+                fittedBodyScale);
+            DrawDebugText(
+                ScholarTruthLabels[tomb.CorrectAnswerCount],
+                contentX,
+                headingY + (compact ? 102 : 138),
+                new Color(159, 192, 172),
+                textScale);
+            DrawCenteredDebugText(
+                "ENTER — CONTINUE",
+                panel.Center.X,
+                controlsY,
+                new Color(139, 205, 205),
+                1);
+            return;
+        }
+
+        if (tomb.State == AncientScholarTombState.RewardChoice)
+        {
+            DrawDebugText(
+                "THREE TRUTHS REMEMBERED",
+                contentX,
+                headingY,
+                new Color(218, 205, 164),
+                textScale);
+            DrawDebugText(
+                "CHOOSE WHAT THE DEAD NO LONGER NEED:",
+                contentX,
+                headingY + (compact ? 32 : 48),
+                new Color(164, 176, 174),
+                FitDebugTextScale(
+                    "CHOOSE WHAT THE DEAD NO LONGER NEED:",
+                    panel.Width - padding * 2 - 16,
+                    textScale));
+            int choiceWidth = Math.Min(590, panel.Width - padding * 2 - 36);
+            int choiceX = panel.Center.X - choiceWidth / 2;
+            int rowHeight = compact ? 30 : 38;
+            int rowGap = compact ? 7 : 11;
+            int choiceY = headingY + (compact ? 72 : 106);
+            for (int index = 0;
+                 index < AncientScholarTombSystem.RewardCategoryLabels.Length;
+                 index++)
+            {
+                DrawScholarChoice(
+                    AncientScholarTombSystem.RewardCategoryLabels[index],
+                    new Rectangle(
+                        choiceX,
+                        choiceY + index * (rowHeight + rowGap),
+                        choiceWidth,
+                        rowHeight),
+                    tomb.SelectedRewardIndex == index,
+                    textScale);
+            }
+            DrawCenteredDebugText(
+                "W/S OR UP/DOWN — SELECT     ENTER — CONFIRM",
+                panel.Center.X,
+                controlsY,
+                new Color(124, 164, 168),
+                1);
+            return;
+        }
+
+        DrawDebugText(
+            ScholarFinalScoreLabels[tomb.CorrectAnswerCount],
+            contentX,
+            headingY,
+            new Color(218, 205, 164),
+            textScale);
+        DrawDebugText(
+            tomb.CompletionText,
+            contentX,
+            headingY + (compact ? 62 : 92),
+            tomb.CorrectAnswerCount > 0
+                ? new Color(154, 211, 176)
+                : new Color(176, 151, 142),
+            FitDebugTextScale(
+                tomb.CompletionText,
+                panel.Width - padding * 2 - 16,
+                textScale));
+        DrawCenteredDebugText(
+            "ENTER — LEAVE THE SCHOLAR TO HIS REST",
+            panel.Center.X,
+            controlsY,
+            new Color(139, 205, 205),
+            1);
+    }
+
+    private void DrawScholarQuestion(
+        AncientScholarTombSystem tomb,
+        Rectangle panel,
+        int padding,
+        bool compact,
+        int textScale,
+        int controlsY)
+    {
+        AncientScholarQuestion question = tomb.CurrentQuestion;
+        int contentX = panel.X + padding + 8;
+        int contentWidth = panel.Width - padding * 2 - 16;
+        int numberY = panel.Y + padding + (compact ? 34 : 43);
+        int titleY = numberY + (compact ? 23 : 29);
+        int bodyY = titleY + (compact ? 29 : 38);
+        int bodyLineHeight = textScale == 2 ? (compact ? 17 : 20) : 11;
+
+        DrawDebugText(
+            ScholarQuestionLabels[tomb.QuestionIndex],
+            contentX,
+            numberY,
+            new Color(130, 181, 184),
+            textScale);
+        DrawDebugText(
+            question.Title,
+            contentX,
+            titleY,
+            new Color(218, 205, 164),
+            FitDebugTextScale(question.Title, contentWidth, textScale));
+
+        int answerY;
+        if (tomb.QuestionIndex == 0)
+        {
+            DrawDebugText(
+                question.Lines[0],
+                contentX,
+                bodyY,
+                new Color(189, 192, 181),
+                textScale);
+            int codeTop = bodyY + bodyLineHeight + (compact ? 4 : 8);
+            int codeLineHeight = textScale == 2 ? 17 : 10;
+            int codeHeight = codeLineHeight * 4 + (compact ? 10 : 16);
+            int codeWidth = Math.Min(560, contentWidth - 10);
+            Rectangle codeBlock = new(
+                contentX,
+                codeTop,
+                codeWidth,
+                codeHeight);
+            _spriteBatch.Draw(_pixel, codeBlock, new Color(8, 12, 17, 235));
+            DrawRectangleOutline(codeBlock, 1, new Color(62, 82, 86));
+            int codeY = codeBlock.Y + (compact ? 5 : 8);
+            for (int index = 1; index <= 4; index++)
+            {
+                DrawDebugText(
+                    question.Lines[index],
+                    codeBlock.X + (compact ? 7 : 11),
+                    codeY,
+                    new Color(171, 205, 194),
+                    textScale);
+                codeY += codeLineHeight;
+            }
+            int promptY = codeBlock.Bottom + (compact ? 7 : 12);
+            DrawDebugText(
+                question.Lines[5],
+                contentX,
+                promptY,
+                new Color(203, 202, 183),
+                textScale);
+            answerY = promptY + bodyLineHeight + (compact ? 7 : 13);
+        }
+        else
+        {
+            int lineY = bodyY;
+            foreach (string line in question.Lines)
+            {
+                DrawDebugText(
+                    line,
+                    contentX,
+                    lineY,
+                    new Color(189, 192, 181),
+                    FitDebugTextScale(line, contentWidth, textScale));
+                lineY += bodyLineHeight;
+            }
+            answerY = lineY + (compact ? 8 : 16);
+        }
+
+        int rowHeight = compact ? 28 : 36;
+        int rowGap = compact ? 5 : 9;
+        int choicesHeight = rowHeight * question.Answers.Length +
+            rowGap * (question.Answers.Length - 1);
+        int maximumChoiceBottom = controlsY - (compact ? 13 : 20);
+        if (answerY + choicesHeight > maximumChoiceBottom)
+        {
+            int overflow = answerY + choicesHeight - maximumChoiceBottom;
+            answerY -= Math.Min(overflow, compact ? 18 : 28);
+            if (answerY + choicesHeight > maximumChoiceBottom)
+            {
+                rowGap = 3;
+                rowHeight = Math.Max(24, rowHeight - 4);
+            }
+        }
+
+        int choiceWidth = Math.Min(590, contentWidth - 20);
+        int choiceX = panel.Center.X - choiceWidth / 2;
+        for (int index = 0; index < question.Answers.Length; index++)
+        {
+            DrawScholarChoice(
+                question.Answers[index],
+                new Rectangle(
+                    choiceX,
+                    answerY + index * (rowHeight + rowGap),
+                    choiceWidth,
+                    rowHeight),
+                tomb.SelectedAnswerIndex == index,
+                textScale);
+        }
+
+        DrawCenteredDebugText(
+            "W/S OR UP/DOWN — SELECT     ENTER — CONFIRM",
+            panel.Center.X,
+            controlsY,
+            new Color(124, 164, 168),
+            1);
+    }
+
+    private void DrawScholarChoice(
+        string text,
+        Rectangle bounds,
+        bool selected,
+        int textScale)
+    {
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            selected
+                ? new Color(48, 75, 79, 220)
+                : new Color(12, 17, 23, 205));
+        DrawRectangleOutline(
+            bounds,
+            1,
+            selected
+                ? new Color(116, 180, 181)
+                : new Color(53, 63, 67));
+        int glyphHeight = 7 * textScale;
+        int textY = bounds.Y + Math.Max(1, (bounds.Height - glyphHeight) / 2);
+        DrawDebugText(
+            selected ? ">" : " ",
+            bounds.X + 12,
+            textY,
+            new Color(138, 216, 213),
+            textScale);
+        DrawDebugText(
+            text,
+            bounds.X + 12 + 18 * textScale,
+            textY,
+            selected
+                ? new Color(232, 220, 177)
+                : new Color(151, 157, 154),
+            FitDebugTextScale(
+                text,
+                bounds.Width - 28 - 18 * textScale,
+                textScale));
+    }
+
+    private void DrawCenteredDebugText(
+        string text,
+        int centerX,
+        int y,
+        Color color,
+        int scale)
+    {
+        int width = text.Length * 6 * scale;
+        DrawDebugText(text, centerX - width / 2, y, color, scale);
+    }
+
+    private static int FitDebugTextScale(
+        string text,
+        int availableWidth,
+        int preferredScale)
+    {
+        if (preferredScale <= 1 || text.Length * 6 * preferredScale <= availableWidth)
+            return Math.Max(1, preferredScale);
+        return 1;
     }
 
     private void DrawHudPanel()
@@ -4022,7 +4678,8 @@ public sealed class GameRenderer : IDisposable
 
         foreach (char character in text)
         {
-            if (DebugGlyphs.TryGetValue(character, out byte[] rows))
+            char glyphCharacter = GetDebugGlyphCharacter(character);
+            if (DebugGlyphs.TryGetValue(glyphCharacter, out byte[] rows))
             {
                 for (int row = 0; row < rows.Length; row++)
                 {
@@ -4041,10 +4698,105 @@ public sealed class GameRenderer : IDisposable
                             color);
                     }
                 }
+
+                DrawDebugDiacritic(character, cursorX, y, color, scale);
             }
 
             cursorX += 6 * scale;
         }
+    }
+
+    private static char GetDebugGlyphCharacter(char character)
+    {
+        char upper = char.ToUpperInvariant(character);
+        return upper switch
+        {
+            'À' or 'Á' or 'Ả' or 'Ã' or 'Ạ' or
+            'Ă' or 'Ằ' or 'Ắ' or 'Ẳ' or 'Ẵ' or 'Ặ' or
+            'Â' or 'Ầ' or 'Ấ' or 'Ẩ' or 'Ẫ' or 'Ậ' => 'A',
+            'È' or 'É' or 'Ẻ' or 'Ẽ' or 'Ẹ' or
+            'Ê' or 'Ề' or 'Ế' or 'Ể' or 'Ễ' or 'Ệ' => 'E',
+            'Ì' or 'Í' or 'Ỉ' or 'Ĩ' or 'Ị' => 'I',
+            'Ò' or 'Ó' or 'Ỏ' or 'Õ' or 'Ọ' or
+            'Ô' or 'Ồ' or 'Ố' or 'Ổ' or 'Ỗ' or 'Ộ' or
+            'Ơ' or 'Ờ' or 'Ớ' or 'Ở' or 'Ỡ' or 'Ợ' => 'O',
+            'Ù' or 'Ú' or 'Ủ' or 'Ũ' or 'Ụ' or
+            'Ư' or 'Ừ' or 'Ứ' or 'Ử' or 'Ữ' or 'Ự' => 'U',
+            'Ỳ' or 'Ý' or 'Ỷ' or 'Ỹ' or 'Ỵ' => 'Y',
+            'Đ' => 'D',
+            '—' => '-',
+            _ => upper
+        };
+    }
+
+    private void DrawDebugDiacritic(
+        char character,
+        int x,
+        int y,
+        Color color,
+        int scale)
+    {
+        char upper = char.ToUpperInvariant(character);
+        bool circumflex = upper is
+            'Â' or 'Ầ' or 'Ấ' or 'Ẩ' or 'Ẫ' or 'Ậ' or
+            'Ê' or 'Ề' or 'Ế' or 'Ể' or 'Ễ' or 'Ệ' or
+            'Ô' or 'Ồ' or 'Ố' or 'Ổ' or 'Ỗ' or 'Ộ';
+        bool breve = upper is 'Ă' or 'Ằ' or 'Ắ' or 'Ẳ' or 'Ẵ' or 'Ặ';
+        bool horn = upper is
+            'Ơ' or 'Ờ' or 'Ớ' or 'Ở' or 'Ỡ' or 'Ợ' or
+            'Ư' or 'Ừ' or 'Ứ' or 'Ử' or 'Ữ' or 'Ự';
+        bool acute = upper is
+            'Á' or 'Ắ' or 'Ấ' or 'É' or 'Ế' or 'Í' or
+            'Ó' or 'Ố' or 'Ớ' or 'Ú' or 'Ứ' or 'Ý';
+        bool grave = upper is
+            'À' or 'Ằ' or 'Ầ' or 'È' or 'Ề' or 'Ì' or
+            'Ò' or 'Ồ' or 'Ờ' or 'Ù' or 'Ừ' or 'Ỳ';
+        bool hook = upper is
+            'Ả' or 'Ẳ' or 'Ẩ' or 'Ẻ' or 'Ể' or 'Ỉ' or
+            'Ỏ' or 'Ổ' or 'Ở' or 'Ủ' or 'Ử' or 'Ỷ';
+        bool tilde = upper is
+            'Ã' or 'Ẵ' or 'Ẫ' or 'Ẽ' or 'Ễ' or 'Ĩ' or
+            'Õ' or 'Ỗ' or 'Ỡ' or 'Ũ' or 'Ữ' or 'Ỹ';
+        bool dot = upper is
+            'Ạ' or 'Ặ' or 'Ậ' or 'Ẹ' or 'Ệ' or 'Ị' or
+            'Ọ' or 'Ộ' or 'Ợ' or 'Ụ' or 'Ự' or 'Ỵ';
+
+        if (circumflex)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(x + scale, y - scale, scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 3 * scale, y - scale, scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 2 * scale, y - 2 * scale, scale, scale), color);
+        }
+        else if (breve)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(x + scale, y - 2 * scale, scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 2 * scale, y - scale, 2 * scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 4 * scale, y - 2 * scale, scale, scale), color);
+        }
+
+        if (horn)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 4 * scale, y - scale, 2 * scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 5 * scale, y, scale, scale), color);
+        }
+
+        if (acute)
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 3 * scale, y - 3 * scale, 2 * scale, scale), color);
+        else if (grave)
+            _spriteBatch.Draw(_pixel, new Rectangle(x + scale, y - 3 * scale, 2 * scale, scale), color);
+        else if (hook)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 2 * scale, y - 3 * scale, 2 * scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 3 * scale, y - 2 * scale, scale, scale), color);
+        }
+        else if (tilde)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(x + scale, y - 3 * scale, 2 * scale, scale), color);
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 3 * scale, y - 2 * scale, 2 * scale, scale), color);
+        }
+
+        if (dot)
+            _spriteBatch.Draw(_pixel, new Rectangle(x + 2 * scale, y + 7 * scale, scale, scale), color);
     }
 
     private void DrawPlayerStamina(PlayerCharacter player)

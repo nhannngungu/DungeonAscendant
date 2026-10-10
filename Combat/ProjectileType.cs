@@ -4,5 +4,6 @@ public enum ProjectileType
 {
     Arrow,
     ArcaneBolt,
-    WebShot
+    WebShot,
+    SoulBolt
 }

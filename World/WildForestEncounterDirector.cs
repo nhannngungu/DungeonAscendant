@@ -39,7 +39,8 @@ public sealed class WildForestEncounterDirector
         DungeonMap map,
         EnemyManager enemies,
         int enemyLevel,
-        int worldTier)
+        int worldTier,
+        bool suppressActivation = false)
     {
         if (map == null || (!map.IsAuthoredWildForest && !map.IsAncientCatacombs))
             return;
@@ -58,7 +59,8 @@ public sealed class WildForestEncounterDirector
                     ActiveZoneId = state.Zone.ZoneId;
             }
 
-            if ((state.Zone.IsBossZone && map.IsAuthoredWildForest) || state.Spawned ||
+            if (suppressActivation ||
+                (state.Zone.IsBossZone && map.IsAuthoredWildForest) || state.Spawned ||
                 !state.Zone.ActivationBounds.Contains(playerPosition.ToPoint()))
                 continue;
 
