@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Dungeon;
+using DungeonAscendant.Localization;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
@@ -27,11 +28,29 @@ public enum AncientScholarRewardCategory
 
 public sealed class AncientScholarQuestion
 {
-    public string Title { get; }
-    public string[] Lines { get; }
-    public string[] Answers { get; }
+    private readonly string _keyPrefix;
+    private readonly int _lineCount;
+
+    public string Title => Loc.Get(_keyPrefix + ".title");
+    public string[] Lines
+    {
+        get
+        {
+            var lines = new string[_lineCount];
+            for (int index = 0; index < lines.Length; index++)
+                lines[index] = Loc.Get($"{_keyPrefix}.line{index + 1}");
+            return lines;
+        }
+    }
+    public string[] Answers => new[]
+    {
+        Loc.Get(_keyPrefix + ".a1"),
+        Loc.Get(_keyPrefix + ".a2"),
+        Loc.Get(_keyPrefix + ".a3")
+    };
     public int CorrectAnswerIndex { get; }
-    public string CorrectReaction { get; }
+    public string CorrectReaction => Loc.Get(_keyPrefix + ".correct");
+    public string CorrectReactionKey => _keyPrefix + ".correct";
 
     public AncientScholarQuestion(
         string title,
@@ -40,11 +59,9 @@ public sealed class AncientScholarQuestion
         int correctAnswerIndex,
         string correctReaction)
     {
-        Title = title;
-        Lines = lines;
-        Answers = answers;
+        _keyPrefix = title;
+        _lineCount = lines.Length;
         CorrectAnswerIndex = correctAnswerIndex;
-        CorrectReaction = correctReaction;
     }
 }
 
@@ -59,20 +76,19 @@ public sealed class AncientScholarTombSystem
     public const float OpeningDurationSeconds = 1.05f;
     public const int GuardBarracksZoneIndex = 5;
 
-    public static readonly string[] RewardCategoryLabels =
+    public static string[] RewardCategoryLabels => new[]
     {
-        "ANCIENT WEAPON",
-        "ANCIENT ARMOR",
-        "ANCIENT RELIC"
+        Loc.Get("scholar.reward.weapon"),
+        Loc.Get("scholar.reward.armor"),
+        Loc.Get("scholar.reward.accessory")
     };
 
-    private const string WrongReaction =
-        "Wrong. Even the dead remember better than you.";
+    private const string WrongReactionKey = "scholar.wrong";
 
     private static readonly AncientScholarQuestion[] Questions =
     {
         new(
-            "THE LOOP OF TIME",
+            "scholar.q1",
             new[]
             {
                 "Consider this C# code:",
@@ -86,7 +102,7 @@ public sealed class AncientScholarTombSystem
             1,
             "Hm... your mind has not yet decayed."),
         new(
-            "THE DAY YOU ENTERED THIS WORLD",
+            "scholar.q2",
             new[] { "On what day was the Wanderer born?" },
             new[]
             {
@@ -97,7 +113,7 @@ public sealed class AncientScholarTombSystem
             1,
             "Even your birth has not escaped the memory of the dead."),
         new(
-            "BEASTS OF TWO AND FOUR LEGS",
+            "scholar.q3",
             new[]
             {
                 "Vừa gà vừa chó,",
@@ -130,8 +146,11 @@ public sealed class AncientScholarTombSystem
     public int SelectedAnswerIndex { get; private set; }
     public int CorrectAnswerCount { get; private set; }
     public int SelectedRewardIndex { get; private set; }
-    public string ReactionText { get; private set; } = string.Empty;
+    public string ReactionText => string.IsNullOrEmpty(_reactionKey)
+        ? string.Empty
+        : Loc.Get(_reactionKey);
     public string CompletionText { get; private set; } = string.Empty;
+    private string _reactionKey = string.Empty;
     public AncientScholarRewardCategory RequestedRewardCategory
     {
         get;
@@ -330,9 +349,9 @@ public sealed class AncientScholarTombSystem
         bool correct = SelectedAnswerIndex == CurrentQuestion.CorrectAnswerIndex;
         if (correct)
             CorrectAnswerCount++;
-        ReactionText = correct
-            ? CurrentQuestion.CorrectReaction
-            : WrongReaction;
+        _reactionKey = correct
+            ? CurrentQuestion.CorrectReactionKey
+            : WrongReactionKey;
         State = AncientScholarTombState.Reaction;
     }
 
@@ -341,7 +360,7 @@ public sealed class AncientScholarTombSystem
         if (CorrectAnswerCount == 0)
         {
             RequestedRewardCategory = AncientScholarRewardCategory.None;
-            CompletionText = "The tomb offers no reward.";
+            CompletionText = Loc.Get("scholar.reward.none");
             State = AncientScholarTombState.Completion;
             return;
         }
@@ -362,7 +381,7 @@ public sealed class AncientScholarTombSystem
         CorrectAnswerCount = 0;
         SelectedRewardIndex = 0;
         RequestedRewardCategory = AncientScholarRewardCategory.None;
-        ReactionText = string.Empty;
+        _reactionKey = string.Empty;
         CompletionText = string.Empty;
         _rewardRequestPending = false;
     }

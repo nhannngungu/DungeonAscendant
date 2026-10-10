@@ -99,5 +99,32 @@ if (System.Array.Exists(
     return;
 }
 
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-save-slots"))
+{
+    DungeonAscendant.Persistence.SaveSlotValidation.ValidateOrThrow();
+    System.Console.WriteLine("Character select and save-slot validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-localization"))
+{
+    DungeonAscendant.Localization.LocalizationValidation.ValidateOrThrow();
+    System.Console.WriteLine("English/Vietnamese localization validation passed.");
+    return;
+}
+
+if (System.Array.Exists(
+    args,
+    argument => argument == "--validate-audio"))
+{
+    DungeonAscendant.Audio.AudioProfileValidation.ValidateOrThrow();
+    System.Console.WriteLine("Full Map 1/Map 2 audio manifest and profile validation passed.");
+    return;
+}
+
 using var game = new DungeonAscendant.Game1();
 game.Run();

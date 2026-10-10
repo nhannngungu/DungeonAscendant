@@ -101,6 +101,15 @@ public sealed class Camera2D
         _impactOffset = Vector2.Zero;
     }
 
+    public void ResetRuntime()
+    {
+        Position = Vector2.Zero;
+        _impactTimeRemaining = 0f;
+        _impactStrength = 0f;
+        _impactPhase = 0f;
+        _impactOffset = Vector2.Zero;
+    }
+
     private void UpdateImpactFeedback(float elapsedSeconds)
     {
         if (_impactTimeRemaining <= 0f)

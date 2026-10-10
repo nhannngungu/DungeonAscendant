@@ -7,6 +7,8 @@ using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
 using DungeonAscendant.Lore;
+using DungeonAscendant.Localization;
+using DungeonAscendant.Persistence;
 using DungeonAscendant.Player;
 using DungeonAscendant.UI;
 using DungeonAscendant.World;
@@ -46,6 +48,22 @@ public sealed class GameRenderer : IDisposable
         "FINAL SCORE: 1 / 3",
         "FINAL SCORE: 2 / 3",
         "FINAL SCORE: 3 / 3"
+    };
+    private static readonly CharacterCreatorRow[] CharacterCreatorSummaryRows =
+    {
+        CharacterCreatorRow.CharacterName,
+        CharacterCreatorRow.BodyType,
+        CharacterCreatorRow.BodyBuild,
+        CharacterCreatorRow.Face,
+        CharacterCreatorRow.SkinTone,
+        CharacterCreatorRow.Hair,
+        CharacterCreatorRow.HairColor,
+        CharacterCreatorRow.FacialHair,
+        CharacterCreatorRow.FaceDetail,
+        CharacterCreatorRow.TorsoWidth,
+        CharacterCreatorRow.ArmThickness,
+        CharacterCreatorRow.LegThickness,
+        CharacterCreatorRow.ApparentHeight
     };
 
     private static readonly IReadOnlyDictionary<char, byte[]> DebugGlyphs =
@@ -192,8 +210,20 @@ public sealed class GameRenderer : IDisposable
         {
             _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
             DrawArena();
-            DrawStartScreen();
+            DrawStartScreen(gameSession);
             _spriteBatch.End();
+            return;
+        }
+
+        if (gameSession.State == GameState.CharacterCreation)
+        {
+            DrawCharacterCreation(gameSession, gameTime);
+            return;
+        }
+
+        if (gameSession.State == GameState.CharacterSelect)
+        {
+            DrawCharacterSelect(gameSession, gameTime);
             return;
         }
 
@@ -368,7 +398,7 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.ScholarTomb.CanInspect(gameSession.Player.Position))
         {
             DrawDebugLabel(
-                "[E] INSPECT THE ANCIENT COFFIN",
+                Loc.Get("hud.interact_coffin"),
                 438,
                 650,
                 new Color(169, 213, 206));
@@ -377,9 +407,10 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.LoreNotePickup?.CanInteract(
             gameSession.Player.Position) == true)
         {
-            int promptWidth = "[E] READ ANCIENT RECORD".Length * 12;
+            string recordPrompt = Loc.Get("hud.read_record");
+            int promptWidth = recordPrompt.Length * 12;
             DrawDebugLabel(
-                "[E] READ ANCIENT RECORD",
+                recordPrompt,
                 _graphicsDevice.Viewport.Width / 2 - promptWidth / 2,
                 _graphicsDevice.Viewport.Height - 70,
                 new Color(220, 196, 124));
@@ -409,7 +440,7 @@ public sealed class GameRenderer : IDisposable
         else if (gameSession.IsInventoryOpen)
             DrawInventoryOverlay(gameSession);
         else if (gameSession.State == GameState.Paused)
-            DrawPauseOverlay();
+            DrawPauseOverlay(gameSession);
         else if (gameSession.State == GameState.GameOver)
             DrawGameOverOverlay();
 
@@ -1122,7 +1153,7 @@ public sealed class GameRenderer : IDisposable
     private void DrawCurseMeter(GameSession session)
     {
         if(session.CurrentDungeon?.IsAncientCatacombs!=true)return;
-        Rectangle bar=new(270,58,150,8);_spriteBatch.Draw(_pixel,bar,new Color(35,27,42));int fill=(int)((bar.Width-2)*session.Curse.Ratio);if(fill>0)_spriteBatch.Draw(_pixel,new Rectangle(bar.X+1,bar.Y+1,fill,bar.Height-2),new Color(119,73,145));DrawRectangleOutline(bar,1,new Color(151,139,158));DrawDebugText("CURSE",270,46,new Color(182,170,190),1);
+        Rectangle bar=new(270,58,150,8);_spriteBatch.Draw(_pixel,bar,new Color(35,27,42));int fill=(int)((bar.Width-2)*session.Curse.Ratio);if(fill>0)_spriteBatch.Draw(_pixel,new Rectangle(bar.X+1,bar.Y+1,fill,bar.Height-2),new Color(119,73,145));DrawRectangleOutline(bar,1,new Color(151,139,158));DrawDebugText(Loc.Get("hud.curse"),270,46,new Color(182,170,190),1);
     }
 
     private void DrawDungeon(
@@ -3333,15 +3364,15 @@ public sealed class GameRenderer : IDisposable
         DrawRectangleOutline(panel, 4, new Color(122, 111, 91));
         DrawInventoryTab(
             new Rectangle(panel.X + 28, panel.Y + 17, 120, 30),
-            "Q WEAPONS",
+            "Q " + Loc.Get("inventory.weapons"),
             gameSession.ActiveInventoryTab == InventoryTab.Weapons);
         DrawInventoryTab(
             new Rectangle(panel.X + 156, panel.Y + 17, 138, 30),
-            "E EQUIPMENT",
+            "E " + Loc.Get("inventory.equipment"),
             gameSession.ActiveInventoryTab == InventoryTab.Equipment);
         DrawInventoryTab(
             new Rectangle(panel.X + 302, panel.Y + 17, 100, 30),
-            "NOTES",
+            Loc.Get("inventory.notes"),
             gameSession.ActiveInventoryTab == InventoryTab.Notes);
 
         if (gameSession.ActiveInventoryTab == InventoryTab.Notes)
@@ -3433,7 +3464,7 @@ public sealed class GameRenderer : IDisposable
         DrawRectangleOutline(listPanel, 2, new Color(75, 84, 94));
         DrawRectangleOutline(detailPanel, 2, new Color(75, 84, 94));
         DrawDebugText(
-            "COLLECTED RECORDS",
+            Loc.Get("notes.collected"),
             listPanel.X + 10,
             listPanel.Y + 10,
             new Color(201, 183, 125),
@@ -3450,7 +3481,7 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.CollectedNotes.Count == 0)
         {
             DrawDebugText(
-                "NO NOTES COLLECTED",
+                Loc.Get("inventory.no_notes"),
                 listPanel.X + 10,
                 listTop + 5,
                 new Color(126, 137, 146),
@@ -3495,7 +3526,7 @@ public sealed class GameRenderer : IDisposable
                 if (!note.IsRead)
                 {
                     DrawDebugText(
-                        "NEW",
+                        Loc.Get("notes.unread"),
                         row.Right - 24,
                         row.Y + 6,
                         new Color(218, 156, 72),
@@ -3516,13 +3547,13 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, controls, new Color(31, 38, 47));
         DrawRectangleOutline(controls, 2, new Color(77, 88, 98));
         DrawDebugText(
-            "W/S OR UP/DOWN SELECT   Q/E TABS",
+            Loc.Get("inventory.controls"),
             controls.X + 8,
             controls.Y + 7,
             new Color(156, 170, 181),
             1);
         DrawDebugText(
-            "I/ESC CLOSE",
+            string.Empty,
             controls.X + 8,
             controls.Y + 20,
             new Color(156, 170, 181),
@@ -3541,7 +3572,7 @@ public sealed class GameRenderer : IDisposable
             new Color(232, 213, 151),
             FitDebugTextScale(note.Title, availableWidth, 2));
         DrawDebugText(
-            "SOURCE:",
+            Loc.Get("notes.source"),
             x,
             y + 27,
             new Color(124, 141, 147),
@@ -4162,23 +4193,27 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, panel, new Color(12, 16, 17, 232));
         DrawRectangleOutline(panel, intro.PresentationStrength + 1, border);
 
-        int nameWidth = intro.Name.Length * 6 * 2;
+        string name = intro.LocalizedName;
+        string title = intro.LocalizedTitle;
+        string description = intro.LocalizedDescription;
+        int nameScale = FitDebugTextScale(name, panel.Width - 20, 2);
+        int nameWidth = name.Length * 6 * nameScale;
         DrawDebugText(
-            intro.Name,
+            name,
             panel.Center.X - nameWidth / 2,
             panel.Y + 10,
             new Color(237, 226, 190),
-            scale: 2);
-        int titleWidth = intro.Title.Length * 6;
+            scale: nameScale);
+        int titleWidth = title.Length * 6;
         DrawDebugText(
-            intro.Title,
+            title,
             panel.Center.X - titleWidth / 2,
             panel.Y + 38,
             border,
             scale: 1);
-        int descriptionWidth = intro.Description.Length * 6;
+        int descriptionWidth = description.Length * 6;
         DrawDebugText(
-            intro.Description,
+            description,
             Math.Max(panel.X + 10, panel.Center.X - descriptionWidth / 2),
             panel.Y + 57,
             new Color(183, 190, 184),
@@ -4436,7 +4471,7 @@ public sealed class GameRenderer : IDisposable
             Math.Max(1, panel.Height - 16));
         DrawRectangleOutline(inset, 1, new Color(153, 126, 69));
         DrawCenteredDebugText(
-            "ANCIENT SCHOLAR TOMB",
+            Loc.Get("scholar.title"),
             panel.Center.X,
             panel.Y + padding,
             new Color(197, 181, 128),
@@ -4453,7 +4488,7 @@ public sealed class GameRenderer : IDisposable
         if (tomb.State == AncientScholarTombState.Opening)
         {
             DrawCenteredDebugText(
-                "THE STONE REMEMBERS...",
+                Loc.Get("scholar.opening"),
                 panel.Center.X,
                 panel.Center.Y - 7 * textScale,
                 new Color(139, 205, 205),
@@ -4483,7 +4518,7 @@ public sealed class GameRenderer : IDisposable
         if (tomb.State == AncientScholarTombState.Reaction)
         {
             DrawDebugText(
-                ScholarAnswerLabels[tomb.QuestionIndex],
+                Loc.Format("scholar.answer_count", tomb.QuestionIndex + 1, tomb.QuestionCount),
                 contentX,
                 headingY,
                 new Color(130, 181, 184),
@@ -4495,13 +4530,13 @@ public sealed class GameRenderer : IDisposable
                 new Color(218, 205, 164),
                 fittedBodyScale);
             DrawDebugText(
-                ScholarTruthLabels[tomb.CorrectAnswerCount],
+                Loc.Format("scholar.truth_count", tomb.CorrectAnswerCount),
                 contentX,
                 headingY + (compact ? 102 : 138),
                 new Color(159, 192, 172),
                 textScale);
             DrawCenteredDebugText(
-                "ENTER — CONTINUE",
+                Loc.Get("scholar.continue"),
                 panel.Center.X,
                 controlsY,
                 new Color(139, 205, 205),
@@ -4512,18 +4547,18 @@ public sealed class GameRenderer : IDisposable
         if (tomb.State == AncientScholarTombState.RewardChoice)
         {
             DrawDebugText(
-                "THREE TRUTHS REMEMBERED",
+                Loc.Get("scholar.reward.perfect_heading"),
                 contentX,
                 headingY,
                 new Color(218, 205, 164),
                 textScale);
             DrawDebugText(
-                "CHOOSE WHAT THE DEAD NO LONGER NEED:",
+                Loc.Get("scholar.reward.choose"),
                 contentX,
                 headingY + (compact ? 32 : 48),
                 new Color(164, 176, 174),
                 FitDebugTextScale(
-                    "CHOOSE WHAT THE DEAD NO LONGER NEED:",
+                    Loc.Get("scholar.reward.choose"),
                     panel.Width - padding * 2 - 16,
                     textScale));
             int choiceWidth = Math.Min(590, panel.Width - padding * 2 - 36);
@@ -4546,7 +4581,7 @@ public sealed class GameRenderer : IDisposable
                     textScale);
             }
             DrawCenteredDebugText(
-                "W/S OR UP/DOWN — SELECT     ENTER — CONFIRM",
+                Loc.Get("common.select_hint"),
                 panel.Center.X,
                 controlsY,
                 new Color(124, 164, 168),
@@ -4555,7 +4590,7 @@ public sealed class GameRenderer : IDisposable
         }
 
         DrawDebugText(
-            ScholarFinalScoreLabels[tomb.CorrectAnswerCount],
+            Loc.Format("scholar.final_score", tomb.CorrectAnswerCount),
             contentX,
             headingY,
             new Color(218, 205, 164),
@@ -4572,7 +4607,7 @@ public sealed class GameRenderer : IDisposable
                 panel.Width - padding * 2 - 16,
                 textScale));
         DrawCenteredDebugText(
-            "ENTER — LEAVE THE SCHOLAR TO HIS REST",
+            Loc.Get("scholar.leave"),
             panel.Center.X,
             controlsY,
             new Color(139, 205, 205),
@@ -4596,7 +4631,7 @@ public sealed class GameRenderer : IDisposable
         int bodyLineHeight = textScale == 2 ? (compact ? 17 : 20) : 11;
 
         DrawDebugText(
-            ScholarQuestionLabels[tomb.QuestionIndex],
+            Loc.Format("scholar.question_count", tomb.QuestionIndex + 1, tomb.QuestionCount),
             contentX,
             numberY,
             new Color(130, 181, 184),
@@ -4696,7 +4731,7 @@ public sealed class GameRenderer : IDisposable
         }
 
         DrawCenteredDebugText(
-            "W/S OR UP/DOWN — SELECT     ENTER — CONFIRM",
+            Loc.Get("common.select_hint"),
             panel.Center.X,
             controlsY,
             new Color(124, 164, 168),
@@ -4988,6 +5023,13 @@ public sealed class GameRenderer : IDisposable
         int scale)
     {
         char upper = char.ToUpperInvariant(character);
+        if (upper == '\u0110')
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x - scale, y + 3 * scale, 4 * scale, scale),
+                color);
+        }
         bool circumflex = upper is
             'Â' or 'Ầ' or 'Ấ' or 'Ẩ' or 'Ẫ' or 'Ậ' or
             'Ê' or 'Ề' or 'Ế' or 'Ể' or 'Ễ' or 'Ệ' or
@@ -5453,7 +5495,555 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
-    private void DrawStartScreen()
+    private void DrawCharacterSelect(GameSession session, GameTime gameTime)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        int margin = Math.Clamp(viewport.Width / 50, 10, 24);
+        int gap = Math.Clamp(viewport.Width / 70, 8, 18);
+        int top = Math.Clamp(viewport.Height / 8, 54, 82);
+        int footerHeight = Math.Clamp(viewport.Height / 10, 38, 58);
+        int panelHeight = Math.Max(260, viewport.Height - top - footerHeight - margin);
+        int panelWidth = Math.Max(
+            180,
+            (viewport.Width - margin * 2 - gap * 2) / SaveSlotManager.SlotCount);
+        double time = gameTime.TotalGameTime.TotalSeconds;
+
+        _graphicsDevice.Clear(new Color(6, 9, 12));
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        _spriteBatch.Draw(_pixel, screen, new Color(7, 10, 14));
+        int bandHeight = Math.Max(1, screen.Height / 6);
+        for (int band = 0; band < 6; band++)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(0, band * bandHeight, screen.Width, bandHeight),
+                new Color(8 + band * 2, 13 + band * 3, 17 + band * 2));
+        }
+
+        int mistShift = (int)MathF.Round(MathF.Sin((float)time * .23f) * 34f);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(-60 + mistShift, top + 28, screen.Width / 2, 18),
+            new Color(105, 119, 116, 18));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(screen.Width / 2 - mistShift, top + 112, screen.Width / 2, 13),
+            new Color(118, 125, 119, 14));
+
+        DrawCenteredText(
+            Loc.Get("character.select.title"),
+            screen.Center.X,
+            17,
+            new Color(225, 188, 90),
+            viewport.Width >= 950 ? 3 : 2);
+        DrawCenteredText(
+            Loc.Get("character.select.subtitle"),
+            screen.Center.X,
+            viewport.Width >= 950 ? 46 : 39,
+            new Color(123, 130, 130),
+            1);
+
+        for (int index = 0; index < SaveSlotManager.SlotCount; index++)
+        {
+            Rectangle panel = GetCharacterSlotPanel(
+                index,
+                margin,
+                gap,
+                top,
+                panelWidth,
+                panelHeight);
+            bool selected = index == session.CharacterSelect.SelectedSlotIndex;
+            DrawCharacterSlotBase(panel, index, selected, session.SaveSlots[index].Occupied);
+        }
+
+        int footerY = top + panelHeight + Math.Max(5, gap / 2);
+        DrawCenteredText(
+            Loc.Get("character.select.controls"),
+            screen.Center.X,
+            Math.Min(screen.Height - 22, footerY + 8),
+            new Color(166, 171, 169),
+            1);
+        _spriteBatch.End();
+
+        for (int index = 0; index < SaveSlotManager.SlotCount; index++)
+        {
+            SaveSlotData slot = session.SaveSlots[index];
+            PlayerCharacter previewPlayer = session.CharacterSelect.GetPreview(index);
+            if (!slot.Occupied || previewPlayer == null)
+                continue;
+
+            Rectangle panel = GetCharacterSlotPanel(
+                index,
+                margin,
+                gap,
+                top,
+                panelWidth,
+                panelHeight);
+            float scale = Math.Clamp(panel.Width / 175f, 1.05f, 1.65f);
+            var anchor = new Vector2(
+                panel.Center.X / scale,
+                (panel.Y + Math.Min(164, panel.Height / 2)) / scale);
+            _spriteBatch.Begin(
+                samplerState: SamplerState.PointClamp,
+                transformMatrix: Matrix.CreateScale(scale));
+            _playerSpriteRenderer.DrawPreview(
+                previewPlayer,
+                gameTime,
+                anchor,
+                FacingDirection.Right);
+            _spriteBatch.End();
+        }
+
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        for (int index = 0; index < SaveSlotManager.SlotCount; index++)
+        {
+            Rectangle panel = GetCharacterSlotPanel(
+                index,
+                margin,
+                gap,
+                top,
+                panelWidth,
+                panelHeight);
+            DrawCharacterSlotDetails(panel, session.SaveSlots[index]);
+        }
+
+        if (!string.IsNullOrEmpty(session.SaveError))
+        {
+            DrawCenteredText(
+                Loc.Get("character.save_unavailable"),
+                screen.Center.X,
+                screen.Height - 38,
+                new Color(211, 91, 83),
+                1);
+        }
+
+        if (session.CharacterSelect.IsDeleteConfirmationOpen)
+            DrawDeleteSlotConfirmation(session);
+        _spriteBatch.End();
+    }
+
+    private static Rectangle GetCharacterSlotPanel(
+        int index,
+        int margin,
+        int gap,
+        int top,
+        int panelWidth,
+        int panelHeight)
+    {
+        return new Rectangle(
+            margin + index * (panelWidth + gap),
+            top,
+            panelWidth,
+            panelHeight);
+    }
+
+    private void DrawCharacterSlotBase(
+        Rectangle panel,
+        int index,
+        bool selected,
+        bool occupied)
+    {
+        Color frame = selected
+            ? new Color(214, 169, 71)
+            : new Color(82, 82, 78);
+        _spriteBatch.Draw(
+            _pixel,
+            panel,
+            selected ? new Color(25, 28, 33, 250) : new Color(16, 20, 26, 245));
+        DrawRectangleOutline(panel, selected ? 4 : 2, frame);
+        DrawRectangleOutline(
+            new Rectangle(panel.X + 6, panel.Y + 6, panel.Width - 12, panel.Height - 12),
+            1,
+            selected ? new Color(103, 79, 43) : new Color(45, 51, 56));
+
+        DrawCenteredText(
+            Loc.Format("character.slot", index + 1),
+            panel.Center.X,
+            panel.Y + 12,
+            selected ? new Color(235, 207, 137) : new Color(137, 142, 141),
+            1);
+
+        int pedestalY = panel.Y + Math.Min(170, panel.Height / 2 + 5);
+        var pedestal = new Rectangle(
+            panel.Center.X - Math.Min(62, panel.Width / 3),
+            pedestalY,
+            Math.Min(124, panel.Width * 2 / 3),
+            12);
+        _spriteBatch.Draw(
+            _pixel,
+            pedestal,
+            occupied ? new Color(61, 65, 65) : new Color(38, 42, 45));
+        DrawRectangleOutline(pedestal, 2, frame);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(pedestal.X + 9, pedestal.Bottom, pedestal.Width - 18, 5),
+            new Color(28, 31, 34));
+
+        if (!occupied)
+        {
+            int runeY = panel.Y + Math.Min(104, panel.Height / 3);
+            DrawRectangleOutline(
+                new Rectangle(panel.Center.X - 23, runeY - 23, 46, 46),
+                2,
+                new Color(93, 82, 60));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(panel.Center.X - 2, runeY - 13, 4, 26),
+                new Color(142, 119, 69));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(panel.Center.X - 13, runeY - 2, 26, 4),
+                new Color(142, 119, 69));
+        }
+    }
+
+    private void DrawCharacterSlotDetails(Rectangle panel, SaveSlotData slot)
+    {
+        if (!slot.Occupied)
+        {
+            DrawCenteredText(
+                Loc.Get("character.empty"),
+                panel.Center.X,
+                panel.Y + Math.Min(205, panel.Height * 3 / 5),
+                new Color(133, 137, 136),
+                1);
+            DrawCenteredText(
+                Loc.Get("character.create"),
+                panel.Center.X,
+                panel.Y + Math.Min(231, panel.Height * 2 / 3),
+                new Color(184, 151, 79),
+                1);
+            return;
+        }
+
+        DrawCenteredText(
+            slot.CharacterName,
+            panel.Center.X,
+            panel.Y + 31,
+            new Color(225, 197, 126),
+            slot.CharacterName.Length <= 11 && panel.Width >= 225 ? 2 : 1);
+
+        int x = panel.X + 13;
+        int y = panel.Y + Math.Min(200, panel.Height / 2 + 28);
+        Color label = new(112, 120, 124);
+        Color value = new(190, 193, 188);
+        DrawSlotValue(Loc.Get("character.create.body"),
+            Loc.Get(slot.Appearance.BodyType == CharacterBodyType.Male
+                ? "character.value.male"
+                : "character.value.female"), x, y, panel, label, value);
+        y += 18;
+        DrawSlotValue(Loc.Get("character.level").Split(' ')[0], slot.Level.ToString(), x, y, panel, label, value);
+        y += 18;
+        DrawSlotValue(Loc.Get("character.area").Split(':')[0], slot.CurrentArea, x, y, panel, label, value);
+        y += 18;
+        DrawSlotValue(Loc.Get("character.weapon").Split(':')[0], slot.EquippedWeaponName, x, y, panel, label, value);
+        y += 18;
+        DrawSlotValue(Loc.Get("character.armor").Split(':')[0], slot.EquippedArmorName, x, y, panel, label, value);
+        y += 18;
+        DrawSlotValue(Loc.Get("character.play_time").Split(':')[0], FormatPlayTime(slot.PlayTimeSeconds), x, y, panel, label, value);
+    }
+
+    private void DrawSlotValue(
+        string label,
+        string value,
+        int x,
+        int y,
+        Rectangle panel,
+        Color labelColor,
+        Color valueColor)
+    {
+        DrawDebugText(label, x, y, labelColor, 1);
+        int valueX = x + Math.Min(52, panel.Width / 4);
+        DrawDebugText(value ?? string.Empty, valueX, y, valueColor, 1);
+    }
+
+    private static string FormatPlayTime(double totalSeconds)
+    {
+        TimeSpan time = TimeSpan.FromSeconds(Math.Max(0d, totalSeconds));
+        int hours = (int)Math.Min(999d, time.TotalHours);
+        return $"{hours:00}:{time.Minutes:00}:{time.Seconds:00}";
+    }
+
+    private void DrawDeleteSlotConfirmation(GameSession session)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - Math.Min(220, viewport.Width / 2 - 18),
+            viewport.Height / 2 - 82,
+            Math.Min(440, viewport.Width - 36),
+            164);
+        _spriteBatch.Draw(_pixel, screen, new Color(4, 5, 7, 185));
+        _spriteBatch.Draw(_pixel, panel, new Color(34, 20, 23, 252));
+        DrawRectangleOutline(panel, 4, new Color(169, 67, 65));
+        DrawCenteredText(
+            Loc.Get("character.delete.title"),
+            panel.Center.X,
+            panel.Y + 27,
+            new Color(229, 151, 134),
+            2);
+        DrawCenteredText(
+            session.SaveSlots[session.CharacterSelect.SelectedSlotIndex].CharacterName,
+            panel.Center.X,
+            panel.Y + 62,
+            new Color(218, 192, 139),
+            1);
+        DrawCenteredText(
+            Loc.Get("character.delete.warning"),
+            panel.Center.X,
+            panel.Y + 88,
+            new Color(170, 154, 147),
+            1);
+        DrawCenteredText(
+            Loc.Get("character.delete.controls"),
+            panel.Center.X,
+            panel.Bottom - 31,
+            new Color(215, 111, 104),
+            1);
+    }
+
+    private void DrawCharacterCreation(GameSession session, GameTime gameTime)
+    {
+        GetCharacterCreatorLayout(
+            out Rectangle screen,
+            out Rectangle left,
+            out Rectangle preview,
+            out Rectangle right,
+            out Rectangle footer);
+
+        _graphicsDevice.Clear(new Color(7, 9, 13));
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        _spriteBatch.Draw(_pixel, screen, new Color(7, 9, 13));
+
+        int bandHeight = Math.Max(1, screen.Height / 7);
+        for (int band = 0; band < 7; band++)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(0, band * bandHeight, screen.Width, bandHeight),
+                new Color(10 + band * 2, 13 + band * 2, 20 + band * 2));
+        }
+
+        DrawCreatorPanel(left);
+        DrawCreatorPanel(preview);
+        DrawCreatorPanel(right);
+        _spriteBatch.Draw(_pixel, footer, new Color(16, 20, 27, 245));
+        DrawRectangleOutline(footer, 2, new Color(92, 76, 50));
+
+        DrawCenteredText(
+            Loc.Get("character.create.title"),
+            screen.Center.X,
+            Math.Max(12, left.Y - 34),
+            new Color(224, 188, 94),
+            screen.Width >= 1000 ? 3 : 2);
+        DrawCenteredText(
+            Loc.Get("character.create.preview"),
+            preview.Center.X,
+            preview.Y + 15,
+            new Color(151, 159, 164),
+            1);
+        _spriteBatch.End();
+
+        float previewScale = Math.Clamp(
+            Math.Min(preview.Width / 122f, preview.Height / 104f),
+            1.25f,
+            3.15f);
+        Vector2 previewAnchor = new(
+            preview.Center.X / previewScale,
+            (preview.Bottom - Math.Max(24, preview.Height / 10)) / previewScale);
+        _spriteBatch.Begin(
+            samplerState: SamplerState.PointClamp,
+            transformMatrix: Matrix.CreateScale(previewScale));
+        _playerSpriteRenderer.DrawPreview(
+            session.Player,
+            gameTime,
+            previewAnchor,
+            session.CharacterCreator.PreviewFacing);
+        _spriteBatch.End();
+
+        _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        DrawCharacterCreatorOptions(session.CharacterCreator, left, right);
+        DrawCenteredText(
+            Loc.Get("character.create.navigate"),
+            footer.Center.X,
+            footer.Center.Y - 4,
+            new Color(170, 174, 171),
+            screen.Width >= 880 ? 1 : 1);
+        _spriteBatch.End();
+    }
+
+    private void DrawCharacterCreatorOptions(
+        CharacterCreatorState creator,
+        Rectangle left,
+        Rectangle right)
+    {
+        const int rowCount = (int)CharacterCreatorRow.Confirm + 1;
+        int rowHeight = Math.Max(17, (left.Height - 36) / rowCount);
+        int y = left.Y + 27;
+
+        DrawDebugText(Loc.Get("character.create.options"), left.X + 12, left.Y + 9, new Color(202, 172, 99), 1);
+        for (int index = 0; index < rowCount; index++)
+        {
+            CharacterCreatorRow row = (CharacterCreatorRow)index;
+            bool selected = row == creator.SelectedRow;
+            if (selected)
+            {
+                var highlight = new Rectangle(
+                    left.X + 7,
+                    y - 3,
+                    left.Width - 14,
+                    rowHeight - 1);
+                _spriteBatch.Draw(_pixel, highlight, new Color(58, 50, 38));
+                DrawRectangleOutline(highlight, 1, new Color(196, 153, 68));
+            }
+
+            Color color = row switch
+            {
+                CharacterCreatorRow.Confirm => new Color(119, 205, 135),
+                CharacterCreatorRow.Randomize or CharacterCreatorRow.ResetDefault =>
+                    new Color(176, 151, 91),
+                _ => selected
+                    ? new Color(236, 212, 151)
+                    : new Color(159, 164, 164)
+            };
+            DrawDebugText(
+                CharacterCreatorState.GetRowLabel(row),
+                left.X + 13,
+                y,
+                color,
+                1);
+            y += rowHeight;
+        }
+
+        int infoX = right.X + 12;
+        int infoY = right.Y + 10;
+        DrawDebugText(Loc.Get("character.create.current"), infoX, infoY, new Color(202, 172, 99), 1);
+        infoY += 24;
+        DrawDebugText(
+            CharacterCreatorState.GetRowLabel(creator.SelectedRow),
+            infoX,
+            infoY,
+            new Color(142, 151, 160),
+            1);
+        infoY += 18;
+        string selectedValue = creator.GetValueLabel(creator.SelectedRow);
+        if (selectedValue.Length > 0)
+        {
+            Color valueColor = new(231, 203, 119);
+            DrawDebugText("<", infoX, infoY, valueColor, 1);
+            DrawDebugText(selectedValue, infoX + 12, infoY, valueColor, 1);
+            DrawDebugText(
+                ">",
+                infoX + 18 + selectedValue.Length * 6,
+                infoY,
+                valueColor,
+                1);
+        }
+        else
+        {
+            DrawDebugText(
+                creator.SelectedRow == CharacterCreatorRow.Confirm
+                    ? Loc.Get("character.create.enter_begin")
+                    : Loc.Get("character.create.press_enter"),
+                infoX,
+                infoY,
+                creator.SelectedRow == CharacterCreatorRow.Confirm
+                    ? new Color(119, 205, 135)
+                    : new Color(210, 183, 112),
+                1);
+        }
+
+        infoY += 34;
+        DrawDebugText(Loc.Get("character.create.options"), infoX, infoY, new Color(202, 172, 99), 1);
+        infoY += 19;
+        for (int index = 0; index < CharacterCreatorSummaryRows.Length; index++)
+        {
+            CharacterCreatorRow row = CharacterCreatorSummaryRows[index];
+            DrawDebugText(
+                GetCreatorSummaryLabel(row),
+                infoX,
+                infoY,
+                new Color(118, 125, 130),
+                1);
+            DrawDebugText(
+                creator.GetValueLabel(row),
+                infoX + Math.Max(74, right.Width / 2 - 3),
+                infoY,
+                new Color(190, 192, 185),
+                1);
+            infoY += 17;
+        }
+    }
+
+    private static string GetCreatorSummaryLabel(CharacterCreatorRow row)
+    {
+        string key = row switch
+        {
+            CharacterCreatorRow.CharacterName => "name",
+            CharacterCreatorRow.BodyType => "body",
+            CharacterCreatorRow.BodyBuild => "build",
+            CharacterCreatorRow.Face => "face",
+            CharacterCreatorRow.SkinTone => "skin",
+            CharacterCreatorRow.Hair => "hair",
+            CharacterCreatorRow.HairColor => "color",
+            CharacterCreatorRow.FacialHair => "beard",
+            CharacterCreatorRow.FaceDetail => "detail",
+            CharacterCreatorRow.TorsoWidth => "torso",
+            CharacterCreatorRow.ArmThickness => "arms",
+            CharacterCreatorRow.LegThickness => "legs",
+            _ => "height"
+        };
+        return Loc.Get("character.summary." + key);
+    }
+
+    private void GetCharacterCreatorLayout(
+        out Rectangle screen,
+        out Rectangle left,
+        out Rectangle preview,
+        out Rectangle right,
+        out Rectangle footer)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        int margin = Math.Clamp(viewport.Width / 55, 8, 22);
+        int header = Math.Clamp(viewport.Height / 10, 42, 68);
+        int footerHeight = Math.Clamp(viewport.Height / 12, 34, 48);
+        int contentY = header;
+        int contentHeight = Math.Max(260, viewport.Height - header - footerHeight - margin);
+        int gap = Math.Clamp(viewport.Width / 100, 6, 14);
+        int usableWidth = viewport.Width - margin * 2 - gap * 2;
+        int leftWidth = Math.Clamp((int)(usableWidth * .31f), 190, 340);
+        int rightWidth = Math.Clamp((int)(usableWidth * .29f), 180, 330);
+        int previewWidth = Math.Max(180, usableWidth - leftWidth - rightWidth);
+
+        left = new Rectangle(margin, contentY, leftWidth, contentHeight);
+        preview = new Rectangle(left.Right + gap, contentY, previewWidth, contentHeight);
+        right = new Rectangle(preview.Right + gap, contentY, rightWidth, contentHeight);
+        footer = new Rectangle(
+            margin,
+            contentY + contentHeight + Math.Max(4, gap / 2),
+            viewport.Width - margin * 2,
+            Math.Max(28, viewport.Height - (contentY + contentHeight) - margin));
+    }
+
+    private void DrawCreatorPanel(Rectangle panel)
+    {
+        _spriteBatch.Draw(_pixel, panel, new Color(18, 23, 31, 246));
+        DrawRectangleOutline(panel, 2, new Color(112, 88, 48));
+        DrawRectangleOutline(
+            new Rectangle(panel.X + 4, panel.Y + 4, panel.Width - 8, panel.Height - 8),
+            1,
+            new Color(52, 59, 66));
+    }
+
+    private void DrawCenteredText(string text, int centerX, int y, Color color, int scale)
+    {
+        int width = text.Length * 6 * scale - scale;
+        DrawDebugText(text, centerX - width / 2, y, color, scale);
+    }
+
+    private void DrawStartScreen(GameSession session)
     {
         Viewport viewport = _graphicsDevice.Viewport;
         var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
@@ -5477,30 +6067,259 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.Draw(_pixel, new Rectangle(centerX - 3, shield.Y + 7, 6, 40), new Color(214, 220, 224));
         _spriteBatch.Draw(_pixel, new Rectangle(centerX - 18, shield.Y + 17, 36, 6), new Color(214, 220, 224));
 
-        var startButton = new Rectangle(centerX - 78, panel.Bottom - 65, 156, 38);
+        var startButton = new Rectangle(centerX - 108, panel.Bottom - 87, 216, 32);
         _spriteBatch.Draw(_pixel, startButton, new Color(38, 50, 64));
-        DrawRectangleOutline(startButton, 2, new Color(105, 176, 120));
-        _spriteBatch.Draw(_pixel, new Rectangle(startButton.X + 42, startButton.Center.Y - 3, 62, 6), new Color(128, 216, 145));
-        _spriteBatch.Draw(_pixel, new Rectangle(startButton.Right - 53, startButton.Center.Y - 13, 6, 16), new Color(128, 216, 145));
-        _spriteBatch.Draw(_pixel, new Rectangle(startButton.Right - 62, startButton.Center.Y + 3, 15, 6), new Color(128, 216, 145));
+        DrawRectangleOutline(startButton, 2,
+            session.MainMenu.SelectedEntry == MainMenuEntry.NewGame
+                ? new Color(105, 176, 120)
+                : new Color(70, 82, 91));
+        var settingsButton = new Rectangle(centerX - 108, panel.Bottom - 49, 216, 28);
+        _spriteBatch.Draw(_pixel, settingsButton, new Color(34, 43, 55));
+        DrawRectangleOutline(settingsButton, 2,
+            session.MainMenu.SelectedEntry == MainMenuEntry.Settings
+                ? new Color(105, 176, 120)
+                : new Color(70, 82, 91));
+        DrawCenteredText(
+            Loc.Get("menu.title"),
+            centerX,
+            panel.Y + 12,
+            new Color(223, 183, 76),
+            2);
+        DrawCenteredText(
+            Loc.Get("menu.new_game"),
+            centerX,
+            startButton.Center.Y - 4,
+            session.MainMenu.SelectedEntry == MainMenuEntry.NewGame
+                ? new Color(128, 216, 145)
+                : new Color(145, 153, 158),
+            1);
+        DrawCenteredText(
+            Loc.Get("menu.settings"),
+            centerX,
+            settingsButton.Center.Y - 4,
+            session.MainMenu.SelectedEntry == MainMenuEntry.Settings
+                ? new Color(128, 216, 145)
+                : new Color(145, 153, 158),
+            1);
+
+        if (session.LanguageSettings.IsOpen)
+            DrawLanguageSettings(session);
     }
 
-    private void DrawPauseOverlay()
+    private void DrawPauseOverlay(GameSession session)
     {
         Viewport viewport = _graphicsDevice.Viewport;
         var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
         var panel = new Rectangle(
-            viewport.Width / 2 - 105,
-            viewport.Height / 2 - 70,
-            210,
-            140);
+            viewport.Width / 2 - 190,
+            viewport.Height / 2 - 135,
+            380,
+            270);
 
-        _spriteBatch.Draw(_pixel, screen, new Color(8, 10, 15, 155));
-        _spriteBatch.Draw(_pixel, panel, new Color(25, 30, 39, 235));
+        _spriteBatch.Draw(_pixel, screen, new Color(8, 10, 15, 180));
+        _spriteBatch.Draw(_pixel, panel, new Color(22, 27, 35, 248));
         DrawRectangleOutline(panel, 3, new Color(142, 151, 160));
-        _spriteBatch.Draw(_pixel, new Rectangle(panel.Center.X - 30, panel.Y + 34, 20, 58), new Color(215, 220, 224));
-        _spriteBatch.Draw(_pixel, new Rectangle(panel.Center.X + 10, panel.Y + 34, 20, 58), new Color(215, 220, 224));
-        _spriteBatch.Draw(_pixel, new Rectangle(panel.Center.X - 48, panel.Bottom - 26, 96, 5), new Color(91, 111, 132));
+        DrawRectangleOutline(
+            new Rectangle(panel.X + 6, panel.Y + 6, panel.Width - 12, panel.Height - 12),
+            1,
+            new Color(66, 72, 79));
+        DrawCenteredText(
+            Loc.Get("pause.title"),
+            panel.Center.X,
+            panel.Y + 24,
+            new Color(218, 190, 113),
+            2);
+
+        DrawPauseMenuEntry(
+            panel,
+            panel.Y + 74,
+            Loc.Get("pause.resume"),
+            session.PauseMenu.SelectedEntry == PauseMenuEntry.Resume);
+        DrawPauseMenuEntry(
+            panel,
+            panel.Y + 114,
+            Loc.Get("pause.settings"),
+            session.PauseMenu.SelectedEntry == PauseMenuEntry.Settings);
+        DrawPauseMenuEntry(
+            panel,
+            panel.Y + 154,
+            Loc.Get("pause.return_character_select"),
+            session.PauseMenu.SelectedEntry ==
+                PauseMenuEntry.ReturnToCharacterSelect);
+        DrawCenteredText(
+            Loc.Get("common.select_hint"),
+            panel.Center.X,
+            panel.Bottom - 33,
+            new Color(128, 136, 140),
+            1);
+
+        if (session.PauseMenu.IsReturnConfirmationOpen)
+            DrawReturnToSelectConfirmation(session);
+        else if (session.LanguageSettings.IsOpen)
+            DrawLanguageSettings(session);
+    }
+
+    private void DrawPauseMenuEntry(
+        Rectangle panel,
+        int y,
+        string label,
+        bool selected)
+    {
+        var row = new Rectangle(panel.X + 32, y - 10, panel.Width - 64, 38);
+        if (selected)
+        {
+            _spriteBatch.Draw(_pixel, row, new Color(57, 50, 38));
+            DrawRectangleOutline(row, 2, new Color(194, 151, 67));
+        }
+        DrawCenteredText(
+            label,
+            panel.Center.X,
+            y,
+            selected
+                ? new Color(235, 209, 143)
+                : new Color(157, 164, 166),
+            1);
+    }
+
+    private void DrawReturnToSelectConfirmation(GameSession session)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - 235,
+            viewport.Height / 2 - 125,
+            470,
+            250);
+        _spriteBatch.Draw(_pixel, screen, new Color(5, 6, 9, 205));
+        _spriteBatch.Draw(_pixel, panel, new Color(27, 25, 29, 252));
+        DrawRectangleOutline(panel, 4, new Color(177, 135, 61));
+        DrawCenteredText(
+            Loc.Get("pause.confirm_title"),
+            panel.Center.X,
+            panel.Y + 30,
+            new Color(232, 202, 124),
+            2);
+        DrawCenteredText(
+            Loc.Get("pause.progress_saved"),
+            panel.Center.X,
+            panel.Y + 70,
+            new Color(164, 165, 158),
+            1);
+
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 112,
+            Loc.Get("common.yes"),
+            session.PauseMenu.ConfirmReturn);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 153,
+            Loc.Get("common.no"),
+            !session.PauseMenu.ConfirmReturn);
+        DrawCenteredText(
+            Loc.Get("common.cancel_hint"),
+            panel.Center.X,
+            panel.Bottom - 28,
+            new Color(137, 143, 144),
+            1);
+    }
+
+    private void DrawPauseConfirmationChoice(
+        Rectangle panel,
+        int y,
+        string label,
+        bool selected)
+    {
+        if (selected)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(panel.Center.X - 64, y - 7, 128, 28),
+                new Color(61, 52, 38));
+            DrawDebugText(
+                ">",
+                panel.Center.X - 47,
+                y,
+                new Color(229, 197, 119),
+                1);
+        }
+        DrawCenteredText(
+            label,
+            panel.Center.X,
+            y,
+            selected ? new Color(234, 207, 137) : new Color(142, 147, 147),
+            1);
+    }
+
+    private void DrawLanguageSettings(GameSession session)
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        var panel = new Rectangle(
+            viewport.Width / 2 - 220,
+            viewport.Height / 2 - 180,
+            440,
+            360);
+        _spriteBatch.Draw(_pixel, screen, new Color(5, 7, 10, 210));
+        _spriteBatch.Draw(_pixel, panel, new Color(22, 27, 35, 252));
+        DrawRectangleOutline(panel, 4, new Color(132, 153, 159));
+        DrawCenteredText(
+            Loc.Get("settings.title"),
+            panel.Center.X,
+            panel.Y + 27,
+            new Color(222, 198, 128),
+            2);
+        DrawCenteredText(
+            Loc.Get("settings.language"),
+            panel.Center.X,
+            panel.Y + 69,
+            new Color(164, 181, 183),
+            1);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 96,
+            Loc.Get("settings.english"),
+            session.LanguageSettings.SelectedRow == SettingsRow.Language &&
+                session.LanguageSettings.SelectedLanguage == Language.English);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 130,
+            Loc.Get("settings.vietnamese"),
+            session.LanguageSettings.SelectedRow == SettingsRow.Language &&
+                session.LanguageSettings.SelectedLanguage == Language.Vietnamese);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 169,
+            Loc.Format(
+                "settings.master_volume",
+                (int)MathF.Round(Loc.MasterVolume * 100f)),
+            session.LanguageSettings.SelectedRow == SettingsRow.MasterVolume);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 207,
+            Loc.Format(
+                "settings.music_volume",
+                (int)MathF.Round(Loc.MusicVolume * 100f)),
+            session.LanguageSettings.SelectedRow == SettingsRow.MusicVolume);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 245,
+            Loc.Format(
+                "settings.sfx_volume",
+                (int)MathF.Round(Loc.SfxVolume * 100f)),
+            session.LanguageSettings.SelectedRow == SettingsRow.SfxVolume);
+        DrawCenteredText(
+            Loc.Get("settings.change_hint"),
+            panel.Center.X,
+            panel.Bottom - 43,
+            new Color(137, 155, 158),
+            1);
+        DrawCenteredText(
+            Loc.Get("settings.back_hint"),
+            panel.Center.X,
+            panel.Bottom - 25,
+            new Color(137, 155, 158),
+            1);
     }
 
     private void DrawGameOverOverlay()

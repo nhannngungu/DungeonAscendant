@@ -25,10 +25,6 @@ public sealed class PlayerSpriteRenderer
     public const int ShieldHeight = 31;
 
     private static readonly Color Outline = new(24, 25, 29);
-    private static readonly Color Skin = new(190, 137, 99);
-    private static readonly Color SkinLight = new(218, 164, 119);
-    private static readonly Color Hair = new(39, 29, 27);
-    private static readonly Color HairLight = new(61, 42, 34);
     private static readonly Color Cloth = new(47, 48, 53);
     private static readonly Color ClothLight = new(67, 68, 73);
     private static readonly Color Leather = new(65, 43, 32);
@@ -71,6 +67,9 @@ public sealed class PlayerSpriteRenderer
     private float _hitEffectTimeRemaining;
     private Vector2 _hitEffectPosition;
     private Vector2? _chainHeadWorldPosition;
+    private float _partScaleX = 1f;
+    private float _partPivotX;
+    private float _lineThicknessScale = 1f;
 
     public PlayerSpriteRenderer(SpriteBatch spriteBatch, Texture2D pixel)
     {
@@ -83,6 +82,7 @@ public sealed class PlayerSpriteRenderer
         GameTime gameTime,
         Vector2? chainHeadWorldPosition = null)
     {
+        ResetPartTransform();
         _chainHeadWorldPosition = chainHeadWorldPosition;
         _animation.Update(gameTime, player);
 
@@ -119,6 +119,38 @@ public sealed class PlayerSpriteRenderer
             DrawWebStrands(anchor, flip);
     }
 
+    /// <summary>
+    /// Uses the same layered player renderer as gameplay, but anchors a forced
+    /// idle pose in screen space for character creation.
+    /// </summary>
+    public void DrawPreview(
+        PlayerCharacter player,
+        GameTime gameTime,
+        Vector2 anchor,
+        FacingDirection facing)
+    {
+        ResetPartTransform();
+        _chainHeadWorldPosition = null;
+        bool flip = facing == FacingDirection.Left;
+        int frame = (int)(gameTime.TotalGameTime.TotalSeconds * 5d) % 6;
+        var pose = new Pose
+        {
+            Bob = frame is 2 or 3 ? -1f : 0f,
+            Crouch = 1f,
+            Lean = 1f,
+            SwordHandX = 18f,
+            SwordHandY = frame is 2 or 3 ? -37f : -36f,
+            SwordAngle = frame is 2 or 3 ? -0.56f : -0.52f,
+            SwordLength = SwordLength,
+            ShieldX = -4f,
+            ShieldY = frame is 2 or 3 ? -46f : -45f,
+            CloakTail = frame is 3 or 4 ? -2f : -1f
+        };
+
+        DrawBox(anchor, -22f, -3f, 44f, 7f, new Color(12, 14, 17, 145), flip);
+        DrawStanding(player, anchor, flip, pose);
+    }
+
     private void DrawStanding(
         PlayerCharacter player,
         Vector2 anchor,
@@ -127,7 +159,8 @@ public sealed class PlayerSpriteRenderer
     {
         float bodyX = pose.Lean;
         const float feetY = 0f;
-        float upperBodyY = pose.Bob + pose.Crouch;
+        float upperBodyY = pose.Bob + pose.Crouch +
+            GetHeightOffset(player.Appearance.ApparentHeight);
         bool weaponBehindBody = pose.SwordAngle < -1.25f &&
             player.WeaponFamily is not WeaponFamily.Bow and
             not WeaponFamily.ArcaneStaff;
@@ -135,20 +168,31 @@ public sealed class PlayerSpriteRenderer
         if (player.WeaponFamily == WeaponFamily.Bow)
             DrawQuiver(anchor, flip, bodyX, upperBodyY);
 
+        float torsoScale = GetTorsoScale(player.Appearance);
+        SetPartTransform(torsoScale, bodyX);
         DrawCloak(player, anchor, flip, pose, bodyX, upperBodyY);
+        ResetPartTransform();
 
         if (weaponBehindBody)
             DrawWeapon(player, anchor, flip, pose);
 
+        SetPartTransform(GetLegScale(player.Appearance), bodyX);
         DrawLegs(player, anchor, flip, pose, bodyX, feetY);
+        ResetPartTransform();
+        _lineThicknessScale = GetArmScale(player.Appearance);
         DrawRearArm(player, anchor, flip, pose, bodyX, upperBodyY);
+        ResetPartTransform();
+        SetPartTransform(torsoScale, bodyX);
         DrawTorso(player, anchor, flip, pose, bodyX, upperBodyY);
+        ResetPartTransform();
         DrawHead(player, anchor, flip, pose, bodyX, upperBodyY);
 
         // Both arms sit behind the shield face. The sword itself is drawn
         // afterward when it is on the foreground side, keeping the weapon
         // readable without leaving a hand floating over the shield heraldry.
+        _lineThicknessScale = GetArmScale(player.Appearance);
         DrawFrontArm(player, anchor, flip, pose, bodyX, upperBodyY);
+        ResetPartTransform();
 
         if (player.UsesShield)
             DrawShield(player, anchor, flip, pose);
@@ -1303,7 +1347,8 @@ public sealed class PlayerSpriteRenderer
         float bodyX,
         float bodyY)
     {
-        Vector2 shoulder = new(bodyX - 10f, bodyY - 44f);
+        float shoulderWidth = 10f * GetTorsoScale(player.Appearance);
+        Vector2 shoulder = new(bodyX - shoulderWidth, bodyY - 44f);
 
         if (player.WeaponFamily == WeaponFamily.DualDaggers)
         {
@@ -1359,7 +1404,7 @@ public sealed class PlayerSpriteRenderer
                 supportGrip.Y - 2f,
                 5f,
                 5f,
-                Tint(Skin, player),
+                Tint(GetSkinColor(player.Appearance.SkinTone), player),
                 flip);
             return;
         }
@@ -1514,34 +1559,168 @@ public sealed class PlayerSpriteRenderer
         float bodyX,
         float bodyY)
     {
-        Color skin = Tint(Skin, player);
-        Color skinLight = Tint(SkinLight, player);
-        Color hair = Tint(Hair, player);
+        CharacterAppearance appearance = player.Appearance;
+        Color skinBase = GetSkinColor(appearance.SkinTone);
+        Color skin = Tint(skinBase, player);
+        Color skinLight = Tint(Color.Lerp(skinBase, Color.White, .18f), player);
+        Color hair = Tint(GetHairColor(appearance.HairColor), player);
+        Color hairLight = Tint(Color.Lerp(hair, Color.White, .16f), player);
+        float faceWidth = appearance.FacePreset switch
+        {
+            FacePreset.Round => 2f,
+            FacePreset.Narrow => -1f,
+            FacePreset.Strong => 1f,
+            _ => 0f
+        };
+        if (appearance.BodyType == CharacterBodyType.Female)
+            faceWidth -= 1f;
 
-        DrawBox(anchor, bodyX - 8f, bodyY - 66f, 17f, 18f, Outline, flip);
-        DrawBox(anchor, bodyX - 6f, bodyY - 64f, 14f, 15f, skin, flip);
+        float headX = bodyX - 8f - faceWidth * .5f;
+        float headWidth = 17f + faceWidth;
+        float jawY = appearance.FacePreset == FacePreset.Round ? -50f : -51f;
+        float noseLength = appearance.FacePreset is FacePreset.Angular or FacePreset.Strong
+            ? 5f
+            : 4f;
+
+        DrawBox(anchor, headX, bodyY - 66f, headWidth, 18f, Outline, flip);
+        DrawBox(anchor, headX + 2f, bodyY - 64f, headWidth - 3f, 15f, skin, flip);
         DrawBox(anchor, bodyX - 4f, bodyY - 62f, 10f, 7f, skinLight, flip);
+        if (appearance.FacePreset == FacePreset.Round)
+            DrawBox(anchor, bodyX - 5f, bodyY - 55f, 12f, 5f, skin, flip);
+        else if (appearance.FacePreset == FacePreset.Strong)
+            DrawBox(anchor, bodyX - 3f, bodyY - 52f, 10f, 4f, skin, flip);
 
-        // A small forward nose makes the canonical right-facing profile
-        // unambiguous before the whole composition is mirrored.
-        DrawBox(anchor, bodyX + 7f, bodyY - 60f, 5f, 6f, Outline, flip);
-        DrawBox(anchor, bodyX + 7f, bodyY - 59f, 3f, 4f, skinLight, flip);
-        DrawBox(anchor, bodyX + 4f, bodyY - 51f, 5f, 3f, Outline, flip);
+        DrawBox(anchor, bodyX + 7f, bodyY - 60f, noseLength, 6f, Outline, flip);
+        DrawBox(anchor, bodyX + 7f, bodyY - 59f, noseLength - 2f, 4f, skinLight, flip);
+        DrawBox(anchor, bodyX + 4f, bodyY + jawY, 5f, 3f, Outline, flip);
         DrawBox(anchor, bodyX + 3f, bodyY - 53f, 5f, 3f, skin, flip);
 
-        // Hair is concentrated at the crown and rear of the right-facing
-        // head; it no longer masks the forward cheek and reverses the read.
-        DrawBox(anchor, bodyX - 8f, bodyY - 68f, 17f, 8f, hair, flip);
-        DrawBox(anchor, bodyX - 9f, bodyY - 64f, 5f, 11f, HairLight, flip);
-        DrawBox(anchor, bodyX - 6f, bodyY - 62f, 3f, 8f, hair, flip);
-        DrawBox(anchor, bodyX + 1f, bodyY - 62f, 7f, 2f, hair, flip);
+        DrawHair(
+            appearance.HairStyle,
+            anchor,
+            flip,
+            bodyX,
+            bodyY,
+            hair,
+            hairLight);
 
-        DrawBox(anchor, bodyX + 4f, bodyY - 59f, 3f, 3f, new Color(30, 27, 27), flip);
+        int eyeY = appearance.FacePreset == FacePreset.Narrow ? -58 : -59;
+        DrawBox(anchor, bodyX + 4f, bodyY + eyeY, 3f, 3f, new Color(30, 27, 27), flip);
         DrawBox(anchor, bodyX + 4f, bodyY - 54f, 4f, 1f, new Color(91, 48, 42), flip);
+        DrawFacialHair(appearance.FacialHair, anchor, flip, bodyX, bodyY, hair);
+        DrawFaceDetail(appearance.FaceDetail, anchor, flip, bodyX, bodyY);
+    }
 
-        // Small scar crossing the forward eyebrow.
-        DrawBox(anchor, bodyX + 2f, bodyY - 62f, 2f, 2f, new Color(104, 54, 48), flip);
-        DrawBox(anchor, bodyX + 4f, bodyY - 60f, 2f, 2f, new Color(104, 54, 48), flip);
+    private void DrawHair(
+        HairStyle style,
+        Vector2 anchor,
+        bool flip,
+        float bodyX,
+        float bodyY,
+        Color hair,
+        Color hairLight)
+    {
+        if (style == HairStyle.Bald)
+            return;
+
+        switch (style)
+        {
+            case HairStyle.Medium:
+                DrawBox(anchor, bodyX - 9f, bodyY - 68f, 18f, 8f, hair, flip);
+                DrawBox(anchor, bodyX - 10f, bodyY - 64f, 6f, 16f, hairLight, flip);
+                DrawBox(anchor, bodyX - 7f, bodyY - 55f, 5f, 8f, hair, flip);
+                DrawBox(anchor, bodyX + 1f, bodyY - 62f, 7f, 2f, hair, flip);
+                break;
+            case HairStyle.Long:
+                DrawBox(anchor, bodyX - 9f, bodyY - 68f, 18f, 8f, hair, flip);
+                DrawBox(anchor, bodyX - 11f, bodyY - 64f, 7f, 23f, hairLight, flip);
+                DrawBox(anchor, bodyX - 8f, bodyY - 56f, 6f, 18f, hair, flip);
+                DrawBox(anchor, bodyX + 1f, bodyY - 62f, 7f, 2f, hair, flip);
+                break;
+            case HairStyle.Messy:
+                DrawBox(anchor, bodyX - 8f, bodyY - 69f, 17f, 9f, hair, flip);
+                DrawBox(anchor, bodyX - 7f, bodyY - 73f, 5f, 6f, hairLight, flip);
+                DrawBox(anchor, bodyX, bodyY - 75f, 5f, 8f, hair, flip);
+                DrawBox(anchor, bodyX + 5f, bodyY - 71f, 6f, 5f, hairLight, flip);
+                DrawBox(anchor, bodyX - 9f, bodyY - 64f, 5f, 10f, hair, flip);
+                break;
+            case HairStyle.TiedBack:
+                DrawBox(anchor, bodyX - 8f, bodyY - 68f, 17f, 8f, hair, flip);
+                DrawBox(anchor, bodyX - 9f, bodyY - 64f, 5f, 11f, hairLight, flip);
+                DrawBox(anchor, bodyX - 14f, bodyY - 62f, 7f, 7f, hair, flip);
+                DrawBox(anchor, bodyX - 17f, bodyY - 59f, 6f, 11f, hairLight, flip);
+                DrawBox(anchor, bodyX - 15f, bodyY - 49f, 4f, 7f, hair, flip);
+                break;
+            case HairStyle.Undercut:
+                DrawBox(anchor, bodyX - 7f, bodyY - 69f, 17f, 7f, hair, flip);
+                DrawBox(anchor, bodyX - 3f, bodyY - 72f, 13f, 5f, hairLight, flip);
+                DrawBox(anchor, bodyX - 8f, bodyY - 63f, 3f, 6f, hair, flip);
+                break;
+            default:
+                DrawBox(anchor, bodyX - 8f, bodyY - 68f, 17f, 8f, hair, flip);
+                DrawBox(anchor, bodyX - 9f, bodyY - 64f, 5f, 11f, hairLight, flip);
+                DrawBox(anchor, bodyX - 6f, bodyY - 62f, 3f, 8f, hair, flip);
+                DrawBox(anchor, bodyX + 1f, bodyY - 62f, 7f, 2f, hair, flip);
+                break;
+        }
+    }
+
+    private void DrawFacialHair(
+        FacialHairStyle style,
+        Vector2 anchor,
+        bool flip,
+        float bodyX,
+        float bodyY,
+        Color hair)
+    {
+        switch (style)
+        {
+            case FacialHairStyle.LightStubble:
+                Color stubble = new(hair.R, hair.G, hair.B, (byte)155);
+                DrawBox(anchor, bodyX + 2f, bodyY - 55f, 6f, 2f, stubble, flip);
+                DrawBox(anchor, bodyX, bodyY - 52f, 7f, 2f, stubble, flip);
+                break;
+            case FacialHairStyle.ShortBeard:
+                DrawBox(anchor, bodyX + 1f, bodyY - 54f, 8f, 4f, hair, flip);
+                DrawBox(anchor, bodyX - 2f, bodyY - 52f, 9f, 5f, hair, flip);
+                break;
+            case FacialHairStyle.FullBeard:
+                DrawBox(anchor, bodyX, bodyY - 55f, 9f, 6f, hair, flip);
+                DrawBox(anchor, bodyX - 4f, bodyY - 52f, 11f, 8f, hair, flip);
+                DrawBox(anchor, bodyX - 1f, bodyY - 45f, 7f, 4f, hair, flip);
+                break;
+            case FacialHairStyle.Mustache:
+                DrawBox(anchor, bodyX + 2f, bodyY - 55f, 4f, 2f, hair, flip);
+                DrawBox(anchor, bodyX + 6f, bodyY - 54f, 3f, 2f, hair, flip);
+                break;
+        }
+    }
+
+    private void DrawFaceDetail(
+        FaceDetail detail,
+        Vector2 anchor,
+        bool flip,
+        float bodyX,
+        float bodyY)
+    {
+        Color mark = new(104, 54, 48);
+        switch (detail)
+        {
+            case FaceDetail.EyebrowScar:
+                DrawBox(anchor, bodyX + 2f, bodyY - 62f, 2f, 2f, mark, flip);
+                DrawBox(anchor, bodyX + 4f, bodyY - 60f, 2f, 2f, mark, flip);
+                break;
+            case FaceDetail.CheekScar:
+                DrawBox(anchor, bodyX + 3f, bodyY - 57f, 2f, 2f, mark, flip);
+                DrawBox(anchor, bodyX + 5f, bodyY - 55f, 2f, 3f, mark, flip);
+                break;
+            case FaceDetail.EyeScar:
+                DrawBox(anchor, bodyX + 5f, bodyY - 62f, 1f, 7f, mark, flip);
+                break;
+            case FaceDetail.SmallFacialMark:
+                DrawBox(anchor, bodyX + 1f, bodyY - 55f, 2f, 2f, mark, flip);
+                break;
+        }
     }
 
     private void DrawFrontArm(
@@ -1552,7 +1731,8 @@ public sealed class PlayerSpriteRenderer
         float bodyX,
         float bodyY)
     {
-        Vector2 shoulder = new(bodyX + 12f, bodyY - 44f);
+        float shoulderWidth = 12f * GetTorsoScale(player.Appearance);
+        Vector2 shoulder = new(bodyX + shoulderWidth, bodyY - 44f);
         Vector2 hand = new(pose.SwordHandX, pose.SwordHandY);
         DrawLine(anchor, shoulder, hand, 8f, Outline, flip);
         DrawLine(anchor, shoulder, hand, 5f, Tint(Leather, player), flip);
@@ -1563,7 +1743,14 @@ public sealed class PlayerSpriteRenderer
             5f,
             Tint(SteelDark, player),
             flip);
-        DrawBox(anchor, hand.X - 2f, hand.Y - 2f, 5f, 5f, Tint(Skin, player), flip);
+        DrawBox(
+            anchor,
+            hand.X - 2f,
+            hand.Y - 2f,
+            5f,
+            5f,
+            Tint(GetSkinColor(player.Appearance.SkinTone), player),
+            flip);
     }
 
     private void DrawWeapon(
@@ -2815,8 +3002,22 @@ public sealed class PlayerSpriteRenderer
         DrawBox(anchor, -9f, -18f + settle, torsoWidth, 13f, Outline, flip);
         DrawBox(anchor, -7f, -16f + settle, torsoWidth - 4f, 10f, armor, flip);
         DrawBox(anchor, 16f, -16f + settle, 15f, 14f, Outline, flip);
-        DrawBox(anchor, 17f, -14f + settle, 12f, 10f, Tint(Skin, player), flip);
-        DrawBox(anchor, 18f, -16f + settle, 13f, 5f, Hair, flip);
+        DrawBox(
+            anchor,
+            17f,
+            -14f + settle,
+            12f,
+            10f,
+            Tint(GetSkinColor(player.Appearance.SkinTone), player),
+            flip);
+        DrawBox(
+            anchor,
+            18f,
+            -16f + settle,
+            13f,
+            5f,
+            GetHairColor(player.Appearance.HairColor),
+            flip);
         DrawBox(anchor, -31f, -10f + settle, 14f, 8f, Tint(Leather, player), flip);
 
         if (player.WeaponFamily == WeaponFamily.BattleAxe)
@@ -2886,6 +3087,8 @@ public sealed class PlayerSpriteRenderer
         Color color,
         bool flip)
     {
+        x = _partPivotX + (x - _partPivotX) * _partScaleX;
+        width *= _partScaleX;
         int drawX = flip
             ? (int)MathF.Round(anchor.X - x - width)
             : (int)MathF.Round(anchor.X + x);
@@ -2922,13 +3125,16 @@ public sealed class PlayerSpriteRenderer
             color,
             angle,
             new Vector2(0f, 0.5f),
-            new Vector2(MathF.Round(length), MathF.Max(1f, MathF.Round(thickness))),
+            new Vector2(
+                MathF.Round(length),
+                MathF.Max(1f, MathF.Round(thickness * _lineThicknessScale))),
             SpriteEffects.None,
             0f);
     }
 
-    private static Vector2 ToWorld(Vector2 anchor, Vector2 local, bool flip)
+    private Vector2 ToWorld(Vector2 anchor, Vector2 local, bool flip)
     {
+        local.X = _partPivotX + (local.X - _partPivotX) * _partScaleX;
         return new Vector2(
             anchor.X + (flip ? -local.X : local.X),
             anchor.Y + local.Y);
@@ -2953,6 +3159,110 @@ public sealed class PlayerSpriteRenderer
             0,
             byte.MaxValue);
         return new Color(color.R, color.G, color.B, alpha);
+    }
+
+    private void SetPartTransform(float scaleX, float pivotX)
+    {
+        _partScaleX = scaleX;
+        _partPivotX = pivotX;
+    }
+
+    private void ResetPartTransform()
+    {
+        _partScaleX = 1f;
+        _partPivotX = 0f;
+        _lineThicknessScale = 1f;
+    }
+
+    private static float GetTorsoScale(CharacterAppearance appearance)
+    {
+        float build = appearance.BodyBuild switch
+        {
+            BodyBuild.Slim => -.05f,
+            BodyBuild.Broad => .07f,
+            _ => 0f
+        };
+        float proportion = appearance.TorsoWidth switch
+        {
+            VisualProportion.Slim => -.06f,
+            VisualProportion.Broad => .07f,
+            _ => 0f
+        };
+        float bodyType = appearance.BodyType == CharacterBodyType.Female
+            ? -.025f
+            : 0f;
+        return 1f + build + proportion + bodyType;
+    }
+
+    private static float GetArmScale(CharacterAppearance appearance)
+    {
+        float build = appearance.BodyBuild switch
+        {
+            BodyBuild.Slim => -.08f,
+            BodyBuild.Broad => .10f,
+            _ => 0f
+        };
+        float proportion = appearance.ArmThickness switch
+        {
+            VisualProportion.Slim => -.12f,
+            VisualProportion.Broad => .12f,
+            _ => 0f
+        };
+        return 1f + build + proportion;
+    }
+
+    private static float GetLegScale(CharacterAppearance appearance)
+    {
+        float build = appearance.BodyBuild switch
+        {
+            BodyBuild.Slim => -.05f,
+            BodyBuild.Broad => .07f,
+            _ => 0f
+        };
+        float proportion = appearance.LegThickness switch
+        {
+            VisualProportion.Slim => -.08f,
+            VisualProportion.Broad => .09f,
+            _ => 0f
+        };
+        return 1f + build + proportion;
+    }
+
+    private static float GetHeightOffset(ApparentHeight height)
+    {
+        return height switch
+        {
+            ApparentHeight.Short => 3f,
+            ApparentHeight.Tall => -4f,
+            _ => 0f
+        };
+    }
+
+    private static Color GetSkinColor(SkinTone tone)
+    {
+        return tone switch
+        {
+            SkinTone.Fair => new Color(230, 190, 161),
+            SkinTone.Light => new Color(211, 166, 132),
+            SkinTone.Warm => new Color(202, 146, 104),
+            SkinTone.Brown => new Color(145, 94, 64),
+            SkinTone.Deep => new Color(92, 58, 45),
+            _ => new Color(190, 137, 99)
+        };
+    }
+
+    private static Color GetHairColor(HairColor color)
+    {
+        return color switch
+        {
+            HairColor.Black => new Color(24, 23, 25),
+            HairColor.Brown => new Color(91, 58, 39),
+            HairColor.LightBrown => new Color(139, 98, 60),
+            HairColor.Gray => new Color(111, 109, 105),
+            HairColor.White => new Color(205, 201, 187),
+            HairColor.DarkRed => new Color(91, 38, 32),
+            _ => new Color(39, 29, 27)
+        };
     }
 
     private struct Pose

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using DungeonAscendant.Bosses;
 using DungeonAscendant.Enemies;
+using DungeonAscendant.Localization;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.World;
@@ -28,7 +29,35 @@ public sealed class EnemyIntroductionDefinition
     public string Name { get; }
     public string Title { get; }
     public string Description { get; }
+    public string LocalizedName => Loc.Get(LocalizationKey + ".name");
+    public string LocalizedTitle => Loc.Get(LocalizationKey + ".title");
+    public string LocalizedDescription => Loc.Get(LocalizationKey + ".description");
     public int PresentationStrength { get; }
+
+    private string LocalizationKey => "enemy." + Identity switch
+    {
+        WildForestEnemyIdentity.DireWolf => "dire_wolf",
+        WildForestEnemyIdentity.GiantSpider => "giant_spider",
+        WildForestEnemyIdentity.Goblin => "goblin",
+        WildForestEnemyIdentity.GoblinHunter => "goblin_hunter",
+        WildForestEnemyIdentity.ThornCrawler => "thorn_crawler",
+        WildForestEnemyIdentity.CorruptedTreant => "corrupted_treant",
+        WildForestEnemyIdentity.BloodBat => "blood_bat",
+        WildForestEnemyIdentity.GoblinChief => "goblin_chief",
+        WildForestEnemyIdentity.MotherSpider => "mother_spider",
+        WildForestEnemyIdentity.AncientTreant => "ancient_treant",
+        WildForestEnemyIdentity.Skeleton => "skeleton",
+        WildForestEnemyIdentity.SkeletonArcher => "skeleton_archer",
+        WildForestEnemyIdentity.RottenCorpse => "rotten_corpse",
+        WildForestEnemyIdentity.Wraith => "wraith",
+        WildForestEnemyIdentity.UndeadGuard => "undead_guard",
+        WildForestEnemyIdentity.CursedKnight => "cursed_knight",
+        WildForestEnemyIdentity.GraveBat => "grave_bat",
+        WildForestEnemyIdentity.DeathKnight => "death_knight",
+        WildForestEnemyIdentity.SoulCollector => "soul_collector",
+        WildForestEnemyIdentity.FallenKnight => "fallen_knight",
+        _ => "unknown"
+    };
 
     public EnemyIntroductionDefinition(
         WildForestEnemyIdentity identity,

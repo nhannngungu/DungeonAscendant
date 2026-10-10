@@ -111,6 +111,16 @@ public static class EquipmentCatalog
         };
     }
 
+    public static ArmorDefinition ResolveSavedArmorId(string id)
+    {
+        return id switch
+        {
+            "scout-armor" => ScoutArmor,
+            "fortress-armor" => FortressArmor,
+            _ => KnightArmor
+        };
+    }
+
     public static EquipmentItem CreateArmorSample(int index)
     {
         return index switch

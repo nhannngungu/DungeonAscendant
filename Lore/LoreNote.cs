@@ -1,28 +1,49 @@
 using System;
 using System.Collections.Generic;
+using DungeonAscendant.Localization;
 
 namespace DungeonAscendant.Lore;
 
 public sealed class LoreNoteDefinition
 {
     public string Id { get; }
-    public string Title { get; }
-    public string Source { get; }
-    public string Content { get; }
-    public IReadOnlyList<string> ContentLines { get; }
+    public string Title => Loc.Get(TitleKey);
+    public string Source => Id == "star-born-hero"
+        ? Loc.Get("notes.star_born_hero.source")
+        : Loc.Get(SourceKey);
+    public string Content => Loc.Get(ContentKey);
+    public IReadOnlyList<string> ContentLines
+    {
+        get
+        {
+            if (_cachedLanguage != Loc.CurrentLanguage)
+            {
+                _cachedLanguage = Loc.CurrentLanguage;
+                _cachedLines = WrapContent(Content, _wrapWidth);
+            }
+            return _cachedLines;
+        }
+    }
+    public string TitleKey { get; }
+    public string SourceKey { get; }
+    public string ContentKey { get; }
+
+    private readonly int _wrapWidth;
+    private Language? _cachedLanguage;
+    private IReadOnlyList<string> _cachedLines = Array.Empty<string>();
 
     public LoreNoteDefinition(
         string id,
-        string title,
-        string source,
-        string content,
+        string titleKey,
+        string sourceKey,
+        string contentKey,
         int wrapWidth = 48)
     {
         Id = string.IsNullOrWhiteSpace(id) ? "lore-note" : id;
-        Title = string.IsNullOrWhiteSpace(title) ? "Untitled Record" : title;
-        Source = source ?? string.Empty;
-        Content = content ?? string.Empty;
-        ContentLines = WrapContent(Content, Math.Max(20, wrapWidth));
+        TitleKey = titleKey ?? string.Empty;
+        SourceKey = sourceKey ?? string.Empty;
+        ContentKey = contentKey ?? string.Empty;
+        _wrapWidth = Math.Max(20, wrapWidth);
     }
 
     private static IReadOnlyList<string> WrapContent(
@@ -129,14 +150,23 @@ public static class LoreCatalog
 {
     public static readonly LoreNoteDefinition StarBornHero = new(
         "star-born-hero",
-        "The Star-Born Hero",
+        "notes.star_born_hero.title",
         "Corrupted Wilderness — Ancient Treant",
-        "Five hundred years ago,\n" +
+        "notes.star_born_hero.content" /*
         "a star fell from the heavens.\n\n" +
         "From that light, a warrior was born into this world on\n" +
         "01/01/2004.\n\n" +
         "The warrior defeated the Demon King\n" +
         "and protected the world from an age of darkness.\n\n" +
         "Yet after victory,\n" +
-        "the hero's name slowly disappeared from history...");
+        "the hero's name slowly disappeared from history..." */);
+
+    public static LoreNoteDefinition Resolve(string id)
+    {
+        return id switch
+        {
+            "star-born-hero" => StarBornHero,
+            _ => null
+        };
+    }
 }

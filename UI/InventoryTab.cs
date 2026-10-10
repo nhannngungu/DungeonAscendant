@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DungeonAscendant.Items;
+using DungeonAscendant.Localization;
 
 namespace DungeonAscendant.UI;
 
@@ -28,11 +29,11 @@ public static class InventoryTabRules
 
     public static string GetEmptyMessage(InventoryTab tab)
     {
-        return tab == InventoryTab.Weapons
-            ? "NO WEAPONS"
+        return Loc.Get(tab == InventoryTab.Weapons
+            ? "inventory.no_weapons"
             : tab == InventoryTab.Equipment
-                ? "NO EQUIPMENT"
-                : "NO NOTES";
+                ? "inventory.no_equipment"
+                : "inventory.no_notes");
     }
 
     public static void PopulateView(

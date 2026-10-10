@@ -1,4 +1,4 @@
-
+﻿
 #----------------------------- Global Properties ----------------------------#
 
 /outputDir:bin/$(Platform)
@@ -12,4 +12,1000 @@
 
 
 #---------------------------------- Content ---------------------------------#
+
+#begin Audio/Ambience/map1_forest.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map1_forest.wav
+
+#begin Audio/Ambience/map1_forest_wind.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map1_forest_wind.wav
+
+#begin Audio/Ambience/map2_catacomb.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map2_catacomb.wav
+
+#begin Audio/Ambience/map2_catacomb_roomtone.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map2_catacomb_roomtone.wav
+
+#begin Audio/Ambience/map1_forest.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map1_forest.wav
+
+#begin Audio/Ambience/map1_forest_wind.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map1_forest_wind.wav
+
+#begin Audio/Ambience/map2_catacomb.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map2_catacomb.wav
+
+#begin Audio/Ambience/map2_catacomb_roomtone.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Ambience/map2_catacomb_roomtone.wav
+
+#begin Audio/Combat/player_swing_light_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Combat/player_swing_light_01.wav
+
+#begin Audio/Enemies/Map1/AncientTreant/ancienttreant_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/AncientTreant/ancienttreant_death_01.wav
+
+#begin Audio/Enemies/Map1/AncientTreant/ancienttreant_groan_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/AncientTreant/ancienttreant_groan_01.wav
+
+#begin Audio/Enemies/Map1/AncientTreant/ancienttreant_roar_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/AncientTreant/ancienttreant_roar_01.wav
+
+#begin Audio/Enemies/Map1/AncientTreant/ancienttreant_slam_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/AncientTreant/ancienttreant_slam_01.wav
+
+#begin Audio/Enemies/Map1/BloodBat/bloodbat_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/BloodBat/bloodbat_attack_01.wav
+
+#begin Audio/Enemies/Map1/BloodBat/bloodbat_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/BloodBat/bloodbat_death_01.wav
+
+#begin Audio/Enemies/Map1/BloodBat/bloodbat_screech_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/BloodBat/bloodbat_screech_01.wav
+
+#begin Audio/Enemies/Map1/BloodBat/bloodbat_wing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/BloodBat/bloodbat_wing_01.wav
+
+#begin Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_creak_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_creak_01.wav
+
+#begin Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_death_01.wav
+
+#begin Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_root_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_root_01.wav
+
+#begin Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_slam_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/CorruptedTreant/corruptedtreant_slam_01.wav
+
+#begin Audio/Enemies/Map1/DireWolf/direwolf_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/DireWolf/direwolf_attack_01.wav
+
+#begin Audio/Enemies/Map1/DireWolf/direwolf_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/DireWolf/direwolf_death_01.wav
+
+#begin Audio/Enemies/Map1/DireWolf/direwolf_hurt_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/DireWolf/direwolf_hurt_01.wav
+
+#begin Audio/Enemies/Map1/DireWolf/direwolf_idle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/DireWolf/direwolf_idle_01.wav
+
+#begin Audio/Enemies/Map1/GiantSpider/giantspider_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GiantSpider/giantspider_attack_01.wav
+
+#begin Audio/Enemies/Map1/GiantSpider/giantspider_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GiantSpider/giantspider_death_01.wav
+
+#begin Audio/Enemies/Map1/GiantSpider/giantspider_idle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GiantSpider/giantspider_idle_01.wav
+
+#begin Audio/Enemies/Map1/GiantSpider/giantspider_web_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GiantSpider/giantspider_web_01.wav
+
+#begin Audio/Enemies/Map1/Goblin/goblin_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/Goblin/goblin_attack_01.wav
+
+#begin Audio/Enemies/Map1/Goblin/goblin_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/Goblin/goblin_death_01.wav
+
+#begin Audio/Enemies/Map1/Goblin/goblin_hurt_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/Goblin/goblin_hurt_01.wav
+
+#begin Audio/Enemies/Map1/Goblin/goblin_idle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/Goblin/goblin_idle_01.wav
+
+#begin Audio/Enemies/Map1/GoblinChief/goblinchief_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinChief/goblinchief_attack_01.wav
+
+#begin Audio/Enemies/Map1/GoblinChief/goblinchief_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinChief/goblinchief_death_01.wav
+
+#begin Audio/Enemies/Map1/GoblinChief/goblinchief_hurt_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinChief/goblinchief_hurt_01.wav
+
+#begin Audio/Enemies/Map1/GoblinChief/goblinchief_roar_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinChief/goblinchief_roar_01.wav
+
+#begin Audio/Enemies/Map1/GoblinHunter/goblinhunter_bow_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinHunter/goblinhunter_bow_01.wav
+
+#begin Audio/Enemies/Map1/GoblinHunter/goblinhunter_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinHunter/goblinhunter_death_01.wav
+
+#begin Audio/Enemies/Map1/GoblinHunter/goblinhunter_hurt_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinHunter/goblinhunter_hurt_01.wav
+
+#begin Audio/Enemies/Map1/GoblinHunter/goblinhunter_idle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/GoblinHunter/goblinhunter_idle_01.wav
+
+#begin Audio/Enemies/Map1/MotherSpider/motherspider_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/MotherSpider/motherspider_death_01.wav
+
+#begin Audio/Enemies/Map1/MotherSpider/motherspider_screech_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/MotherSpider/motherspider_screech_01.wav
+
+#begin Audio/Enemies/Map1/MotherSpider/motherspider_slam_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/MotherSpider/motherspider_slam_01.wav
+
+#begin Audio/Enemies/Map1/MotherSpider/motherspider_web_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/MotherSpider/motherspider_web_01.wav
+
+#begin Audio/Enemies/Map1/ThornCrawler/thorncrawler_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/ThornCrawler/thorncrawler_attack_01.wav
+
+#begin Audio/Enemies/Map1/ThornCrawler/thorncrawler_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/ThornCrawler/thorncrawler_death_01.wav
+
+#begin Audio/Enemies/Map1/ThornCrawler/thorncrawler_emerge_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/ThornCrawler/thorncrawler_emerge_01.wav
+
+#begin Audio/Enemies/Map1/ThornCrawler/thorncrawler_rustle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map1/ThornCrawler/thorncrawler_rustle_01.wav
+
+#begin Audio/Enemies/Map2/CursedKnight/cursedknight_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/CursedKnight/cursedknight_death_01.wav
+
+#begin Audio/Enemies/Map2/CursedKnight/cursedknight_hum_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/CursedKnight/cursedknight_hum_01.wav
+
+#begin Audio/Enemies/Map2/CursedKnight/cursedknight_step_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/CursedKnight/cursedknight_step_01.wav
+
+#begin Audio/Enemies/Map2/CursedKnight/cursedknight_swing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/CursedKnight/cursedknight_swing_01.wav
+
+#begin Audio/Enemies/Map2/DeathKnight/deathknight_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/DeathKnight/deathknight_death_01.wav
+
+#begin Audio/Enemies/Map2/DeathKnight/deathknight_slam_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/DeathKnight/deathknight_slam_01.wav
+
+#begin Audio/Enemies/Map2/DeathKnight/deathknight_step_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/DeathKnight/deathknight_step_01.wav
+
+#begin Audio/Enemies/Map2/DeathKnight/deathknight_swing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/DeathKnight/deathknight_swing_01.wav
+
+#begin Audio/Enemies/Map2/FallenKnight/fallenknight_counter_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/FallenKnight/fallenknight_counter_01.wav
+
+#begin Audio/Enemies/Map2/FallenKnight/fallenknight_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/FallenKnight/fallenknight_death_01.wav
+
+#begin Audio/Enemies/Map2/FallenKnight/fallenknight_final_oath_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/FallenKnight/fallenknight_final_oath_01.wav
+
+#begin Audio/Enemies/Map2/FallenKnight/fallenknight_phase_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/FallenKnight/fallenknight_phase_01.wav
+
+#begin Audio/Enemies/Map2/FallenKnight/fallenknight_swing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/FallenKnight/fallenknight_swing_01.wav
+
+#begin Audio/Enemies/Map2/GraveBat/gravebat_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/GraveBat/gravebat_attack_01.wav
+
+#begin Audio/Enemies/Map2/GraveBat/gravebat_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/GraveBat/gravebat_death_01.wav
+
+#begin Audio/Enemies/Map2/GraveBat/gravebat_screech_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/GraveBat/gravebat_screech_01.wav
+
+#begin Audio/Enemies/Map2/GraveBat/gravebat_wing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/GraveBat/gravebat_wing_01.wav
+
+#begin Audio/Enemies/Map2/RottenCorpse/rottencorpse_burst_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/RottenCorpse/rottencorpse_burst_01.wav
+
+#begin Audio/Enemies/Map2/RottenCorpse/rottencorpse_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/RottenCorpse/rottencorpse_death_01.wav
+
+#begin Audio/Enemies/Map2/RottenCorpse/rottencorpse_groan_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/RottenCorpse/rottencorpse_groan_01.wav
+
+#begin Audio/Enemies/Map2/RottenCorpse/rottencorpse_vomit_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/RottenCorpse/rottencorpse_vomit_01.wav
+
+#begin Audio/Enemies/Map2/Skeleton/skeleton_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Skeleton/skeleton_attack_01.wav
+
+#begin Audio/Enemies/Map2/Skeleton/skeleton_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Skeleton/skeleton_death_01.wav
+
+#begin Audio/Enemies/Map2/Skeleton/skeleton_hurt_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Skeleton/skeleton_hurt_01.wav
+
+#begin Audio/Enemies/Map2/Skeleton/skeleton_rattle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Skeleton/skeleton_rattle_01.wav
+
+#begin Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_death_01.wav
+
+#begin Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_draw_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_draw_01.wav
+
+#begin Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_rattle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_rattle_01.wav
+
+#begin Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_release_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SkeletonArcher/skeletonarcher_release_01.wav
+
+#begin Audio/Enemies/Map2/SoulCollector/soulcollector_cast_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SoulCollector/soulcollector_cast_01.wav
+
+#begin Audio/Enemies/Map2/SoulCollector/soulcollector_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SoulCollector/soulcollector_death_01.wav
+
+#begin Audio/Enemies/Map2/SoulCollector/soulcollector_pull_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SoulCollector/soulcollector_pull_01.wav
+
+#begin Audio/Enemies/Map2/SoulCollector/soulcollector_whisper_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/SoulCollector/soulcollector_whisper_01.wav
+
+#begin Audio/Enemies/Map2/UndeadGuard/undeadguard_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/UndeadGuard/undeadguard_attack_01.wav
+
+#begin Audio/Enemies/Map2/UndeadGuard/undeadguard_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/UndeadGuard/undeadguard_death_01.wav
+
+#begin Audio/Enemies/Map2/UndeadGuard/undeadguard_shield_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/UndeadGuard/undeadguard_shield_01.wav
+
+#begin Audio/Enemies/Map2/UndeadGuard/undeadguard_step_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/UndeadGuard/undeadguard_step_01.wav
+
+#begin Audio/Enemies/Map2/Wraith/wraith_attack_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Wraith/wraith_attack_01.wav
+
+#begin Audio/Enemies/Map2/Wraith/wraith_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Wraith/wraith_death_01.wav
+
+#begin Audio/Enemies/Map2/Wraith/wraith_phase_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Wraith/wraith_phase_01.wav
+
+#begin Audio/Enemies/Map2/Wraith/wraith_whisper_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Map2/Wraith/wraith_whisper_01.wav
+
+#begin Audio/Enemies/Skeleton/skeleton_death_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/Skeleton/skeleton_death_01.wav
+
+#begin Audio/Enemies/SkeletonArcher/bow_release_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Enemies/SkeletonArcher/bow_release_01.wav
+
+#begin Audio/Impacts/impact_bone_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_bone_01.wav
+
+#begin Audio/Impacts/impact_bone_02.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_bone_02.wav
+
+#begin Audio/Impacts/impact_bone_03.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_bone_03.wav
+
+#begin Audio/Impacts/impact_flesh_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_flesh_01.wav
+
+#begin Audio/Impacts/impact_flesh_02.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_flesh_02.wav
+
+#begin Audio/Impacts/impact_flesh_03.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_flesh_03.wav
+
+#begin Audio/Impacts/impact_metal_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_metal_01.wav
+
+#begin Audio/Impacts/impact_metal_02.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_metal_02.wav
+
+#begin Audio/Impacts/impact_metal_03.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_metal_03.wav
+
+#begin Audio/Impacts/impact_spectral_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_spectral_01.wav
+
+#begin Audio/Impacts/impact_spectral_02.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_spectral_02.wav
+
+#begin Audio/Impacts/impact_spectral_03.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_spectral_03.wav
+
+#begin Audio/Impacts/impact_stone_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_stone_01.wav
+
+#begin Audio/Impacts/impact_stone_02.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_stone_02.wav
+
+#begin Audio/Impacts/impact_stone_03.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_stone_03.wav
+
+#begin Audio/Impacts/impact_wood_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_wood_01.wav
+
+#begin Audio/Impacts/impact_wood_02.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_wood_02.wav
+
+#begin Audio/Impacts/impact_wood_03.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Impacts/impact_wood_03.wav
+
+#begin Audio/Music/Map1/ancient_treant_boss.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map1/ancient_treant_boss.wav
+
+#begin Audio/Music/Map1/ancient_treant_boss_epic.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map1/ancient_treant_boss_epic.wav
+
+#begin Audio/Music/Map1/wilderness_combat.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map1/wilderness_combat.wav
+
+#begin Audio/Music/Map1/wilderness_combat_epic.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map1/wilderness_combat_epic.wav
+
+#begin Audio/Music/Map1/wilderness_explore.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map1/wilderness_explore.wav
+
+#begin Audio/Music/Map1/wilderness_explore_epic.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map1/wilderness_explore_epic.wav
+
+#begin Audio/Music/Map2/catacombs_combat.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map2/catacombs_combat.wav
+
+#begin Audio/Music/Map2/catacombs_combat_epic.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map2/catacombs_combat_epic.wav
+
+#begin Audio/Music/Map2/catacombs_explore.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map2/catacombs_explore.wav
+
+#begin Audio/Music/Map2/catacombs_explore_epic.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map2/catacombs_explore_epic.wav
+
+#begin Audio/Music/Map2/fallen_knight_boss.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map2/fallen_knight_boss.wav
+
+#begin Audio/Music/Map2/fallen_knight_boss_epic.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Music/Map2/fallen_knight_boss_epic.wav
+
+#begin Audio/UI/ui_back_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/UI/ui_back_01.wav
+
+#begin Audio/UI/ui_confirm_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/UI/ui_confirm_01.wav
+
+#begin Audio/UI/ui_inventory_open_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/UI/ui_inventory_open_01.wav
+
+#begin Audio/UI/ui_note_pickup_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/UI/ui_note_pickup_01.wav
+
+#begin Audio/UI/ui_open_inventory_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/UI/ui_open_inventory_01.wav
+
+#begin Audio/UI/ui_select_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/UI/ui_select_01.wav
+
+#begin Audio/Weapons/Breaker/breaker_ground_slam_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Breaker/breaker_ground_slam_01.wav
+
+#begin Audio/Weapons/Breaker/breaker_mace_impact_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Breaker/breaker_mace_impact_01.wav
+
+#begin Audio/Weapons/Breaker/breaker_mace_swing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Breaker/breaker_mace_swing_01.wav
+
+#begin Audio/Weapons/Breaker/breaker_rush_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Breaker/breaker_rush_01.wav
+
+#begin Audio/Weapons/Duelist/duelist_dash_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Duelist/duelist_dash_01.wav
+
+#begin Audio/Weapons/Duelist/duelist_flurry_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Duelist/duelist_flurry_01.wav
+
+#begin Audio/Weapons/Duelist/duelist_slash1_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Duelist/duelist_slash1_01.wav
+
+#begin Audio/Weapons/Duelist/duelist_slash2_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Duelist/duelist_slash2_01.wav
+
+#begin Audio/Weapons/Knight/knight_block_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Knight/knight_block_01.wav
+
+#begin Audio/Weapons/Knight/knight_heavy_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Knight/knight_heavy_01.wav
+
+#begin Audio/Weapons/Knight/knight_light_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Knight/knight_light_01.wav
+
+#begin Audio/Weapons/Knight/knight_shield_bash_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Knight/knight_shield_bash_01.wav
+
+#begin Audio/Weapons/Raider/raider_axe_heavy_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Raider/raider_axe_heavy_01.wav
+
+#begin Audio/Weapons/Raider/raider_axe_swing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Raider/raider_axe_swing_01.wav
+
+#begin Audio/Weapons/Raider/raider_buckler_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Raider/raider_buckler_01.wav
+
+#begin Audio/Weapons/Raider/raider_hook_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Raider/raider_hook_01.wav
+
+#begin Audio/Weapons/Ranger/ranger_arrow_fly_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Ranger/ranger_arrow_fly_01.wav
+
+#begin Audio/Weapons/Ranger/ranger_draw_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Ranger/ranger_draw_01.wav
+
+#begin Audio/Weapons/Ranger/ranger_impact_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Ranger/ranger_impact_01.wav
+
+#begin Audio/Weapons/Ranger/ranger_release_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Ranger/ranger_release_01.wav
+
+#begin Audio/Weapons/Reckoner/reckoner_chain_lash_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Reckoner/reckoner_chain_lash_01.wav
+
+#begin Audio/Weapons/Reckoner/reckoner_chain_retract_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Reckoner/reckoner_chain_retract_01.wav
+
+#begin Audio/Weapons/Reckoner/reckoner_chain_swing_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Reckoner/reckoner_chain_swing_01.wav
+
+#begin Audio/Weapons/Reckoner/reckoner_vortex_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Reckoner/reckoner_vortex_01.wav
+
+#begin Audio/Weapons/Spellblade/spellblade_arcane_slash_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Spellblade/spellblade_arcane_slash_01.wav
+
+#begin Audio/Weapons/Spellblade/spellblade_detonate_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Spellblade/spellblade_detonate_01.wav
+
+#begin Audio/Weapons/Spellblade/spellblade_lunge_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Spellblade/spellblade_lunge_01.wav
+
+#begin Audio/Weapons/Spellblade/spellblade_rune_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/Weapons/Spellblade/spellblade_rune_01.wav
+
+#begin Audio/World/Map1/branch_snap_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map1/branch_snap_01.wav
+
+#begin Audio/World/Map1/grass_step_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map1/grass_step_01.wav
+
+#begin Audio/World/Map1/stone_step_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map1/stone_step_01.wav
+
+#begin Audio/World/Map2/chain_rattle_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map2/chain_rattle_01.wav
+
+#begin Audio/World/Map2/coffin_open_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map2/coffin_open_01.wav
+
+#begin Audio/World/Map2/scholar_coffin_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map2/scholar_coffin_01.wav
+
+#begin Audio/World/Map2/shrine_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map2/shrine_01.wav
+
+#begin Audio/World/Map2/stone_step_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map2/stone_step_01.wav
+
+#begin Audio/World/Map2/tomb_rumble_01.wav
+/importer:WavImporter
+/processor:SoundEffectProcessor
+/processorParam:Quality=Best
+/build:Audio/World/Map2/tomb_rumble_01.wav
+
+#begin Audio/audio_manifest.json
+/copy:Audio/audio_manifest.json
+
+#begin Audio/epic_music_manifest.json
+/copy:Audio/epic_music_manifest.json
 

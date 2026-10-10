@@ -1,0 +1,12 @@
+{
+  "Map1": {
+    "Explore": "Content/Audio/Music/Map1/wilderness_explore_epic.wav",
+    "Combat": "Content/Audio/Music/Map1/wilderness_combat_epic.wav",
+    "Boss": "Content/Audio/Music/Map1/ancient_treant_boss_epic.wav"
+  },
+  "Map2": {
+    "Explore": "Content/Audio/Music/Map2/catacombs_explore_epic.wav",
+    "Combat": "Content/Audio/Music/Map2/catacombs_combat_epic.wav",
+    "Boss": "Content/Audio/Music/Map2/fallen_knight_boss_epic.wav"
+  }
+}

@@ -6,6 +6,9 @@ using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
 using DungeonAscendant.Lore;
+using DungeonAscendant.Localization;
+using DungeonAscendant.Persistence;
+using DungeonAscendant.Player;
 using DungeonAscendant.Progression;
 using DungeonAscendant.UI;
 using DungeonAscendant.World;
@@ -30,6 +33,7 @@ public sealed class GameSession
 
     private const float ExitInteractionRadius = 72f;
     private const float WorldTierTransitionDurationSeconds = 1.4f;
+    private const float AutosaveIntervalSeconds = 12f;
     public const float MapEntryDropOffset =
         SideScrollingCollision.DefaultEntryDropOffset;
     public const float WildForestShowcasePlayerStartDistance = 400f;
@@ -139,6 +143,11 @@ public sealed class GameSession
     private bool _sequentialBossActive;
     private bool _sequentialTestComplete;
     private readonly List<Enemy> _wildForestShowcaseEnemies = new();
+    private readonly SaveSlotManager _saveSlotManager;
+    private int _pendingSlotIndex = -1;
+    private int _activeSlotIndex = -1;
+    private double _activePlayTimeSeconds;
+    private float _autosaveTimeRemaining = AutosaveIntervalSeconds;
 
     public PlayerCharacter Player { get; private set; }
     public EnemyManager Enemies { get; }
@@ -148,7 +157,18 @@ public sealed class GameSession
     public TombInteractionManager Tombs { get; }
     public AncientScholarTombSystem ScholarTomb { get; }
     public DeveloperPanel DeveloperPanel { get; } = new();
+    public PauseMenuState PauseMenu { get; } = new();
+    public MainMenuState MainMenu { get; } = new();
+    public LanguageSettingsState LanguageSettings { get; } = new();
+    public CharacterSelectState CharacterSelect { get; } = new();
+    public CharacterCreatorState CharacterCreator { get; } = new();
+    public CharacterAppearance RunAppearance { get; private set; } =
+        CharacterAppearance.CreateDefault();
+    public string CharacterName { get; private set; } = "ASCENDANT";
+    public IReadOnlyList<SaveSlotData> SaveSlots => _saveSlotManager.Slots;
+    public string SaveError => _saveSlotManager.LastError;
     public IReadOnlyList<RottenCorpseBurst> RottenCorpseBursts => _rottenCorpseBursts;
+    public IReadOnlyList<Enemy> DefeatedEnemiesThisFrame => _defeatedEnemies;
     public bool Map01Cleared { get; private set; }
     public bool Map02Cleared { get; private set; }
     public ProjectileManager Projectiles { get; }
@@ -226,8 +246,8 @@ public sealed class GameSession
     public bool IsSequentialEnemyTestMode => IsWildForestShowcaseMode;
     public bool IsMapEntryFallActive => _mapEntryFallActive;
     public string CurrentMapName => CurrentDungeon?.IsAncientCatacombs == true
-        ? "ANCIENT CATACOMBS"
-        : "CORRUPTED WILDERNESS";
+        ? Loc.Get("hud.map_catacombs")
+        : Loc.Get("hud.map_wilderness");
     public string CurrentZoneName => GetCurrentZoneName();
     public int ActiveEnemyCount => CountActiveEnemies();
     public bool ShouldRenderBoss => CurrentDungeon?.IsAncientCatacombs != true;
@@ -255,7 +275,21 @@ public sealed class GameSession
         return type == EnemyType.Spiderling ? null : type.ToString().ToUpperInvariant();
     }
 
-    public GameSession(Rectangle viewportBounds, int? randomSeed = null)
+    /// <summary>
+    /// Deterministic constructor retained for the existing headless gameplay
+    /// validations, which intentionally bypass front-end screens.
+    /// </summary>
+    public GameSession(Rectangle viewportBounds, int randomSeed)
+        : this(viewportBounds, (int?)randomSeed, null)
+    {
+        ResetRun();
+        State = GameState.Playing;
+    }
+
+    public GameSession(
+        Rectangle viewportBounds,
+        int? randomSeed = null,
+        string savePath = null)
     {
         WeaponArchetypeValidation.ValidateOrThrow();
         EquipmentRebuildValidation.ValidateOrThrow();
@@ -263,6 +297,7 @@ public sealed class GameSession
         InventoryGridNavigation.ValidateOrThrow();
         InventoryTabRules.ValidateOrThrow();
         WildForestMapValidation.ValidateOrThrow();
+        _saveSlotManager = new SaveSlotManager(savePath);
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         _catacombGenerator = new CatacombMapGenerator();
         Enemies = new EnemyManager(randomSeed);
@@ -288,12 +323,6 @@ public sealed class GameSession
         KeyboardState keyboardState,
         MouseState mouseState)
     {
-        if (DeveloperModeEnabled && DeveloperPanel.Update(this, keyboardState))
-        {
-            StoreInputStates(keyboardState, mouseState);
-            return;
-        }
-
         bool startPressed = keyboardState.IsKeyDown(Keys.Enter) &&
             !_previousKeyboardState.IsKeyDown(Keys.Enter);
         bool pausePressed = keyboardState.IsKeyDown(Keys.Escape) &&
@@ -313,6 +342,8 @@ public sealed class GameSession
         bool fusePressed = WasKeyPressed(keyboardState, Keys.F);
         bool previousTabPressed = WasKeyPressed(keyboardState, Keys.Q);
         bool nextTabPressed = WasKeyPressed(keyboardState, Keys.E);
+        bool deletePressed = WasKeyPressed(keyboardState, Keys.Delete);
+        bool createPressed = WasKeyPressed(keyboardState, Keys.C);
         _fusionFeedbackTimeRemaining = System.MathF.Max(
             0f,
             _fusionFeedbackTimeRemaining -
@@ -321,6 +352,19 @@ public sealed class GameSession
             0f,
             _loreNoteFeedbackTimeRemaining -
                 (float)gameTime.ElapsedGameTime.TotalSeconds);
+
+        if (State == GameState.Paused)
+        {
+            UpdatePauseMenu(keyboardState, startPressed, pausePressed);
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
+
+        if (DeveloperModeEnabled && DeveloperPanel.Update(this, keyboardState))
+        {
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
 
         if (debugPressed)
             ShowCombatDebug = !ShowCombatDebug;
@@ -333,21 +377,54 @@ public sealed class GameSession
 
         if (State == GameState.Start)
         {
-            if (startPressed)
+            if (LanguageSettings.IsOpen)
             {
-                ResetRun();
-                State = GameState.Playing;
+                UpdateLanguageSettings(keyboardState, startPressed, pausePressed);
+            }
+            else
+            {
+                if (WasKeyPressed(keyboardState, Keys.W) ||
+                    WasKeyPressed(keyboardState, Keys.Up))
+                {
+                    MainMenu.Move(-1);
+                }
+                else if (WasKeyPressed(keyboardState, Keys.S) ||
+                    WasKeyPressed(keyboardState, Keys.Down))
+                {
+                    MainMenu.Move(1);
+                }
+
+                if (startPressed && MainMenu.SelectedEntry == MainMenuEntry.Settings)
+                {
+                    LanguageSettings.Open();
+                }
+                else if (startPressed)
+                {
+                    _saveSlotManager.Reload();
+                    CharacterSelect.Begin(_saveSlotManager.Slots);
+                    State = GameState.CharacterSelect;
+                }
             }
 
             StoreInputStates(keyboardState, mouseState);
             return;
         }
 
-        if (State == GameState.Paused)
+        if (State == GameState.CharacterSelect)
         {
-            if (pausePressed)
-                State = GameState.Playing;
+            UpdateCharacterSelect(
+                keyboardState,
+                startPressed,
+                pausePressed,
+                deletePressed,
+                createPressed);
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
 
+        if (State == GameState.CharacterCreation)
+        {
+            UpdateCharacterCreation(keyboardState, startPressed, pausePressed);
             StoreInputStates(keyboardState, mouseState);
             return;
         }
@@ -357,11 +434,23 @@ public sealed class GameSession
             if (restartPressed)
             {
                 ResetRun();
+                SaveActiveSlot();
                 State = GameState.Playing;
             }
 
             StoreInputStates(keyboardState, mouseState);
             return;
+        }
+
+        float elapsedForSave = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            .25f);
+        _activePlayTimeSeconds += elapsedForSave;
+        _autosaveTimeRemaining -= elapsedForSave;
+        if (_autosaveTimeRemaining <= 0f)
+        {
+            SaveActiveSlot();
+            _autosaveTimeRemaining = AutosaveIntervalSeconds;
         }
 
         if (ScholarTomb.IsModalActive)
@@ -411,6 +500,9 @@ public sealed class GameSession
 
         if (pausePressed)
         {
+            SaveActiveSlot();
+            Player.Combat.CancelActions(restoreStamina: false);
+            PauseMenu.Begin();
             State = GameState.Paused;
             StoreInputStates(keyboardState, mouseState);
             return;
@@ -728,6 +820,237 @@ public sealed class GameSession
         KillCount += defeatedCount;
     }
 
+    private void UpdatePauseMenu(
+        KeyboardState keyboardState,
+        bool confirmPressed,
+        bool backPressed)
+    {
+        if (LanguageSettings.IsOpen)
+        {
+            UpdateLanguageSettings(keyboardState, confirmPressed, backPressed);
+            return;
+        }
+
+        if (PauseMenu.IsReturnConfirmationOpen)
+        {
+            if (backPressed)
+            {
+                PauseMenu.CancelConfirmation();
+                return;
+            }
+
+            if (WasKeyPressed(keyboardState, Keys.W) ||
+                WasKeyPressed(keyboardState, Keys.Up) ||
+                WasKeyPressed(keyboardState, Keys.S) ||
+                WasKeyPressed(keyboardState, Keys.Down) ||
+                WasKeyPressed(keyboardState, Keys.A) ||
+                WasKeyPressed(keyboardState, Keys.Left) ||
+                WasKeyPressed(keyboardState, Keys.D) ||
+                WasKeyPressed(keyboardState, Keys.Right))
+            {
+                PauseMenu.ToggleConfirmation();
+            }
+
+            if (!confirmPressed)
+                return;
+
+            if (PauseMenu.ConfirmReturn)
+                ReturnToCharacterSelect();
+            else
+                PauseMenu.CancelConfirmation();
+            return;
+        }
+
+        if (backPressed)
+        {
+            State = GameState.Playing;
+            return;
+        }
+
+        if (WasKeyPressed(keyboardState, Keys.W) ||
+            WasKeyPressed(keyboardState, Keys.Up))
+        {
+            PauseMenu.Move(-1);
+        }
+        else if (WasKeyPressed(keyboardState, Keys.S) ||
+            WasKeyPressed(keyboardState, Keys.Down))
+        {
+            PauseMenu.Move(1);
+        }
+
+        if (!confirmPressed)
+            return;
+
+        switch (PauseMenu.SelectedEntry)
+        {
+            case PauseMenuEntry.Resume:
+                State = GameState.Playing;
+                break;
+            case PauseMenuEntry.Settings:
+                LanguageSettings.Open();
+                break;
+            case PauseMenuEntry.ReturnToCharacterSelect:
+                PauseMenu.OpenReturnConfirmation();
+                break;
+        }
+    }
+
+    private void UpdateLanguageSettings(
+        KeyboardState keyboardState,
+        bool confirmPressed,
+        bool backPressed)
+    {
+        if (backPressed || confirmPressed)
+        {
+            LanguageSettings.Close();
+            return;
+        }
+
+        if (WasKeyPressed(keyboardState, Keys.W) ||
+            WasKeyPressed(keyboardState, Keys.Up))
+        {
+            LanguageSettings.MoveRow(-1);
+        }
+        else if (WasKeyPressed(keyboardState, Keys.S) ||
+            WasKeyPressed(keyboardState, Keys.Down))
+        {
+            LanguageSettings.MoveRow(1);
+        }
+        else if (WasKeyPressed(keyboardState, Keys.A) ||
+            WasKeyPressed(keyboardState, Keys.Left))
+        {
+            LanguageSettings.Adjust(-1);
+        }
+        else if (WasKeyPressed(keyboardState, Keys.D) ||
+            WasKeyPressed(keyboardState, Keys.Right))
+        {
+            LanguageSettings.Adjust(1);
+        }
+    }
+
+    private void ReturnToCharacterSelect()
+    {
+        int returningSlotIndex = _activeSlotIndex;
+        SaveActiveSlot();
+        CleanupGameplayRuntime();
+        _saveSlotManager.Reload();
+        CharacterSelect.Begin(
+            _saveSlotManager.Slots,
+            returningSlotIndex >= 0 ? returningSlotIndex : null);
+        _activeSlotIndex = -1;
+        _pendingSlotIndex = -1;
+        State = GameState.CharacterSelect;
+    }
+
+    private void CleanupGameplayRuntime()
+    {
+        Projectiles.Clear();
+        GroundRunes.Clear();
+        RootHazards.Clear();
+        ClearBreakerEffects();
+        Loot.Reset();
+        Enemies.Reset(
+            null,
+            1,
+            1,
+            RegionType.WildForest,
+            suppressProceduralSpawns: true);
+        WildForestEncounters.Reset(null);
+        EnemyIntroductions.Reset();
+        Curse.Reset();
+        Tombs.Reset(null);
+        ScholarTomb.ResetForNewRun();
+        Camera.ResetRuntime();
+        _defeatedEnemies.Clear();
+        _rottenCorpseBursts.Clear();
+        _playerAttackHits.Clear();
+        _pendingArrowRain.Clear();
+        _predatorFanHits.Clear();
+        _raiderWallImpactedEnemies.Clear();
+        _wildForestShowcaseEnemies.Clear();
+        _activeInventoryItems.Clear();
+        ClearFusionState();
+        ClearSequentialEnemyTestState();
+        LoreNotePickup = null;
+        Chest = null;
+        Boss = null;
+        CurrentDungeon = null;
+        IsInventoryOpen = false;
+        _lastAcquiredLoreNote = null;
+        _loreNoteFeedbackTimeRemaining = 0f;
+        _worldTierTransitionTimeRemaining = 0f;
+        Player.ClearTemporaryStatus();
+        Player.Combat.CancelActions(restoreStamina: false);
+        Player = new PlayerCharacter(Vector2.Zero);
+        RunAppearance = CharacterAppearance.CreateDefault();
+        CharacterName = "ASCENDANT";
+    }
+
+    private void UpdateCharacterSelect(
+        KeyboardState keyboardState,
+        bool confirmPressed,
+        bool backPressed,
+        bool deletePressed,
+        bool createPressed)
+    {
+        SaveSlotData selected = _saveSlotManager.GetSlot(
+            CharacterSelect.SelectedSlotIndex);
+
+        if (CharacterSelect.IsDeleteConfirmationOpen)
+        {
+            if (backPressed)
+            {
+                CharacterSelect.CancelDelete();
+            }
+            else if (confirmPressed || deletePressed)
+            {
+                _saveSlotManager.Delete(CharacterSelect.SelectedSlotIndex);
+                CharacterSelect.CancelDelete();
+                CharacterSelect.RefreshPreviews(_saveSlotManager.Slots);
+            }
+            return;
+        }
+
+        if (backPressed)
+        {
+            State = GameState.Start;
+            return;
+        }
+
+        if (WasKeyPressed(keyboardState, Keys.A) ||
+            WasKeyPressed(keyboardState, Keys.Left))
+        {
+            CharacterSelect.Move(-1);
+        }
+        else if (WasKeyPressed(keyboardState, Keys.D) ||
+            WasKeyPressed(keyboardState, Keys.Right))
+        {
+            CharacterSelect.Move(1);
+        }
+
+        selected = _saveSlotManager.GetSlot(CharacterSelect.SelectedSlotIndex);
+        if (deletePressed)
+        {
+            CharacterSelect.BeginDelete(selected);
+            return;
+        }
+
+        if (!confirmPressed && !(createPressed && !selected.Occupied))
+            return;
+
+        if (selected.Occupied)
+        {
+            LoadRunFromSlot(selected);
+            State = GameState.Playing;
+            return;
+        }
+
+        _pendingSlotIndex = selected.SlotIndex;
+        CharacterCreator.Begin(_pendingSlotIndex);
+        Player.SetAppearance(CharacterCreator.Draft);
+        State = GameState.CharacterCreation;
+    }
+
     private void ResetRun()
     {
         ScholarTomb.ResetForNewRun();
@@ -740,7 +1063,9 @@ public sealed class GameSession
         CurrentDungeon = IsWildForestShowcaseMode
             ? _dungeonGenerator.GenerateWildForestShowcase()
             : _dungeonGenerator.GenerateWildForest();
-        Player = new PlayerCharacter(GetRoomEntranceSpawn(CurrentDungeon.StartRoom));
+        Player = new PlayerCharacter(
+            GetRoomEntranceSpawn(CurrentDungeon.StartRoom),
+            appearance: RunAppearance);
         _lastSafePlayerPosition = Player.Position;
         KillCount = 0;
         IsInventoryOpen = false;
@@ -758,6 +1083,256 @@ public sealed class GameSession
         _debugArmorIndex = 1;
         ClearFusionState();
         InitializeDungeonState();
+    }
+
+    private void UpdateCharacterCreation(
+        KeyboardState keyboardState,
+        bool confirmPressed,
+        bool backPressed)
+    {
+        if (backPressed)
+        {
+            Player.SetAppearance(CharacterAppearance.CreateDefault());
+            CharacterSelect.Begin(_saveSlotManager.Slots);
+            State = GameState.CharacterSelect;
+            return;
+        }
+
+        if (WasKeyPressed(keyboardState, Keys.W) ||
+            WasKeyPressed(keyboardState, Keys.Up))
+        {
+            CharacterCreator.MoveSelection(-1);
+        }
+        else if (WasKeyPressed(keyboardState, Keys.S) ||
+            WasKeyPressed(keyboardState, Keys.Down))
+        {
+            CharacterCreator.MoveSelection(1);
+        }
+
+        int adjustment = 0;
+        if (WasKeyPressed(keyboardState, Keys.A) ||
+            WasKeyPressed(keyboardState, Keys.Left))
+        {
+            adjustment = -1;
+        }
+        else if (WasKeyPressed(keyboardState, Keys.D) ||
+            WasKeyPressed(keyboardState, Keys.Right))
+        {
+            adjustment = 1;
+        }
+
+        if (adjustment != 0)
+        {
+            CharacterCreator.Adjust(adjustment);
+            Player.SetAppearance(CharacterCreator.Draft);
+        }
+
+        if (!confirmPressed)
+            return;
+
+        switch (CharacterCreator.SelectedRow)
+        {
+            case CharacterCreatorRow.Randomize:
+                CharacterCreator.Randomize();
+                Player.SetAppearance(CharacterCreator.Draft);
+                break;
+            case CharacterCreatorRow.ResetDefault:
+                CharacterCreator.ResetToDefault();
+                Player.SetAppearance(CharacterCreator.Draft);
+                break;
+            case CharacterCreatorRow.Confirm:
+                RunAppearance = CharacterCreator.Draft.Clone();
+                RunAppearance.Normalize();
+                CharacterName = SaveSlotData.SanitizeName(
+                    CharacterCreator.CharacterName,
+                    Math.Max(0, _pendingSlotIndex));
+                _activeSlotIndex = Math.Clamp(
+                    _pendingSlotIndex,
+                    0,
+                    SaveSlotManager.SlotCount - 1);
+                _activePlayTimeSeconds = 0d;
+                _autosaveTimeRemaining = AutosaveIntervalSeconds;
+                ResetRun();
+                SaveActiveSlot();
+                State = GameState.Playing;
+                break;
+            default:
+                CharacterCreator.Adjust(1);
+                Player.SetAppearance(CharacterCreator.Draft);
+                break;
+        }
+    }
+
+    private void LoadRunFromSlot(SaveSlotData slot)
+    {
+        slot.Normalize(slot.SlotIndex);
+        _activeSlotIndex = slot.SlotIndex;
+        _pendingSlotIndex = -1;
+        CharacterName = slot.CharacterName;
+        RunAppearance = slot.Appearance.Clone();
+        _activePlayTimeSeconds = slot.PlayTimeSeconds;
+        _autosaveTimeRemaining = AutosaveIntervalSeconds;
+
+        ScholarTomb.ResetForNewRun();
+        DungeonDepth = Math.Max(1, slot.DungeonDepth);
+        WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
+        Region = RegionDefinition.WildForest;
+        _worldTierTransitionTimeRemaining = 0f;
+        CurrentDungeon = DungeonDepth == 1
+            ? _dungeonGenerator.GenerateWildForest()
+            : DungeonDepth == 2
+                ? _catacombGenerator.Generate()
+                : _dungeonGenerator.Generate();
+        Player = new PlayerCharacter(
+            GetRoomEntranceSpawn(CurrentDungeon.StartRoom),
+            appearance: RunAppearance);
+        Player.RestoreSaveState(
+            slot.Level,
+            slot.CurrentExperience,
+            CharacterSelectState.CreateWeapon(slot),
+            CharacterSelectState.CreateArmor(slot));
+        if (slot.HasInventorySnapshot)
+        {
+            var restoredInventory = new List<EquipmentItem>(slot.InventoryItems.Count);
+            foreach (SavedEquipmentItemData savedItem in slot.InventoryItems)
+                restoredInventory.Add(CharacterSelectState.CreateInventoryItem(savedItem));
+            Player.Inventory.Restore(restoredInventory);
+        }
+        foreach (SavedLoreNoteData savedNote in slot.Notes)
+        {
+            LoreNoteDefinition definition = LoreCatalog.Resolve(savedNote.Id);
+            if (definition == null ||
+                !Player.Notes.TryCollect(definition, out LoreNote note))
+            {
+                continue;
+            }
+
+            if (savedNote.IsRead)
+                note.MarkRead();
+        }
+        KillCount = slot.KillCount;
+        IsInventoryOpen = false;
+        ShowCombatDebug = DebugCombatHitboxes;
+        ShowMapDebug = false;
+        SelectedInventoryIndex = 0;
+        ActiveInventoryTab = InventoryTab.Weapons;
+        _selectedWeaponIndex = 0;
+        _selectedEquipmentIndex = 0;
+        _selectedNoteIndex = 0;
+        _lastAcquiredLoreNote = null;
+        _loreNoteFeedbackTimeRemaining = 0f;
+        RefreshInventoryView();
+        _debugWeaponIndex = 1;
+        _debugArmorIndex = 1;
+        ClearFusionState();
+        InitializeDungeonState();
+
+        Map01Cleared = slot.Map01Cleared;
+        Map02Cleared = slot.Map02Cleared;
+        if (slot.BossDefeated)
+        {
+            BossDefeated = true;
+            if (ShouldRenderBoss && Boss?.IsAlive == true)
+                Boss.ReceiveDamage(int.MaxValue);
+        }
+
+        var checkpoint = new Vector2(slot.CheckpointX, slot.CheckpointY);
+        if (slot.HasCheckpoint &&
+            CurrentDungeon.WorldBounds.Contains(checkpoint.ToPoint()) &&
+            CurrentDungeon.FindRoomContaining(checkpoint) != null)
+        {
+            Player.MoveTo(checkpoint);
+            _lastSafePlayerPosition = checkpoint;
+            Camera.Snap(
+                Player.Position,
+                Player.Facing,
+                CurrentDungeon.WorldBounds,
+                CurrentDungeon.IsAuthoredWildForest ? .54f :
+                    CurrentDungeon.IsAncientCatacombs ? .55f : .57f);
+        }
+    }
+
+    private void SaveActiveSlot()
+    {
+        if (_activeSlotIndex < 0 ||
+            _activeSlotIndex >= SaveSlotManager.SlotCount ||
+            CurrentDungeon == null ||
+            Player == null)
+        {
+            return;
+        }
+
+        EquipmentItem weapon = Player.EquippedItems.Weapon;
+        EquipmentItem armor = Player.EquippedItems.Armor;
+        WeaponDefinition weaponDefinition = Player.EquippedWeapon;
+        ArmorDefinition armorDefinition = Player.EquippedArmor;
+        var slot = new SaveSlotData
+        {
+            SlotIndex = _activeSlotIndex,
+            Occupied = true,
+            CharacterName = CharacterName,
+            Appearance = Player.Appearance.Clone(),
+            Level = Player.Level,
+            CurrentExperience = Player.CurrentExperience,
+            DungeonDepth = DungeonDepth,
+            WorldTier = WorldTier,
+            CurrentMapId = $"map-{DungeonDepth:00}",
+            CurrentArea = CurrentZoneName,
+            CheckpointX = Player.Position.X,
+            CheckpointY = Player.Position.Y,
+            HasCheckpoint = true,
+            EquippedWeaponId = weaponDefinition.Id,
+            EquippedWeaponName = weaponDefinition.Name,
+            EquippedWeaponFamily = weaponDefinition.Family,
+            EquippedWeaponTier = weaponDefinition.Tier,
+            EquippedWeaponDamageBonus = weaponDefinition.DamageBonus,
+            EquippedWeaponRarity = weapon?.Rarity ?? ItemRarity.Uncommon,
+            EquippedArmorId = armorDefinition.Id,
+            EquippedArmorName = armorDefinition.Name,
+            EquippedArmorClass = armorDefinition.Class,
+            EquippedArmorTier = armorDefinition.Tier,
+            EquippedArmorHealthBonus = armorDefinition.MaxHealthBonus,
+            EquippedArmorRarity = armor?.Rarity ?? ItemRarity.Uncommon,
+            EquippedArmorGrade = armor?.ArmorGrade ?? ArmorGrade.C1,
+            HasInventorySnapshot = true,
+            InventoryItems = CaptureInventory(Player),
+            Notes = CaptureNotes(Player),
+            Map01Cleared = Map01Cleared,
+            Map02Cleared = Map02Cleared,
+            BossDefeated = BossDefeated,
+            KillCount = KillCount,
+            PlayTimeSeconds = _activePlayTimeSeconds,
+            LastPlayedUtc = DateTimeOffset.UtcNow
+        };
+        _saveSlotManager.Store(slot);
+    }
+
+    private static List<SavedEquipmentItemData> CaptureInventory(
+        PlayerCharacter player)
+    {
+        var result = new List<SavedEquipmentItemData>(player.Inventory.Count);
+        foreach (EquipmentItem item in player.Inventory.Items)
+            result.Add(SavedEquipmentItemData.FromItem(item));
+        return result;
+    }
+
+    private static List<SavedLoreNoteData> CaptureNotes(PlayerCharacter player)
+    {
+        var result = new List<SavedLoreNoteData>(player.Notes.Count);
+        foreach (LoreNote note in player.Notes.Notes)
+        {
+            result.Add(new SavedLoreNoteData
+            {
+                Id = note.Id,
+                IsRead = note.IsRead
+            });
+        }
+        return result;
+    }
+
+    public void FlushActiveSave()
+    {
+        SaveActiveSlot();
     }
 
     private void CompleteDungeon()
@@ -781,6 +1356,7 @@ public sealed class GameSession
         RefreshInventoryView();
         ClampInventorySelection();
         InitializeDungeonState();
+        SaveActiveSlot();
     }
 
     private void InitializeDungeonState()
@@ -1124,8 +1700,8 @@ public sealed class GameSession
         RefreshInventoryView();
         ScholarTomb.SetCompletionText(
             stored
-                ? $"Reward granted: {reward.Name}."
-                : $"Inventory full. {reward.Name} rests beside the tomb.");
+                ? Loc.Format("scholar.reward.granted", reward.Name)
+                : Loc.Format("scholar.reward.inventory_full", reward.Name));
     }
 
     private bool IsPlayerNearExit()

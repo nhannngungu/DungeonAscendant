@@ -89,6 +89,7 @@ public sealed class Player
     public LoreCollection Notes { get; }
     public Equipment EquippedItems { get; }
     public PlayerCombat Combat { get; }
+    public CharacterAppearance Appearance { get; private set; }
     public float CurrentStamina => Combat.Stamina.Current;
     public float MaxStamina => Combat.Stamina.Maximum;
     public PlayerVisualState VisualState => !IsAlive ||
@@ -132,7 +133,8 @@ public sealed class Player
         Vector2 position,
         float movementSpeed = DefaultMovementSpeed,
         int maxHealth = 100,
-        int meleeDamage = 25)
+        int meleeDamage = 25,
+        CharacterAppearance appearance = null)
     {
         Position = position;
         MovementSpeed = movementSpeed;
@@ -146,6 +148,8 @@ public sealed class Player
         Notes = new LoreCollection();
         EquippedItems = new Equipment();
         Combat = new PlayerCombat();
+        Appearance = appearance?.Clone() ?? CharacterAppearance.CreateDefault();
+        Appearance.Normalize();
         EquippedItems.SetStartingItems(
             EquipmentCatalog.CreateStartingWeapon(),
             EquipmentCatalog.CreateStartingArmor());
@@ -161,6 +165,32 @@ public sealed class Player
         Level = 1;
         CurrentExperience = 0;
         Facing = FacingDirection.Right;
+    }
+
+    public void SetAppearance(CharacterAppearance appearance)
+    {
+        Appearance = appearance?.Clone() ?? CharacterAppearance.CreateDefault();
+        Appearance.Normalize();
+    }
+
+    public void RestoreSaveState(
+        int level,
+        int currentExperience,
+        EquipmentItem weapon,
+        EquipmentItem armor)
+    {
+        Level = Math.Max(1, level);
+        _baseMaxHealth = 100 + (Level - 1) * HealthIncreasePerLevel;
+        _baseMeleeDamage = 25 + (Level - 1) * DamageIncreasePerLevel;
+        CurrentExperience = Math.Clamp(
+            currentExperience,
+            0,
+            Math.Max(0, ExperienceToNextLevel - 1));
+        EquippedItems.SetStartingItems(
+            weapon ?? EquipmentCatalog.CreateStartingWeapon(),
+            armor ?? EquipmentCatalog.CreateStartingArmor());
+        ApplyEquipmentToCombat();
+        CurrentHealth = MaxHealth;
     }
 
     public void UpdateTimers(GameTime gameTime)

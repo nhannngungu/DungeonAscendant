@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Dungeon;
+using DungeonAscendant.Localization;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
@@ -64,18 +65,18 @@ public static class AncientScholarTombValidation
         for (int frame = 0; frame < 24; frame++)
             tomb.Update(Frame, new KeyboardState(), new KeyboardState());
         Need(tomb.State == AncientScholarTombState.Question &&
-            tomb.CurrentQuestion.Title == "THE LOOP OF TIME" &&
-            tomb.CurrentQuestion.Answers[1] == "B. 0 1 2",
+            tomb.CurrentQuestion.Title == Loc.Get("scholar.q1.title") &&
+            tomb.CurrentQuestion.Answers[1] == Loc.Get("scholar.q1.a2"),
             "Scholar question 1 content or opening transition changed.");
 
         Press(tomb, Keys.S);
         Press(tomb, Keys.Enter);
         Need(tomb.CorrectAnswerCount == 1 &&
-            tomb.ReactionText == "Hm... your mind has not yet decayed.",
+            tomb.ReactionText == Loc.Get("scholar.q1.correct"),
             "Scholar question 1 scoring failed.");
         Press(tomb, Keys.Enter);
-        Need(tomb.CurrentQuestion.Title == "THE DAY YOU ENTERED THIS WORLD" &&
-            tomb.CurrentQuestion.Answers[1] == "B. 01/01/2004",
+        Need(tomb.CurrentQuestion.Title == Loc.Get("scholar.q2.title") &&
+            tomb.CurrentQuestion.Answers[1] == Loc.Get("scholar.q2.a2"),
             "Scholar question 2 content changed.");
 
         Press(tomb, Keys.Down);
@@ -83,10 +84,10 @@ public static class AncientScholarTombValidation
         Need(tomb.CorrectAnswerCount == 2,
             "Scholar question 2 scoring failed.");
         Press(tomb, Keys.Enter);
-        Need(tomb.CurrentQuestion.Title == "BEASTS OF TWO AND FOUR LEGS" &&
-            tomb.CurrentQuestion.Lines[0] == "Vừa gà vừa chó," &&
-            tomb.CurrentQuestion.Answers[0] == "A. 22 gà — 14 chó",
-            "Scholar question 3 Vietnamese content changed.");
+        Need(tomb.CurrentQuestion.Title == Loc.Get("scholar.q3.title") &&
+            tomb.CurrentQuestion.Lines[0] == Loc.Get("scholar.q3.line1") &&
+            tomb.CurrentQuestion.Answers[0] == Loc.Get("scholar.q3.a1"),
+            "Scholar question 3 localized content changed.");
 
         Press(tomb, Keys.Enter);
         Need(tomb.CorrectAnswerCount == 3,

@@ -101,6 +101,19 @@ public sealed class Inventory
             : null;
     }
 
+    public void Restore(IEnumerable<EquipmentItem> items)
+    {
+        _items.Clear();
+        if (items == null)
+            return;
+
+        foreach (EquipmentItem item in items)
+        {
+            if (item != null && !IsFull)
+                _items.Add(item);
+        }
+    }
+
     private static bool IsSameFusionMaterial(
         EquipmentItem item,
         EquipmentItem source)
