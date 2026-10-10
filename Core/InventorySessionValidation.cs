@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Items;
+using DungeonAscendant.Lore;
 using DungeonAscendant.UI;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -61,6 +62,29 @@ public static class InventorySessionValidation
         Press(session, Keys.F);
         Require(!session.IsFusionConfirmationPending,
             "fusion disabled in Weapons");
+
+        Require(session.Player.Notes.TryCollect(
+            LoreCatalog.StarBornHero,
+            out LoreNote collectedNote),
+            "collect note");
+        Require(!collectedNote.IsRead, "new note starts unread");
+        Require(!session.Player.Notes.TryCollect(
+            LoreCatalog.StarBornHero,
+            out _),
+            "duplicate note rejected");
+
+        Press(session, Keys.Q);
+        Require(session.ActiveInventoryTab == InventoryTab.Notes,
+            "previous tab wraps to Notes");
+        Require(ReferenceEquals(session.SelectedLoreNote, collectedNote),
+            "selected note reference");
+        Require(collectedNote.IsRead, "selected note marked read");
+        Require(session.ActiveInventoryItems.Count == 0,
+            "notes excluded from equipment inventory");
+
+        Press(session, Keys.E);
+        Require(session.ActiveInventoryTab == InventoryTab.Weapons,
+            "next tab wraps to Weapons");
         Press(session, Keys.I);
         Require(!session.IsInventoryOpen, "close inventory");
     }

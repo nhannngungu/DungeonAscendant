@@ -6,6 +6,7 @@ using DungeonAscendant.Core;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
+using DungeonAscendant.Lore;
 using DungeonAscendant.Player;
 using DungeonAscendant.UI;
 using DungeonAscendant.World;
@@ -106,7 +107,8 @@ public sealed class GameRenderer : IDisposable
             ['\"'] = new byte[] { 10, 10, 10, 0, 0, 0, 0 },
             [';'] = new byte[] { 0, 6, 6, 0, 6, 6, 4 },
             ['['] = new byte[] { 14, 8, 8, 8, 8, 8, 14 },
-            [']'] = new byte[] { 14, 2, 2, 2, 2, 2, 14 }
+            [']'] = new byte[] { 14, 2, 2, 2, 2, 2, 14 },
+            ['\''] = new byte[] { 4, 4, 8, 0, 0, 0, 0 }
         };
     private static readonly Color[] WildForestSkyBands =
     {
@@ -228,6 +230,12 @@ public sealed class GameRenderer : IDisposable
         {
             if (loot.Bounds.Intersects(gameSession.Camera.ViewBounds))
                 DrawWorldLoot(loot);
+        }
+
+        if (gameSession.LoreNotePickup is { IsCollected: false } lorePickup &&
+            lorePickup.Bounds.Intersects(gameSession.Camera.ViewBounds))
+        {
+            DrawLoreNotePickup(lorePickup, gameTime);
         }
 
         if (gameSession.ShowCombatDebug &&
@@ -366,6 +374,17 @@ public sealed class GameRenderer : IDisposable
                 new Color(169, 213, 206));
         }
 
+        if (gameSession.LoreNotePickup?.CanInteract(
+            gameSession.Player.Position) == true)
+        {
+            int promptWidth = "[E] READ ANCIENT RECORD".Length * 12;
+            DrawDebugLabel(
+                "[E] READ ANCIENT RECORD",
+                _graphicsDevice.Viewport.Width / 2 - promptWidth / 2,
+                _graphicsDevice.Viewport.Height - 70,
+                new Color(220, 196, 124));
+        }
+
         if (gameSession.DebugGodMode)
             DrawDebugLabel(
                 "GOD MODE  F9",
@@ -399,6 +418,9 @@ public sealed class GameRenderer : IDisposable
 
         if (gameSession.IsFusionFeedbackVisible)
             DrawFusionFeedback(gameSession);
+
+        if (gameSession.IsLoreNoteFeedbackVisible)
+            DrawLoreNoteAcquiredFeedback(gameSession);
 
         _spriteBatch.End();
     }
@@ -3263,6 +3285,39 @@ public sealed class GameRenderer : IDisposable
             markerSize: 3);
     }
 
+    private void DrawLoreNotePickup(
+        LoreNotePickup pickup,
+        GameTime gameTime)
+    {
+        Rectangle bounds = pickup.Bounds;
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 2.4f);
+        Rectangle glow = bounds;
+        glow.Inflate(7 + (int)(pulse * 2f), 5 + (int)(pulse * 2f));
+        _spriteBatch.Draw(
+            _pixel,
+            glow,
+            new Color(169, 137, 69, (int)(35 + pulse * 24)));
+        _spriteBatch.Draw(_pixel, bounds, new Color(181, 159, 106));
+        DrawRectangleOutline(bounds, 2, new Color(91, 66, 42));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.X + 5, bounds.Y + 5, bounds.Width - 10, 2),
+            new Color(91, 71, 49));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.X + 5, bounds.Y + 10, bounds.Width - 8, 2),
+            new Color(105, 79, 51));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.X + 5, bounds.Y + 15, bounds.Width - 13, 2),
+            new Color(105, 79, 51));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.Right - 7, bounds.Bottom - 7, 5, 5),
+            new Color(113, 42, 37));
+    }
+
     private void DrawInventoryOverlay(GameSession gameSession)
     {
         Viewport viewport = _graphicsDevice.Viewport;
@@ -3284,6 +3339,16 @@ public sealed class GameRenderer : IDisposable
             new Rectangle(panel.X + 156, panel.Y + 17, 138, 30),
             "E EQUIPMENT",
             gameSession.ActiveInventoryTab == InventoryTab.Equipment);
+        DrawInventoryTab(
+            new Rectangle(panel.X + 302, panel.Y + 17, 100, 30),
+            "NOTES",
+            gameSession.ActiveInventoryTab == InventoryTab.Notes);
+
+        if (gameSession.ActiveInventoryTab == InventoryTab.Notes)
+        {
+            DrawNotesInventory(gameSession, panel);
+            return;
+        }
 
         const int slotSize = 50;
         const int slotGap = 8;
@@ -3349,6 +3414,163 @@ public sealed class GameRenderer : IDisposable
         DrawControlHints(
             controls,
             gameSession.ActiveInventoryTab == InventoryTab.Equipment);
+    }
+
+    private void DrawNotesInventory(GameSession gameSession, Rectangle panel)
+    {
+        Rectangle listPanel = new(
+            panel.X + 28,
+            panel.Y + 62,
+            190,
+            panel.Height - 142);
+        Rectangle detailPanel = new(
+            panel.X + 230,
+            panel.Y + 62,
+            panel.Width - 258,
+            panel.Height - 142);
+        _spriteBatch.Draw(_pixel, listPanel, new Color(27, 32, 39));
+        _spriteBatch.Draw(_pixel, detailPanel, new Color(18, 23, 29));
+        DrawRectangleOutline(listPanel, 2, new Color(75, 84, 94));
+        DrawRectangleOutline(detailPanel, 2, new Color(75, 84, 94));
+        DrawDebugText(
+            "COLLECTED RECORDS",
+            listPanel.X + 10,
+            listPanel.Y + 10,
+            new Color(201, 183, 125),
+            1);
+
+        const int rowHeight = 23;
+        int listTop = listPanel.Y + 31;
+        int visibleCount = Math.Max(1, (listPanel.Bottom - listTop - 8) / rowHeight);
+        int selectedIndex = gameSession.SelectedInventoryIndex;
+        int firstVisible = Math.Max(0, selectedIndex - visibleCount + 1);
+        int maximumFirst = Math.Max(0, gameSession.CollectedNotes.Count - visibleCount);
+        firstVisible = Math.Min(firstVisible, maximumFirst);
+
+        if (gameSession.CollectedNotes.Count == 0)
+        {
+            DrawDebugText(
+                "NO NOTES COLLECTED",
+                listPanel.X + 10,
+                listTop + 5,
+                new Color(126, 137, 146),
+                1);
+        }
+        else
+        {
+            int end = Math.Min(
+                gameSession.CollectedNotes.Count,
+                firstVisible + visibleCount);
+            for (int index = firstVisible; index < end; index++)
+            {
+                LoreNote note = gameSession.CollectedNotes[index];
+                Rectangle row = new(
+                    listPanel.X + 7,
+                    listTop + (index - firstVisible) * rowHeight,
+                    listPanel.Width - 14,
+                    rowHeight - 3);
+                bool selected = index == selectedIndex;
+                _spriteBatch.Draw(
+                    _pixel,
+                    row,
+                    selected
+                        ? new Color(58, 55, 43)
+                        : new Color(23, 28, 34));
+                if (selected)
+                    DrawRectangleOutline(row, 1, new Color(205, 180, 106));
+                DrawDebugText(
+                    selected ? ">" : " ",
+                    row.X + 4,
+                    row.Y + 6,
+                    new Color(222, 196, 117),
+                    1);
+                DrawDebugText(
+                    note.Title,
+                    row.X + 16,
+                    row.Y + 6,
+                    selected
+                        ? new Color(231, 216, 165)
+                        : new Color(159, 164, 158),
+                    1);
+                if (!note.IsRead)
+                {
+                    DrawDebugText(
+                        "NEW",
+                        row.Right - 24,
+                        row.Y + 6,
+                        new Color(218, 156, 72),
+                        1);
+                }
+            }
+        }
+
+        LoreNote selectedNote = gameSession.SelectedLoreNote;
+        if (selectedNote != null)
+            DrawLoreNoteDetail(selectedNote, detailPanel);
+
+        Rectangle controls = new(
+            panel.X + 28,
+            panel.Bottom - 66,
+            374,
+            36);
+        _spriteBatch.Draw(_pixel, controls, new Color(31, 38, 47));
+        DrawRectangleOutline(controls, 2, new Color(77, 88, 98));
+        DrawDebugText(
+            "W/S OR UP/DOWN SELECT   Q/E TABS",
+            controls.X + 8,
+            controls.Y + 7,
+            new Color(156, 170, 181),
+            1);
+        DrawDebugText(
+            "I/ESC CLOSE",
+            controls.X + 8,
+            controls.Y + 20,
+            new Color(156, 170, 181),
+            1);
+    }
+
+    private void DrawLoreNoteDetail(LoreNote note, Rectangle panel)
+    {
+        int x = panel.X + 14;
+        int y = panel.Y + 12;
+        int availableWidth = panel.Width - 28;
+        DrawDebugText(
+            note.Title,
+            x,
+            y,
+            new Color(232, 213, 151),
+            FitDebugTextScale(note.Title, availableWidth, 2));
+        DrawDebugText(
+            "SOURCE:",
+            x,
+            y + 27,
+            new Color(124, 141, 147),
+            1);
+        DrawDebugText(
+            note.Source,
+            x,
+            y + 40,
+            new Color(174, 181, 174),
+            FitDebugTextScale(note.Source, availableWidth, 1));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(x, y + 56, availableWidth, 1),
+            new Color(76, 72, 59));
+
+        int contentY = y + 69;
+        const int lineHeight = 14;
+        foreach (string line in note.ContentLines)
+        {
+            if (contentY + 7 > panel.Bottom - 10)
+                break;
+            DrawDebugText(
+                line,
+                x,
+                contentY,
+                new Color(202, 201, 184),
+                1);
+            contentY += lineHeight;
+        }
     }
 
     private void DrawInventoryTab(
@@ -3859,6 +4081,35 @@ public sealed class GameRenderer : IDisposable
             panel.Y + 33,
             new Color(222, 231, 225),
             scale: 1);
+    }
+
+    private void DrawLoreNoteAcquiredFeedback(GameSession gameSession)
+    {
+        LoreNote note = gameSession.LastAcquiredLoreNote;
+        if (note == null)
+            return;
+
+        Viewport viewport = _graphicsDevice.Viewport;
+        int width = Math.Min(360, viewport.Width - 32);
+        var panel = new Rectangle(
+            viewport.Width / 2 - width / 2,
+            72,
+            width,
+            64);
+        _spriteBatch.Draw(_pixel, panel, new Color(28, 25, 21, 244));
+        DrawRectangleOutline(panel, 3, new Color(166, 132, 70));
+        DrawDebugText(
+            "LORE NOTE ACQUIRED",
+            panel.Center.X - 54,
+            panel.Y + 11,
+            new Color(225, 194, 113),
+            scale: 1);
+        DrawDebugText(
+            note.Title,
+            panel.Center.X - note.Title.Length * 3,
+            panel.Y + 37,
+            new Color(221, 214, 188),
+            FitDebugTextScale(note.Title, panel.Width - 24, 1));
     }
 
     private void DrawSequentialEnemyTestStatus(GameSession gameSession)

@@ -5,6 +5,7 @@ using DungeonAscendant.Combat;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.Enemies;
 using DungeonAscendant.Items;
+using DungeonAscendant.Lore;
 using DungeonAscendant.Progression;
 using DungeonAscendant.UI;
 using DungeonAscendant.World;
@@ -129,6 +130,9 @@ public sealed class GameSession
     private readonly List<EquipmentItem> _activeInventoryItems = new();
     private int _selectedWeaponIndex;
     private int _selectedEquipmentIndex;
+    private int _selectedNoteIndex;
+    private float _loreNoteFeedbackTimeRemaining;
+    private LoreNote _lastAcquiredLoreNote;
     private DungeonRoom _sequentialTestRoom;
     private Enemy _sequentialTestEnemy;
     private int _sequentialTestIndex;
@@ -155,6 +159,7 @@ public sealed class GameSession
         _breakerImpactVisuals;
     public RootHazardManager RootHazards { get; }
     public LootManager Loot { get; }
+    public LoreNotePickup LoreNotePickup { get; private set; }
     public TreasureChest Chest { get; private set; }
     public AncientTreant Boss { get; private set; }
     public DungeonMap CurrentDungeon { get; private set; }
@@ -192,6 +197,13 @@ public sealed class GameSession
         SelectedInventoryIndex < _activeInventoryItems.Count
             ? _activeInventoryItems[SelectedInventoryIndex]
             : null;
+    public IReadOnlyList<LoreNote> CollectedNotes => Player.Notes.Notes;
+    public LoreNote SelectedLoreNote =>
+        ActiveInventoryTab == InventoryTab.Notes &&
+        SelectedInventoryIndex >= 0 &&
+        SelectedInventoryIndex < Player.Notes.Count
+            ? Player.Notes.Notes[SelectedInventoryIndex]
+            : null;
     public string ActiveInventoryEmptyMessage =>
         InventoryTabRules.GetEmptyMessage(ActiveInventoryTab);
     public bool IsFusionConfirmationPending => _pendingFusionItem != null;
@@ -204,6 +216,9 @@ public sealed class GameSession
     public EquipmentItem LastFusionSource => _lastFusionSource;
     public EquipmentItem LastFusionResult => _lastFusionResult;
     public bool IsFusionFeedbackVisible => _fusionFeedbackTimeRemaining > 0f;
+    public bool IsLoreNoteFeedbackVisible =>
+        _loreNoteFeedbackTimeRemaining > 0f && _lastAcquiredLoreNote != null;
+    public LoreNote LastAcquiredLoreNote => _lastAcquiredLoreNote;
     public bool IsWildForestShowcaseMode =>
         DebugWildForestShowcase &&
         CurrentRegion == RegionType.WildForest &&
@@ -302,6 +317,10 @@ public sealed class GameSession
             0f,
             _fusionFeedbackTimeRemaining -
                 (float)gameTime.ElapsedGameTime.TotalSeconds);
+        _loreNoteFeedbackTimeRemaining = System.MathF.Max(
+            0f,
+            _loreNoteFeedbackTimeRemaining -
+                (float)gameTime.ElapsedGameTime.TotalSeconds);
 
         if (debugPressed)
             ShowCombatDebug = !ShowCombatDebug;
@@ -385,6 +404,7 @@ public sealed class GameSession
             RefreshInventoryView();
             RestoreActiveTabSelection();
             ClampInventorySelection();
+            MarkSelectedNoteRead();
             StoreInputStates(keyboardState, mouseState);
             return;
         }
@@ -730,6 +750,9 @@ public sealed class GameSession
         ActiveInventoryTab = InventoryTab.Weapons;
         _selectedWeaponIndex = 0;
         _selectedEquipmentIndex = 0;
+        _selectedNoteIndex = 0;
+        _lastAcquiredLoreNote = null;
+        _loreNoteFeedbackTimeRemaining = 0f;
         RefreshInventoryView();
         _debugWeaponIndex = 1;
         _debugArmorIndex = 1;
@@ -780,6 +803,7 @@ public sealed class GameSession
         _arcaneDominionRuneSnapshot = 0;
         RootHazards.Clear();
         Loot.Reset();
+        LoreNotePickup = null;
         int enemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level,
             DungeonDepth,
@@ -972,6 +996,15 @@ public sealed class GameSession
             return true;
         }
 
+        if (LoreNotePickup?.TryCollect(
+            Player.Position,
+            Player.Notes,
+            out LoreNote collectedNote) == true)
+        {
+            OpenLoreNote(collectedNote);
+            return true;
+        }
+
         bool canOpenChest = !CurrentDungeon.IsAuthoredWildForest ||
             WildForestEncounters.WarCampRewardUnlocked;
         if (canOpenChest && Chest.TryOpen(
@@ -994,6 +1027,32 @@ public sealed class GameSession
 
         Loot.TryCollectNearest(Player.Position, Player.Inventory);
         return false;
+    }
+
+    private void OpenLoreNote(LoreNote note)
+    {
+        if (note == null)
+            return;
+
+        ActiveInventoryTab = InventoryTab.Notes;
+        SelectedInventoryIndex = 0;
+        for (int index = 0; index < Player.Notes.Count; index++)
+        {
+            if (ReferenceEquals(Player.Notes.Notes[index], note))
+            {
+                SelectedInventoryIndex = index;
+                break;
+            }
+        }
+
+        _selectedNoteIndex = SelectedInventoryIndex;
+        _pendingFusionItem = null;
+        IsInventoryOpen = true;
+        note.MarkRead();
+        _lastAcquiredLoreNote = note;
+        _loreNoteFeedbackTimeRemaining = 2.8f;
+        RefreshInventoryView();
+        Player.Combat.CancelActions(restoreStamina: false);
     }
 
     private void UpdateScholarTombModal(
@@ -1456,6 +1515,17 @@ public sealed class GameSession
             Boss.Position,
             Region.BossWeaponReward,
             CurrentDungeon);
+        if (CurrentDungeon.IsAuthoredWildForest &&
+            !Player.Notes.Contains(LoreCatalog.StarBornHero.Id) &&
+            LoreNotePickup == null)
+        {
+            LoreNotePickup = new LoreNotePickup(
+                LoreCatalog.StarBornHero,
+                SideScrollingCollision.PlaceOnGround(
+                    Boss.Position.X,
+                    DungeonAscendant.World.LoreNotePickup.Size,
+                    CurrentDungeon.BossRoom));
+        }
         BossDefeated = true;
         if (CurrentDungeon.IsAuthoredWildForest)
             Map01Cleared = true;
@@ -3954,6 +4024,21 @@ public sealed class GameSession
             keyboardState,
             Keys.D,
             Keys.Right);
+
+        if (ActiveInventoryTab == InventoryTab.Notes)
+        {
+            int previousNoteIndex = SelectedInventoryIndex;
+            if (upPressed)
+                SelectedInventoryIndex--;
+            else if (downPressed)
+                SelectedInventoryIndex++;
+
+            ClampInventorySelection();
+            if (SelectedInventoryIndex != previousNoteIndex || equipPressed)
+                MarkSelectedNoteRead();
+            return;
+        }
+
         int itemCount = _activeInventoryItems.Count;
 
         if (itemCount == 0)
@@ -4042,6 +4127,7 @@ public sealed class GameSession
         RefreshInventoryView();
         RestoreActiveTabSelection();
         ClampInventorySelection();
+        MarkSelectedNoteRead();
     }
 
     private void RefreshInventoryView()
@@ -4056,15 +4142,20 @@ public sealed class GameSession
     {
         if (ActiveInventoryTab == InventoryTab.Weapons)
             _selectedWeaponIndex = SelectedInventoryIndex;
-        else
+        else if (ActiveInventoryTab == InventoryTab.Equipment)
             _selectedEquipmentIndex = SelectedInventoryIndex;
+        else
+            _selectedNoteIndex = SelectedInventoryIndex;
     }
 
     private void RestoreActiveTabSelection()
     {
-        SelectedInventoryIndex = ActiveInventoryTab == InventoryTab.Weapons
-            ? _selectedWeaponIndex
-            : _selectedEquipmentIndex;
+        SelectedInventoryIndex = ActiveInventoryTab switch
+        {
+            InventoryTab.Weapons => _selectedWeaponIndex,
+            InventoryTab.Equipment => _selectedEquipmentIndex,
+            _ => _selectedNoteIndex
+        };
     }
 
     private void ClearFusionState()
@@ -4077,10 +4168,18 @@ public sealed class GameSession
 
     private void ClampInventorySelection()
     {
-        int maximumIndex = _activeInventoryItems.Count - 1;
+        int itemCount = ActiveInventoryTab == InventoryTab.Notes
+            ? Player.Notes.Count
+            : _activeInventoryItems.Count;
+        int maximumIndex = itemCount - 1;
         SelectedInventoryIndex = maximumIndex < 0
             ? 0
             : System.Math.Clamp(SelectedInventoryIndex, 0, maximumIndex);
         RememberActiveTabSelection();
+    }
+
+    private void MarkSelectedNoteRead()
+    {
+        SelectedLoreNote?.MarkRead();
     }
 }

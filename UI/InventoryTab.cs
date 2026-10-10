@@ -7,7 +7,8 @@ namespace DungeonAscendant.UI;
 public enum InventoryTab
 {
     Weapons,
-    Equipment
+    Equipment,
+    Notes
 }
 
 public static class InventoryTabRules
@@ -29,7 +30,9 @@ public static class InventoryTabRules
     {
         return tab == InventoryTab.Weapons
             ? "NO WEAPONS"
-            : "NO EQUIPMENT";
+            : tab == InventoryTab.Equipment
+                ? "NO EQUIPMENT"
+                : "NO NOTES";
     }
 
     public static void PopulateView(
@@ -59,6 +62,8 @@ public static class InventoryTabRules
         Require(Includes(InventoryTab.Equipment, armor), "equipment include");
         Require(!Includes(InventoryTab.Equipment, weapon), "equipment exclude");
         Require(!Includes(InventoryTab.Weapons, null), "null safety");
+        Require(!Includes(InventoryTab.Notes, weapon), "notes exclude weapon");
+        Require(!Includes(InventoryTab.Notes, armor), "notes exclude armor");
 
         EquipmentItem[] source = { weapon, armor };
         var view = new List<EquipmentItem>();

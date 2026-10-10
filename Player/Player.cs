@@ -1,6 +1,7 @@
 using System;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Items;
+using DungeonAscendant.Lore;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
@@ -85,6 +86,7 @@ public sealed class Player
         ? _slowMovementMultiplier
         : 1f;
     public Inventory Inventory { get; }
+    public LoreCollection Notes { get; }
     public Equipment EquippedItems { get; }
     public PlayerCombat Combat { get; }
     public float CurrentStamina => Combat.Stamina.Current;
@@ -141,6 +143,7 @@ public sealed class Player
             DebugGiveAllTestEquipment
                 ? DebugInventoryCapacity
                 : Inventory.DefaultCapacity);
+        Notes = new LoreCollection();
         EquippedItems = new Equipment();
         Combat = new PlayerCombat();
         EquippedItems.SetStartingItems(
