@@ -51,6 +51,8 @@ public sealed class Projectile
     public bool IsRangerProjectile { get; }
     public float PlacementDistance { get; }
     public float CursePressure { get; }
+    public Vector2 TelegraphPosition { get; }
+    public bool HasTelegraphPosition { get; }
     public bool IsSpellbladeProjectile => TechniqueEffect is
         WeaponTechniqueEffect.SpellbladeRuneBrand or
         WeaponTechniqueEffect.SpellbladeRunicSpear;
@@ -104,7 +106,8 @@ public sealed class Projectile
         int spreadArrowIndex = -1,
         bool isRangerProjectile = false,
         float placementDistance = 0f,
-        float cursePressure = 0f)
+        float cursePressure = 0f,
+        Vector2? telegraphPosition = null)
     {
         Type = type;
         SourcePosition = position;
@@ -142,5 +145,7 @@ public sealed class Projectile
         IsRangerProjectile = isRangerProjectile;
         PlacementDistance = MathF.Max(0f, placementDistance);
         CursePressure = MathF.Max(0f, cursePressure);
+        TelegraphPosition = telegraphPosition ?? Vector2.Zero;
+        HasTelegraphPosition = telegraphPosition.HasValue;
     }
 }

@@ -21,5 +21,15 @@ public enum EnemyType
     GraveBat,
     DeathKnight,
     SoulCollector,
-    FallenKnight
+    FallenKnight,
+    FallenMilitiaman,
+    RuinedCrossbowman,
+    RabidHound,
+    PlagueCarrier,
+    BellWatcher,
+    StreetExecutioner,
+    RoyalGuard,
+    AshKnight,
+    WarBishop,
+    BrokenKing
 }

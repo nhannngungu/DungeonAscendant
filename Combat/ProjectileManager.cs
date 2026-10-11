@@ -16,14 +16,19 @@ public sealed class ProjectileManager
 
     private const float ActiveDistance = 420f;
     private const float PatchRefreshDurationSeconds = 0.35f;
+    public const int MaximumPlagueClouds = 5;
+    private const float PlagueCloudMergeDistance = 68f;
 
     private readonly List<Projectile> _projectiles = new(32);
     private readonly List<WebPatch> _webPatches = new(16);
+    private readonly List<PlagueCloud> _plagueClouds = new(6);
     private readonly List<ProjectileImpact> _impacts = new(8);
     private float _pendingCursePressure;
+    private float _plagueDamageCooldownRemaining;
 
     public IReadOnlyList<Projectile> Projectiles => _projectiles;
     public IReadOnlyList<WebPatch> WebPatches => _webPatches;
+    public IReadOnlyList<PlagueCloud> PlagueClouds => _plagueClouds;
     public IReadOnlyList<ProjectileImpact> Impacts => _impacts;
 
     public void SpawnArrow(
@@ -55,6 +60,65 @@ public sealed class ProjectileManager
             slowMovementMultiplier: 1f,
             roomId,
             empoweredVisual: heavy));
+    }
+
+    public void SpawnEnemyBolt(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId,
+        bool heavy)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.CrossbowBolt,
+            position,
+            NormalizeOrDefault(direction) * (heavy ? 385f : 360f),
+            heavy ? new Vector2(27f, 9f) : new Vector2(23f, 8f),
+            lifetimeSeconds: 2.5f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            empoweredVisual: heavy));
+    }
+
+    public void SpawnPlagueFlask(
+        Vector2 position,
+        Vector2 landingPosition,
+        int roomId,
+        DungeonMap dungeon)
+    {
+        const float flightSeconds = .84f;
+        const float gravity = 525f;
+        Vector2 delta = landingPosition - position;
+        Vector2 velocity = new(
+            Math.Clamp(delta.X / flightSeconds, -365f, 365f),
+            delta.Y / flightSeconds - gravity * flightSeconds * .5f);
+        Vector2 flaskSize = new(13f, 15f);
+        Vector2 predictedImpact = PredictTerrainImpact(
+            position,
+            velocity,
+            flaskSize,
+            gravity,
+            dungeon);
+
+        _projectiles.Add(new Projectile(
+            ProjectileType.PlagueFlask,
+            position,
+            velocity,
+            flaskSize,
+            lifetimeSeconds: 2.1f,
+            damage: 0,
+            blockable: false,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            trajectory: ProjectileTrajectoryType.Ballistic,
+            gravity: gravity,
+            telegraphPosition: predictedImpact + new Vector2(0f, 5f)));
     }
 
     public void SpawnPlayerProjectile(
@@ -183,6 +247,47 @@ public sealed class ProjectileManager
         return true;
     }
 
+    public bool TryCreatePlagueCloud(
+        Vector2 position,
+        int roomId,
+        DungeonMap dungeon,
+        bool collapseCloud = false)
+    {
+        if (dungeon.FindRoomContaining(position) == null)
+            return false;
+
+        float mergeDistanceSquared =
+            PlagueCloudMergeDistance * PlagueCloudMergeDistance;
+        for (int index = 0; index < _plagueClouds.Count; index++)
+        {
+            PlagueCloud existing = _plagueClouds[index];
+            if (existing.RoomId == roomId &&
+                existing.IsCollapseCloud == collapseCloud &&
+                Vector2.DistanceSquared(existing.Position, position) <=
+                    mergeDistanceSquared)
+            {
+                existing.Refresh(collapseCloud);
+                return true;
+            }
+        }
+
+        if (_plagueClouds.Count >= MaximumPlagueClouds)
+        {
+            if (!collapseCloud)
+                return false;
+            // A death warning is promised gameplay information. Replace the
+            // oldest field instead of silently dropping it, while preserving
+            // the same hard accumulation cap.
+            _plagueClouds.RemoveAt(0);
+        }
+
+        _plagueClouds.Add(new PlagueCloud(
+            position,
+            roomId,
+            collapseCloud));
+        return true;
+    }
+
     public void Update(
         GameTime gameTime,
         PlayerCharacter player,
@@ -221,6 +326,12 @@ public sealed class ProjectileManager
             }
 
             if (projectile.IsPlayerOwned)
+                continue;
+
+            // The flask is a visible, terrain-bound delivery object. Its
+            // hazard begins only where the bottle lands, never invisibly on
+            // contact with the player.
+            if (projectile.Type == ProjectileType.PlagueFlask)
                 continue;
 
             bool intersectsBody = projectile.Bounds.Intersects(
@@ -283,14 +394,62 @@ public sealed class ProjectileManager
                     PatchRefreshDurationSeconds);
             }
         }
+
+        bool plagueDamageApplied = false;
+        _plagueDamageCooldownRemaining = MathF.Max(
+            0f,
+            _plagueDamageCooldownRemaining - elapsedSeconds);
+        for (int index = _plagueClouds.Count - 1; index >= 0; index--)
+        {
+            PlagueCloud cloud = _plagueClouds[index];
+            cloud.TimeRemaining -= elapsedSeconds;
+
+            if (cloud.TimeRemaining <= 0f)
+            {
+                if (cloud.State == PlagueCloudState.Warning)
+                {
+                    cloud.State = PlagueCloudState.Active;
+                    cloud.TimeRemaining = cloud.ActiveDurationSeconds;
+                }
+                else
+                {
+                    _plagueClouds.RemoveAt(index);
+                    continue;
+                }
+            }
+
+            if (cloud.State != PlagueCloudState.Active ||
+                !IsNearPlayer(cloud.Position, player.Position) ||
+                !cloud.Bounds.Intersects(player.Bounds))
+            {
+                continue;
+            }
+
+            player.ApplySlow(
+                PlagueCloud.SlowMultiplier,
+                PlagueCloud.SlowRefreshSeconds);
+
+            // Overlapping clouds refresh the same bounded slow and share one
+            // damage interval, so overlap cannot multiply plague damage.
+            if (!plagueDamageApplied &&
+                _plagueDamageCooldownRemaining <= 0f)
+            {
+                player.ReceiveDamage(PlagueCloud.PeriodicDamage);
+                _plagueDamageCooldownRemaining =
+                    PlagueCloud.DamageIntervalSeconds;
+                plagueDamageApplied = true;
+            }
+        }
     }
 
     public void Clear()
     {
         _projectiles.Clear();
         _webPatches.Clear();
+        _plagueClouds.Clear();
         _impacts.Clear();
         _pendingCursePressure = 0f;
+        _plagueDamageCooldownRemaining = 0f;
     }
 
     public void ClearEnemyThreats()
@@ -308,7 +467,9 @@ public sealed class ProjectileManager
         }
 
         _webPatches.Clear();
+        _plagueClouds.Clear();
         _pendingCursePressure = 0f;
+        _plagueDamageCooldownRemaining = 0f;
     }
 
     public void SpawnArrowRainAtImpact(Projectile projectile, Vector2 impact)
@@ -378,9 +539,23 @@ public sealed class ProjectileManager
                 projectile.HasSplit = true;
             }
 
+            if (!projectile.IsPlayerOwned &&
+                projectile.Type == ProjectileType.PlagueFlask)
+            {
+                TryCreatePlagueCloud(
+                    projectile.Position + new Vector2(0f, 5f),
+                    projectile.RoomId,
+                    dungeon);
+                _impacts.Add(new ProjectileImpact(
+                    projectile,
+                    projectile.Position));
+                return false;
+            }
+
             if (projectile.ImpactRadius > 0f ||
                 (!projectile.IsPlayerOwned &&
-                 projectile.Type == ProjectileType.Arrow))
+                 projectile.Type is ProjectileType.Arrow or
+                     ProjectileType.CrossbowBolt))
                 _impacts.Add(new ProjectileImpact(projectile, projectile.Position));
             return false;
         }
@@ -441,6 +616,34 @@ public sealed class ProjectileManager
             projectile.Position = separated;
         }
         return true;
+    }
+
+    private static Vector2 PredictTerrainImpact(
+        Vector2 position,
+        Vector2 velocity,
+        Vector2 size,
+        float gravity,
+        DungeonMap dungeon)
+    {
+        const float stepSeconds = 1f / 60f;
+        const int maximumSteps = 126;
+        Vector2 predicted = position;
+        Vector2 predictedVelocity = velocity;
+        for (int step = 0; step < maximumSteps; step++)
+        {
+            predictedVelocity.Y += gravity * stepSeconds;
+            Vector2 candidate = predicted +
+                predictedVelocity * stepSeconds;
+            if (!SideScrollingCollision.IsPositionFree(
+                candidate,
+                size,
+                dungeon))
+            {
+                return predicted;
+            }
+            predicted = candidate;
+        }
+        return predicted;
     }
 
     private void SpawnSplitChildren(Projectile parent)

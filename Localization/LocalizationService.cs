@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using DungeonAscendant.Persistence;
 
 namespace DungeonAscendant.Localization;
 
@@ -14,6 +15,9 @@ public static class Loc
         public float MasterVolume { get; set; } = 1f;
         public float MusicVolume { get; set; } = .55f;
         public float SfxVolume { get; set; } = .75f;
+        public GameDisplayMode DisplayMode { get; set; } = GameDisplayMode.Windowed;
+        public int WindowWidth { get; set; } = 1280;
+        public int WindowHeight { get; set; } = 720;
     }
 
     private static readonly IReadOnlyDictionary<string, string> English =
@@ -28,6 +32,9 @@ public static class Loc
     public static float MasterVolume => _settings.MasterVolume;
     public static float MusicVolume => _settings.MusicVolume;
     public static float SfxVolume => _settings.SfxVolume;
+    public static GameDisplayMode DisplayMode => _settings.DisplayMode;
+    public static int WindowWidth => _settings.WindowWidth;
+    public static int WindowHeight => _settings.WindowHeight;
 
     public static string Get(string key)
     {
@@ -69,6 +76,21 @@ public static class Loc
         SaveSettings();
     }
 
+    public static void SetDisplayMode(GameDisplayMode mode)
+    {
+        if (!Enum.IsDefined(mode))
+            mode = GameDisplayMode.Windowed;
+        _settings.DisplayMode = mode;
+        SaveSettings();
+    }
+
+    public static void SetWindowResolution(int width, int height)
+    {
+        _settings.WindowWidth = Math.Clamp(width, 800, 7680);
+        _settings.WindowHeight = Math.Clamp(height, 480, 4320);
+        SaveSettings();
+    }
+
     internal static IReadOnlyDictionary<string, string> GetStrings(Language language) =>
         language == Language.Vietnamese ? Vietnamese : English;
 
@@ -92,6 +114,10 @@ public static class Loc
             settings.MasterVolume = Math.Clamp(settings.MasterVolume, 0f, 1f);
             settings.MusicVolume = Math.Clamp(settings.MusicVolume, 0f, 1f);
             settings.SfxVolume = Math.Clamp(settings.SfxVolume, 0f, 1f);
+            if (!Enum.IsDefined(settings.DisplayMode))
+                settings.DisplayMode = GameDisplayMode.Windowed;
+            settings.WindowWidth = Math.Clamp(settings.WindowWidth, 800, 7680);
+            settings.WindowHeight = Math.Clamp(settings.WindowHeight, 480, 4320);
             return settings;
         }
         catch (IOException)
@@ -131,8 +157,6 @@ public static class Loc
         }
     }
 
-    private static string GetDefaultSettingsPath() => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "DungeonAscendant",
-        "settings.json");
+    private static string GetDefaultSettingsPath() =>
+        ApplicationDataPaths.SettingsFile;
 }

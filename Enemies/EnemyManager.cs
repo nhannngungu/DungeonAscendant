@@ -244,7 +244,10 @@ public sealed class EnemyManager
         bool aerial = type is EnemyType.BloodBat or EnemyType.GraveBat ||
             socket.Role == SpawnSocketRole.Flying;
         bool elite = type is EnemyType.GoblinChief or EnemyType.MotherSpider or
-            EnemyType.CursedKnight or EnemyType.SoulCollector or EnemyType.DeathKnight or EnemyType.FallenKnight;
+            EnemyType.CursedKnight or EnemyType.SoulCollector or
+            EnemyType.DeathKnight or EnemyType.FallenKnight or
+            EnemyType.StreetExecutioner or EnemyType.RoyalGuard or
+            EnemyType.AshKnight or EnemyType.WarBishop or EnemyType.BrokenKing;
         var context = new EnemySpawnContext(
             socket.Position,
             enemyLevel,
@@ -458,7 +461,17 @@ public sealed class EnemyManager
                  enemy.Type == EnemyType.CursedKnight ||
                  enemy.Type == EnemyType.SoulCollector ||
                  enemy.Type == EnemyType.DeathKnight ||
-                 enemy.Type == EnemyType.FallenKnight)
+                 enemy.Type == EnemyType.FallenKnight ||
+                 enemy.Type == EnemyType.FallenMilitiaman ||
+                 enemy.Type == EnemyType.RuinedCrossbowman ||
+                 enemy.Type == EnemyType.RabidHound ||
+                 enemy.Type == EnemyType.PlagueCarrier ||
+                 enemy.Type == EnemyType.BellWatcher ||
+                 enemy.Type == EnemyType.StreetExecutioner ||
+                 enemy.Type == EnemyType.RoyalGuard ||
+                 enemy.Type == EnemyType.AshKnight ||
+                 enemy.Type == EnemyType.WarBishop ||
+                 enemy.Type == EnemyType.BrokenKing)
             {
                 _defeatPresentations.Add(enemy);
             }
@@ -468,6 +481,8 @@ public sealed class EnemyManager
 
             if (enemy is GoblinChief)
                 ClearGoblinFamilyBuffs(enemy.RoomId);
+            if (enemy.Type == EnemyType.WarBishop)
+                ClearTemporaryBuffsInRoom(enemy.RoomId);
 
             if (!enemy.CountsForProgression)
                 continue;
@@ -494,6 +509,8 @@ public sealed class EnemyManager
             _defeatPresentations.Remove(enemy);
             if (enemy is GoblinChief)
                 ClearGoblinFamilyBuffs(enemy.RoomId);
+            if (enemy.Type == EnemyType.WarBishop)
+                ClearTemporaryBuffsInRoom(enemy.RoomId);
         }
 
         RemoveOrphanedSpiderlings();
@@ -855,6 +872,21 @@ public sealed class EnemyManager
             {
                 enemy.ClearTemporaryBuff();
             }
+        }
+    }
+
+    public void ClearTemporaryBuffs()
+    {
+        foreach (Enemy enemy in _enemies)
+            enemy.ClearTemporaryBuff();
+    }
+
+    private void ClearTemporaryBuffsInRoom(int roomId)
+    {
+        foreach (Enemy enemy in _enemies)
+        {
+            if (enemy.RoomId == roomId)
+                enemy.ClearTemporaryBuff();
         }
     }
 

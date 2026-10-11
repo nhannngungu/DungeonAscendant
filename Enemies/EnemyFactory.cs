@@ -72,12 +72,33 @@ public static class EnemyFactory
             [EnemyType.GraveBat] = context => Catacomb(context,EnemyType.GraveBat),
             [EnemyType.DeathKnight] = context => Catacomb(context,EnemyType.DeathKnight),
             [EnemyType.SoulCollector] = context => Catacomb(context,EnemyType.SoulCollector),
-            [EnemyType.FallenKnight] = context => Catacomb(context,EnemyType.FallenKnight)
+            [EnemyType.FallenKnight] = context => Catacomb(context,EnemyType.FallenKnight),
+            [EnemyType.FallenMilitiaman] = context => City(context, EnemyType.FallenMilitiaman),
+            [EnemyType.RuinedCrossbowman] = context => City(context, EnemyType.RuinedCrossbowman),
+            [EnemyType.RabidHound] = context => City(context, EnemyType.RabidHound),
+            [EnemyType.PlagueCarrier] = context => City(context, EnemyType.PlagueCarrier),
+            [EnemyType.BellWatcher] = context => City(context, EnemyType.BellWatcher),
+            [EnemyType.StreetExecutioner] = context => City(context, EnemyType.StreetExecutioner),
+            [EnemyType.RoyalGuard] = context => City(context, EnemyType.RoyalGuard),
+            [EnemyType.AshKnight] = context => City(context, EnemyType.AshKnight),
+            [EnemyType.WarBishop] = context => City(context, EnemyType.WarBishop),
+            [EnemyType.BrokenKing] = context => City(context, EnemyType.BrokenKing)
         };
 
     private static Enemy Catacomb(EnemySpawnContext context,EnemyType type)=>
         new CatacombEnemy(type,context.Position,context.Level,context.WorldTier,context.RoomId,
             context.IsElite||type is EnemyType.CursedKnight or EnemyType.DeathKnight or EnemyType.SoulCollector or EnemyType.FallenKnight);
+
+    private static Enemy City(EnemySpawnContext context, EnemyType type) =>
+        new FallenCityEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId,
+            context.IsElite || type is EnemyType.StreetExecutioner or
+                EnemyType.RoyalGuard or EnemyType.AshKnight or
+                EnemyType.WarBishop or EnemyType.BrokenKing);
 
     public static Enemy Create(EnemyType type, EnemySpawnContext context)
     {

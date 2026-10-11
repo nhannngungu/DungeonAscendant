@@ -10,6 +10,18 @@ public sealed class RegionDefinition
         isImplemented: true,
         bossWeaponReward: null);
 
+    public static RegionDefinition AncientCatacombs { get; } = new(
+        RegionType.AncientCatacombs,
+        RegionBossType.AncientTreant,
+        isImplemented: true,
+        bossWeaponReward: null);
+
+    public static RegionDefinition FallenCity { get; } = new(
+        RegionType.RuinedCity,
+        RegionBossType.AncientTreant,
+        isImplemented: true,
+        bossWeaponReward: null);
+
     public RegionType Type { get; }
     public RegionBossType BossType { get; }
     public bool IsImplemented { get; }
@@ -29,12 +41,16 @@ public sealed class RegionDefinition
 
     public static RegionDefinition Get(RegionType type)
     {
-        return type == RegionType.WildForest
-            ? WildForest
-            : new RegionDefinition(
+        return type switch
+        {
+            RegionType.WildForest => WildForest,
+            RegionType.AncientCatacombs => AncientCatacombs,
+            RegionType.RuinedCity => FallenCity,
+            _ => new RegionDefinition(
                 type,
                 RegionBossType.AncientTreant,
                 isImplemented: false,
-                bossWeaponReward: null);
+                bossWeaponReward: null)
+        };
     }
 }

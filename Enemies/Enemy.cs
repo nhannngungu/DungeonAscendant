@@ -92,7 +92,10 @@ public abstract class Enemy
     public bool IsHeavyPullAnchor => Type is EnemyType.CorruptedTreant or
         EnemyType.MotherSpider or EnemyType.RottenCorpse or
         EnemyType.CursedKnight or EnemyType.DeathKnight or
-        EnemyType.SoulCollector or EnemyType.FallenKnight;
+        EnemyType.SoulCollector or EnemyType.FallenKnight or
+        EnemyType.PlagueCarrier or EnemyType.StreetExecutioner or
+        EnemyType.RoyalGuard or EnemyType.AshKnight or
+        EnemyType.WarBishop or EnemyType.BrokenKing;
     public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
         MaxPoise,
         IsFlying);
@@ -106,6 +109,7 @@ public abstract class Enemy
     public int RoomId { get; protected set; }
     public bool IsGrounded { get; private set; }
     public virtual bool IsFlying => false;
+    public virtual bool UsesProjectileAttack => Type == EnemyType.GoblinHunter;
     public EnemyFacingDirection Facing { get; private set; } =
         EnemyFacingDirection.Right;
     public MeleeAttack Attack { get; }
@@ -208,7 +212,7 @@ public abstract class Enemy
                 rootHazards,
                 enemies);
 
-            if (Type != EnemyType.GoblinHunter && Attack.IsActive)
+            if (!UsesProjectileAttack && Attack.IsActive)
                 TryResolveMeleeContact(player);
         }
 
@@ -239,7 +243,7 @@ public abstract class Enemy
                 rootHazards,
                 enemies);
 
-            if (Type != EnemyType.GoblinHunter && Attack.IsActive)
+            if (!UsesProjectileAttack && Attack.IsActive)
                 TryResolveMeleeContact(player);
             ApplySideViewPhysics(gameTime, dungeon);
         }
@@ -408,7 +412,17 @@ public abstract class Enemy
             EnemyType.GraveBat or
             EnemyType.DeathKnight or
             EnemyType.SoulCollector or
-            EnemyType.FallenKnight;
+            EnemyType.FallenKnight or
+            EnemyType.FallenMilitiaman or
+            EnemyType.RuinedCrossbowman or
+            EnemyType.RabidHound or
+            EnemyType.PlagueCarrier or
+            EnemyType.BellWatcher or
+            EnemyType.StreetExecutioner or
+            EnemyType.RoyalGuard or
+            EnemyType.AshKnight or
+            EnemyType.WarBishop or
+            EnemyType.BrokenKing;
 
         if (isActive && (withinDetectionRange || authoredCatacombAggro))
         {
@@ -773,6 +787,11 @@ public abstract class Enemy
             dungeon);
     }
 
+    protected void FaceToward(Vector2 target)
+    {
+        UpdateFacing(target.X - Position.X, TargetFacingDeadzone);
+    }
+
     protected void MoveWithinRoom(Vector2 movement, DungeonMap dungeon)
     {
         UpdateFacing(movement.X, MovementFacingDeadzone);
@@ -918,6 +937,16 @@ public abstract class Enemy
             EnemyType.SoulCollector => 130f,
             EnemyType.DeathKnight => 190f,
             EnemyType.FallenKnight => 280f,
+            EnemyType.FallenMilitiaman => 55f,
+            EnemyType.RuinedCrossbowman => 44f,
+            EnemyType.RabidHound => 50f,
+            EnemyType.PlagueCarrier => 120f,
+            EnemyType.BellWatcher => 45f,
+            EnemyType.StreetExecutioner => 165f,
+            EnemyType.RoyalGuard => 185f,
+            EnemyType.AshKnight => 170f,
+            EnemyType.WarBishop => 150f,
+            EnemyType.BrokenKing => 330f,
             _ => 60f
         };
     }
@@ -948,6 +977,16 @@ public abstract class Enemy
                 range, cooldownSeconds, 0.26f, 0.10f, 0.24f),
             EnemyType.ThornCrawler => new MeleeAttack(
                 range, cooldownSeconds, 0.22f, 0.09f, 0.24f),
+            EnemyType.RabidHound => new MeleeAttack(
+                range, cooldownSeconds, 0.13f, 0.08f, 0.18f),
+            EnemyType.StreetExecutioner => new MeleeAttack(
+                range, cooldownSeconds, 0.52f, 0.16f, 0.40f),
+            EnemyType.RoyalGuard => new MeleeAttack(
+                range, cooldownSeconds, 0.34f, 0.12f, 0.31f),
+            EnemyType.AshKnight => new MeleeAttack(
+                range, cooldownSeconds, 0.22f, 0.10f, 0.23f),
+            EnemyType.BrokenKing => new MeleeAttack(
+                range, cooldownSeconds, 0.38f, 0.15f, 0.28f),
             _ => new MeleeAttack(
                 range, cooldownSeconds, 0.23f, 0.08f, 0.19f)
         };
@@ -965,6 +1004,9 @@ public abstract class Enemy
             EnemyType.DireWolf => 0.58f,
             EnemyType.GiantSpider => 0.65f,
             EnemyType.Goblin => 0.82f,
+            EnemyType.BrokenKing => 0.54f,
+            EnemyType.RoyalGuard or EnemyType.AshKnight => 0.74f,
+            EnemyType.StreetExecutioner or EnemyType.WarBishop => 0.66f,
             _ => 0.68f
         };
     }

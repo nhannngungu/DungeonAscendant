@@ -134,9 +134,7 @@ public sealed class SaveSlotManager
 
     private static string GetDefaultSavePath()
     {
-        string root = Environment.GetFolderPath(
-            Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(root, "DungeonAscendant", "save-slots.json");
+        return ApplicationDataPaths.SaveSlotsFile;
     }
 
     private sealed class SaveSlotFile

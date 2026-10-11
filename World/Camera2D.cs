@@ -6,8 +6,8 @@ namespace DungeonAscendant.World;
 
 public sealed class Camera2D
 {
-    private readonly int _viewportWidth;
-    private readonly int _viewportHeight;
+    private int _viewportWidth;
+    private int _viewportHeight;
     private float _impactTimeRemaining;
     private float _impactStrength;
     private float _impactPhase;
@@ -28,6 +28,12 @@ public sealed class Camera2D
     {
         _viewportWidth = viewportWidth;
         _viewportHeight = viewportHeight;
+    }
+
+    public void ResizeViewport(int width, int height)
+    {
+        _viewportWidth = Math.Max(1, width);
+        _viewportHeight = Math.Max(1, height);
     }
 
     public void Follow(

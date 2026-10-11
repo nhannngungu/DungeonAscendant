@@ -7,6 +7,7 @@ namespace DungeonAscendant.Dungeon;
 
 public sealed class DungeonMap
 {
+    private readonly HashSet<string> _brokenCollapsingStructures = new();
     public IReadOnlyList<DungeonRoom> Rooms { get; }
     public IReadOnlyList<Rectangle> Corridors { get; }
     public IReadOnlyList<Platform> Platforms { get; }
@@ -17,6 +18,7 @@ public sealed class DungeonMap
     public DungeonRoom ExitRoom { get; }
     public bool IsAuthoredWildForest { get; }
     public bool IsAncientCatacombs { get; }
+    public bool IsFallenCity { get; }
     public IReadOnlyList<WildForestSection> WildForestSections { get; }
     public IReadOnlyList<EncounterZone> EncounterZones { get; }
     public IReadOnlyList<SpawnSocket> SpawnSockets { get; }
@@ -28,6 +30,10 @@ public sealed class DungeonMap
     public IReadOnlyList<CurseZoneDefinition> CurseZones { get; }
     public IReadOnlyList<SafeShrineDefinition> SafeShrines { get; }
     public IReadOnlyList<TombInteractionDefinition> Tombs { get; }
+    public IReadOnlyList<FallenCityZoneDefinition> FallenCityZones { get; }
+    public IReadOnlyList<CityAlarmObjectDefinition> CityAlarmObjects { get; }
+    public IReadOnlyList<CollapsingStructureDefinition> CollapsingStructures { get; }
+    public IReadOnlyList<CityReinforcementDefinition> CityReinforcements { get; }
 
     public DungeonMap(
         IReadOnlyList<DungeonRoom> rooms,
@@ -35,6 +41,7 @@ public sealed class DungeonMap
         Rectangle worldBounds,
         bool isAuthoredWildForest = false,
         bool isAncientCatacombs = false,
+        bool isFallenCity = false,
         IReadOnlyList<WildForestSection> wildForestSections = null,
         IReadOnlyList<EncounterZone> encounterZones = null,
         IReadOnlyList<SpawnSocket> spawnSockets = null,
@@ -45,6 +52,10 @@ public sealed class DungeonMap
         IReadOnlyList<CurseZoneDefinition> curseZones = null,
         IReadOnlyList<SafeShrineDefinition> safeShrines = null,
         IReadOnlyList<TombInteractionDefinition> tombs = null,
+        IReadOnlyList<FallenCityZoneDefinition> fallenCityZones = null,
+        IReadOnlyList<CityAlarmObjectDefinition> cityAlarmObjects = null,
+        IReadOnlyList<CollapsingStructureDefinition> collapsingStructures = null,
+        IReadOnlyList<CityReinforcementDefinition> cityReinforcements = null,
         DungeonRoom exitRoomOverride = null,
         Vector2? authoredExitPosition = null)
     {
@@ -53,6 +64,7 @@ public sealed class DungeonMap
         WorldBounds = worldBounds;
         IsAuthoredWildForest = isAuthoredWildForest;
         IsAncientCatacombs = isAncientCatacombs;
+        IsFallenCity = isFallenCity;
         WildForestSections = new List<WildForestSection>(
             wildForestSections ?? Array.Empty<WildForestSection>());
         EncounterZones = new List<EncounterZone>(
@@ -69,6 +81,14 @@ public sealed class DungeonMap
         CurseZones = new List<CurseZoneDefinition>(curseZones ?? Array.Empty<CurseZoneDefinition>());
         SafeShrines = new List<SafeShrineDefinition>(safeShrines ?? Array.Empty<SafeShrineDefinition>());
         Tombs = new List<TombInteractionDefinition>(tombs ?? Array.Empty<TombInteractionDefinition>());
+        FallenCityZones = new List<FallenCityZoneDefinition>(
+            fallenCityZones ?? Array.Empty<FallenCityZoneDefinition>());
+        CityAlarmObjects = new List<CityAlarmObjectDefinition>(
+            cityAlarmObjects ?? Array.Empty<CityAlarmObjectDefinition>());
+        CollapsingStructures = new List<CollapsingStructureDefinition>(
+            collapsingStructures ?? Array.Empty<CollapsingStructureDefinition>());
+        CityReinforcements = new List<CityReinforcementDefinition>(
+            cityReinforcements ?? Array.Empty<CityReinforcementDefinition>());
         AuthoredExitPosition = authoredExitPosition;
         var platforms = new List<Platform>();
 
@@ -138,4 +158,18 @@ public sealed class DungeonMap
 
         return null;
     }
+
+    public bool IsCollapsingStructureCollisionActive(
+        CollapsingStructureDefinition structure) =>
+        structure != null && structure.HasCollision &&
+        !_brokenCollapsingStructures.Contains(structure.StructureId);
+
+    internal void SetCollapsingStructureBroken(string structureId)
+    {
+        if (!string.IsNullOrEmpty(structureId))
+            _brokenCollapsingStructures.Add(structureId);
+    }
+
+    internal void ResetCollapsingStructureCollision() =>
+        _brokenCollapsingStructures.Clear();
 }

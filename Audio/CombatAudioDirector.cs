@@ -24,6 +24,7 @@ public sealed class CombatAudioDirector
         public bool Active;
         public bool GuardBlockReacting;
         public CatacombCombatState? CatacombState;
+        public FallenCityCombatState? FallenCityState;
     }
 
     private readonly AudioManager _audio;
@@ -88,6 +89,14 @@ public sealed class CombatAudioDirector
             return;
         }
         if (session.State != GameState.Playing && session.State != GameState.Paused) return;
+        if (session.CurrentDungeon.IsFallenCity)
+        {
+            // Map 3 has semantic enemy hooks, but no dedicated music/ambience
+            // pack yet. Silence is preferable to playing another map's identity.
+            _audio.SetMusic(MusicState.None);
+            _audio.SetAmbience(AmbienceState.None);
+            return;
+        }
         bool map2 = session.CurrentDungeon.IsAncientCatacombs;
         bool map1Boss = !map2 && session.Boss?.IsActivated == true && session.Boss.IsAlive;
         bool map2Boss = map2 && HasActiveFallenKnight(session);
@@ -133,6 +142,8 @@ public sealed class CombatAudioDirector
 
     private void ObserveWorld(GameSession session, GameTime gameTime)
     {
+        if (session.CurrentDungeon.IsFallenCity)
+            return;
         float dt=MathF.Min((float)gameTime.ElapsedGameTime.TotalSeconds,.1f);
         _footstepClock-=dt; _worldOneShotClock-=dt;
         bool map2=session.CurrentDungeon.IsAncientCatacombs;
@@ -223,6 +234,25 @@ public sealed class CombatAudioDirector
     private void ObserveProjectiles(GameSession session)
     {
         _currentProjectiles.Clear();
+        foreach (ProjectileImpact impact in session.Projectiles.Impacts)
+        {
+            if (impact.Projectile.Type == ProjectileType.PlagueFlask)
+            {
+                _audio.PlayImpact(
+                    ImpactMaterial.Wood,
+                    impact.Position,
+                    session.Player.Position);
+                continue;
+            }
+            if (impact.Projectile.Type != ProjectileType.CrossbowBolt)
+                continue;
+            _audio.PlayImpact(
+                impact.Projectile.EmpoweredVisual
+                    ? ImpactMaterial.MetalArmor
+                    : ImpactMaterial.Wood,
+                impact.Position,
+                session.Player.Position);
+        }
         foreach (Projectile projectile in session.Projectiles.Projectiles)
         {
             _currentProjectiles.Add(projectile);
@@ -291,6 +321,8 @@ public sealed class CombatAudioDirector
                         catacomb.Position,
                         listener);
             }
+            else if (enemy is FallenCityEnemy city)
+                ObserveFallenCityAttack(city, previous, listener);
             else
                 ObserveStandardAttack(enemy, previous, listener);
 
@@ -324,6 +356,66 @@ public sealed class CombatAudioDirector
             _audio.PlayEnemy(enemy.Type, EnemySoundEvent.AttackWindup, enemy.Position, listener);
         if (enemy.IsCombatAttackActive && !previous.Active)
             _audio.PlayEnemy(enemy.Type, EnemySoundEvent.AttackRelease, enemy.Position, listener);
+    }
+
+    private void ObserveFallenCityAttack(
+        FallenCityEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        if (previous.FallenCityState != enemy.CombatState)
+        {
+            bool bishopSupportRelease = enemy.Type == EnemyType.WarBishop &&
+                enemy.CombatState == FallenCityCombatState.BishopActive &&
+                (enemy.WarBishopAction is WarBishopActionKind.WarChant or
+                    WarBishopActionKind.CommandingSeal or
+                    WarBishopActionKind.FinalBenediction);
+            bool kingSpecial = enemy.Type == EnemyType.BrokenKing &&
+                (enemy.CombatState is FallenCityCombatState.KingTransition or
+                    FallenCityCombatState.KingGuard or
+                    FallenCityCombatState.KingCounterTell or
+                    FallenCityCombatState.KingLastCommandPause);
+            if (bishopSupportRelease || kingSpecial)
+            {
+                _audio.PlayEnemy(
+                    enemy.Type,
+                    EnemySoundEvent.Special,
+                    enemy.Position,
+                    listener);
+            }
+        }
+
+        if (enemy.IsCombatAttackTelegraphing && !previous.Telegraphing)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.AttackWindup,
+                enemy.Position,
+                listener);
+        }
+        if (!enemy.IsCombatAttackActive || previous.Active)
+            return;
+
+        _audio.PlayEnemy(
+            enemy.Type,
+            enemy.Type == EnemyType.BellWatcher &&
+                enemy.IsAlarmSignalActive
+                    ? EnemySoundEvent.Special
+                    : EnemySoundEvent.AttackRelease,
+            enemy.Position,
+            listener);
+
+        if (enemy.Type == EnemyType.BrokenKing &&
+            (enemy.BrokenKingAttack is BrokenKingAttackKind.AshCleave or
+                BrokenKingAttackKind.CollapseStrike or
+                BrokenKingAttackKind.LastCommand))
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
     }
 
     private void ObserveCatacombAttack(
@@ -417,6 +509,9 @@ public sealed class CombatAudioDirector
             guard.IsGuardBlockReacting,
         CatacombState = enemy is CatacombEnemy catacomb
             ? catacomb.CombatState
+            : null,
+        FallenCityState = enemy is FallenCityEnemy fallenCity
+            ? fallenCity.CombatState
             : null
     };
 

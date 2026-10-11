@@ -43,6 +43,7 @@ public sealed class SaveSlotData
     public List<SavedLoreNoteData> Notes { get; set; } = new();
     public bool Map01Cleared { get; set; }
     public bool Map02Cleared { get; set; }
+    public bool Map03Cleared { get; set; }
     public bool BossDefeated { get; set; }
     public int KillCount { get; set; }
     public double PlayTimeSeconds { get; set; }

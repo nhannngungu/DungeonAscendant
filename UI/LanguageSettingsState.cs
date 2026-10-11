@@ -8,7 +8,9 @@ public enum SettingsRow
     Language,
     MasterVolume,
     MusicVolume,
-    SfxVolume
+    SfxVolume,
+    DisplayMode,
+    Resolution
 }
 
 public sealed class LanguageSettingsState
@@ -38,6 +40,33 @@ public sealed class LanguageSettingsState
                 ? Language.Vietnamese
                 : Language.English;
             Loc.SetLanguage(SelectedLanguage);
+            return;
+        }
+
+        if (SelectedRow == SettingsRow.DisplayMode)
+        {
+            int count = Enum.GetValues<GameDisplayMode>().Length;
+            Loc.SetDisplayMode((GameDisplayMode)(((int)Loc.DisplayMode + delta + count) % count));
+            return;
+        }
+
+        if (SelectedRow == SettingsRow.Resolution)
+        {
+            (int Width, int Height)[] resolutions =
+            {
+                (800, 480), (1280, 720), (1600, 900),
+                (1920, 1080), (2560, 1440), (3840, 2160)
+            };
+            int current = 0;
+            int bestDistance = int.MaxValue;
+            for (int index = 0; index < resolutions.Length; index++)
+            {
+                int distance = Math.Abs(resolutions[index].Width - Loc.WindowWidth) +
+                    Math.Abs(resolutions[index].Height - Loc.WindowHeight);
+                if (distance < bestDistance) { bestDistance = distance; current = index; }
+            }
+            int next = (current + delta + resolutions.Length) % resolutions.Length;
+            Loc.SetWindowResolution(resolutions[next].Width, resolutions[next].Height);
             return;
         }
 

@@ -1,4 +1,5 @@
 using System;
+using DungeonAscendant.Enemies;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -62,12 +63,14 @@ public static class DeveloperPanelValidation
             SettleEntry(session);
             Press(session, Keys.F10);
 
-            for (int map = 1; map <= 2; map++)
+            for (int map = 1; map <= 3; map++)
             {
                 session.ExecuteDeveloperCommand(DeveloperCommand.TeleportMap, map, 0);
                 int zoneCount = map == 1
                     ? session.CurrentDungeon.WildForestSections.Count
-                    : session.CurrentDungeon.CatacombZones.Count;
+                    : map == 2
+                        ? session.CurrentDungeon.CatacombZones.Count
+                        : session.CurrentDungeon.FallenCityZones.Count;
                 for (int zone = 0; zone < zoneCount; zone++)
                 {
                     session.ExecuteDeveloperCommand(
@@ -79,10 +82,11 @@ public static class DeveloperPanelValidation
             }
 
             ValidateEncounterCommands(session);
+            ValidateFallenCityEncounterCommands(session);
 
             for (int switchIndex = 0; switchIndex < 10; switchIndex++)
             {
-                int map = switchIndex % 2 == 0 ? 1 : 2;
+                int map = switchIndex % 3 + 1;
                 session.ExecuteDeveloperCommand(DeveloperCommand.TeleportMap, map, 0);
                 ValidateSafeDebugArrival(session, map, $"stress switch {switchIndex + 1}");
                 Need(session.Enemies.Enemies.Count == 0,
@@ -103,6 +107,11 @@ public static class DeveloperPanelValidation
             Need(session.Map01Cleared, "Map 1 flag toggle failed.");
             session.ExecuteDeveloperCommand(DeveloperCommand.ToggleMap02Cleared, 1, 0);
             Need(session.Map02Cleared, "Map 2 flag toggle failed.");
+            session.ExecuteDeveloperCommand(DeveloperCommand.ToggleMap03Cleared, 1, 0);
+            Need(session.Map03Cleared, "Map 3 flag toggle failed.");
+            session.ExecuteDeveloperCommand(DeveloperCommand.ResetCitySystems, 1, 0);
+            Need(session.CityAlarm.Level == 0,
+                "Reset City Systems did not restore the alarm.");
             session.EnemyIntroductions.Reset();
             session.ExecuteDeveloperCommand(DeveloperCommand.ResetEnemyIntroductions, 1, 0);
             Need(session.EnemyIntroductions.DiscoveryCount == 0,
@@ -192,6 +201,91 @@ public static class DeveloperPanelValidation
             $"{label}: Player is outside world bounds.");
         Need(session.CurrentDungeon.WorldBounds.Contains(session.Camera.ViewBounds),
             $"{label}: camera is outside world bounds.");
+    }
+
+    private static void ValidateFallenCityEncounterCommands(GameSession session)
+    {
+        session.ExecuteDeveloperCommand(DeveloperCommand.TeleportMap, 3, 0);
+        Press(session, Keys.Escape);
+        SettleEntry(session);
+
+        session.ExecuteDeveloperCommand(DeveloperCommand.TeleportZone, 3, 6);
+        SettleEntry(session);
+        EncounterZone elite = session.CurrentDungeon.EncounterZones[6];
+        session.Player.MoveTo(SideScrollingCollision.ResolveSafeEntrySpawn(
+            elite.ActivationBounds.Left + 3f,
+            session.Player.Size,
+            session.CurrentDungeon,
+            dropOffset: 0f));
+        for (int frame = 0; frame < 40; frame++)
+        {
+            session.Update(
+                new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(.05f)),
+                new KeyboardState(),
+                new MouseState());
+        }
+        Need(session.WildForestEncounters.IsTriggered(elite.ZoneId) &&
+            session.Enemies.Enemies.Count > 0,
+            "Map 3 elite encounter did not trigger after admin teleport.");
+
+        Press(session, Keys.F10);
+        session.ExecuteDeveloperCommand(
+            DeveloperCommand.ResetCurrentEncounter, 3, 6);
+        Need(!session.WildForestEncounters.IsTriggered(elite.ZoneId) &&
+            session.Enemies.Enemies.Count == 0,
+            "Map 3 elite encounter reset retained enemies or trigger state.");
+
+        session.ExecuteDeveloperCommand(DeveloperCommand.TeleportZone, 3, 9);
+        Press(session, Keys.Escape);
+        SettleEntry(session);
+        EncounterZone bossZone = session.CurrentDungeon.EncounterZones[9];
+        session.Player.MoveTo(SideScrollingCollision.ResolveSafeEntrySpawn(
+            bossZone.ActivationBounds.Left + 3f,
+            session.Player.Size,
+            session.CurrentDungeon,
+            dropOffset: 0f));
+        for (int frame = 0; frame < 40; frame++)
+        {
+            session.Update(
+                new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(.05f)),
+                new KeyboardState(),
+                new MouseState());
+        }
+        Enemy king = null;
+        foreach (Enemy enemy in session.Enemies.Enemies)
+        {
+            if (enemy.Type == EnemyType.BrokenKing)
+                king = enemy;
+        }
+        Need(king != null, "Admin Broken King encounter did not spawn.");
+        king.ReceiveDamage(int.MaxValue);
+        session.Update(Frame, new KeyboardState(), new MouseState());
+        Need(session.Map03Cleared && session.BossDefeated,
+            "Admin Broken King defeat did not set completion state.");
+
+        Press(session, Keys.F10);
+        session.ExecuteDeveloperCommand(
+            DeveloperCommand.ResetCurrentBoss, 3, 9);
+        Need(!session.Map03Cleared && !session.BossDefeated &&
+            !session.Map03ExitPrepared,
+            "Admin Broken King reset retained completion state.");
+        Press(session, Keys.Escape);
+        for (int frame = 0; frame < 40; frame++)
+        {
+            session.Update(
+                new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(.05f)),
+                new KeyboardState(),
+                new MouseState());
+        }
+        Enemy resetKing = null;
+        foreach (Enemy enemy in session.Enemies.Enemies)
+        {
+            if (enemy.Type == EnemyType.BrokenKing && enemy.IsAlive)
+                resetKing = enemy;
+        }
+        Need(resetKing != null,
+            "Admin Broken King reset did not restore a clean boss encounter.");
+        Press(session, Keys.F10);
     }
 
     private static void SettleEntry(GameSession session)

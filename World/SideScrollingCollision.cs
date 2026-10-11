@@ -139,6 +139,16 @@ public static class SideScrollingCollision
                 return false;
         }
 
+        foreach (CollapsingStructureDefinition structure in
+            dungeon.CollapsingStructures)
+        {
+            if (dungeon.IsCollapsingStructureCollisionActive(structure) &&
+                bounds.Intersects(structure.Bounds))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 

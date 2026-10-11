@@ -1,130 +1,139 @@
-﻿if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-armor"))
+DungeonAscendant.Core.StartupLog.Initialize();
+
+try
 {
-    DungeonAscendant.Items.ArmorProgressionValidation.ValidateOrThrow();
-    System.Console.WriteLine("Armor progression validation passed.");
-    return;
+    if (RunRequestedValidation(args, out string validationName))
+    {
+        DungeonAscendant.Core.StartupLog.Write(
+            $"[SHUTDOWN] Validation '{validationName}' completed; Program.Main ending normally.");
+    }
+    else
+    {
+        DungeonAscendant.Core.StartupLog.Write("Creating Game1.");
+        using var game = new DungeonAscendant.Game1();
+        DungeonAscendant.Core.StartupLog.Write(
+            "Game loop started; calling Game.Run().");
+        game.Run();
+        DungeonAscendant.Core.StartupLog.Write(
+            "[SHUTDOWN] Game.Run returned normally.");
+    }
+}
+catch (System.Exception exception)
+{
+    DungeonAscendant.Core.StartupLog.Exception(
+        "Fatal startup/game-loop exception",
+        exception);
+    System.Environment.ExitCode = 1;
+    throw;
 }
 
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-inventory"))
+static bool RunRequestedValidation(string[] arguments, out string name)
 {
-    DungeonAscendant.UI.InventoryGridNavigation.ValidateOrThrow();
-    DungeonAscendant.UI.InventoryTabRules.ValidateOrThrow();
-    DungeonAscendant.Core.InventorySessionValidation.ValidateOrThrow();
-    System.Console.WriteLine("Inventory tab and grid validation passed.");
-    return;
-}
+    bool Has(string value) => System.Array.Exists(
+        arguments,
+        argument => argument == value);
 
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-enemy-sequence"))
-{
-    DungeonAscendant.Core.SequentialEnemyTestValidation.ValidateOrThrow();
-    System.Console.WriteLine("Wild Forest showcase validation passed.");
-    return;
-}
+    name = string.Empty;
+    if (Has("--validate-armor"))
+    {
+        DungeonAscendant.Items.ArmorProgressionValidation.ValidateOrThrow();
+        name = "armor";
+        System.Console.WriteLine("Armor progression validation passed.");
+    }
+    else if (Has("--validate-inventory"))
+    {
+        DungeonAscendant.UI.InventoryGridNavigation.ValidateOrThrow();
+        DungeonAscendant.UI.InventoryTabRules.ValidateOrThrow();
+        DungeonAscendant.Core.InventorySessionValidation.ValidateOrThrow();
+        name = "inventory";
+        System.Console.WriteLine("Inventory tab and grid validation passed.");
+    }
+    else if (Has("--validate-enemy-sequence"))
+    {
+        DungeonAscendant.Core.SequentialEnemyTestValidation.ValidateOrThrow();
+        name = "enemy-sequence";
+        System.Console.WriteLine("Wild Forest showcase validation passed.");
+    }
+    else if (Has("--validate-enemy-visuals"))
+    {
+        DungeonAscendant.Core.EnemyVisualValidation.ValidateOrThrow();
+        name = "enemy-visuals";
+        System.Console.WriteLine("Enemy visual validation passed.");
+    }
+    else if (Has("--validate-map"))
+    {
+        DungeonAscendant.Dungeon.WildForestMapValidation.ValidateOrThrow();
+        name = "map";
+        System.Console.WriteLine("Authored Wild Forest map validation passed.");
+    }
+    else if (Has("--validate-wilderness"))
+    {
+        DungeonAscendant.Dungeon.WildForestMapValidation.ValidateOrThrow();
+        DungeonAscendant.World.WildForestEncounterValidation.ValidateOrThrow();
+        name = "wilderness";
+        System.Console.WriteLine(
+            "Wild Forest map, encounter, and introduction validation passed.");
+    }
+    else if (Has("--validate-god-mode"))
+    {
+        DungeonAscendant.Core.DebugGodModeValidation.ValidateOrThrow();
+        name = "god-mode";
+        System.Console.WriteLine("Debug God Mode validation passed.");
+    }
+    else if (Has("--validate-entry-spawn"))
+    {
+        DungeonAscendant.Core.MapEntrySpawnValidation.ValidateOrThrow();
+        name = "entry-spawn";
+        System.Console.WriteLine("Map entry spawn validation passed.");
+    }
+    else if (Has("--validate-developer-panel"))
+    {
+        DungeonAscendant.Core.DeveloperPanelValidation.ValidateOrThrow();
+        name = "developer-panel";
+        System.Console.WriteLine("Developer panel validation passed.");
+    }
+    else if (Has("--validate-catacombs"))
+    {
+        DungeonAscendant.Dungeon.CatacombMapValidation.ValidateOrThrow();
+        name = "catacombs";
+        System.Console.WriteLine("Ancient Catacombs validation passed.");
+    }
+    else if (Has("--validate-fallen-city"))
+    {
+        DungeonAscendant.Dungeon.FallenCityMapValidation.ValidateOrThrow();
+        name = "fallen-city";
+        System.Console.WriteLine(
+            "Fallen City map and progression validation passed.");
+    }
+    else if (Has("--validate-equipment"))
+    {
+        DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();
+        DungeonAscendant.Combat.EquipmentRebuildValidation.ValidateOrThrow();
+        name = "equipment";
+        System.Console.WriteLine(
+            "Equipment and all seven weapon combat validations passed.");
+    }
+    else if (Has("--validate-save-slots"))
+    {
+        DungeonAscendant.Persistence.SaveSlotValidation.ValidateOrThrow();
+        name = "save-slots";
+        System.Console.WriteLine(
+            "Character select and save-slot validation passed.");
+    }
+    else if (Has("--validate-localization"))
+    {
+        DungeonAscendant.Localization.LocalizationValidation.ValidateOrThrow();
+        name = "localization";
+        System.Console.WriteLine(
+            "English/Vietnamese localization validation passed.");
+    }
+    else if (Has("--validate-audio"))
+    {
+        DungeonAscendant.Audio.AudioProfileValidation.ValidateOrThrow();
+        name = "audio";
+        System.Console.WriteLine(
+            "Full Map 1/Map 2 audio manifest and profile validation passed.");
+    }
 
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-enemy-visuals"))
-{
-    DungeonAscendant.Core.EnemyVisualValidation.ValidateOrThrow();
-    System.Console.WriteLine("Enemy visual validation passed.");
-    return;
+    return name.Length > 0;
 }
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-map"))
-{
-    DungeonAscendant.Dungeon.WildForestMapValidation.ValidateOrThrow();
-    System.Console.WriteLine("Authored Wild Forest map validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-wilderness"))
-{
-    DungeonAscendant.Dungeon.WildForestMapValidation.ValidateOrThrow();
-    DungeonAscendant.World.WildForestEncounterValidation.ValidateOrThrow();
-    System.Console.WriteLine("Wild Forest map, encounter, and introduction validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-god-mode"))
-{
-    DungeonAscendant.Core.DebugGodModeValidation.ValidateOrThrow();
-    System.Console.WriteLine("Debug God Mode validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-entry-spawn"))
-{
-    DungeonAscendant.Core.MapEntrySpawnValidation.ValidateOrThrow();
-    System.Console.WriteLine("Map entry spawn validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-developer-panel"))
-{
-    DungeonAscendant.Core.DeveloperPanelValidation.ValidateOrThrow();
-    System.Console.WriteLine("Developer panel validation passed.");
-    return;
-}
-
-if (System.Array.Exists(args, argument => argument == "--validate-catacombs"))
-{
-    DungeonAscendant.Dungeon.CatacombMapValidation.ValidateOrThrow();
-    System.Console.WriteLine("Ancient Catacombs validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-equipment"))
-{
-    DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();
-    DungeonAscendant.Combat.EquipmentRebuildValidation.ValidateOrThrow();
-    System.Console.WriteLine("Equipment and all seven weapon combat validations passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-save-slots"))
-{
-    DungeonAscendant.Persistence.SaveSlotValidation.ValidateOrThrow();
-    System.Console.WriteLine("Character select and save-slot validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-localization"))
-{
-    DungeonAscendant.Localization.LocalizationValidation.ValidateOrThrow();
-    System.Console.WriteLine("English/Vietnamese localization validation passed.");
-    return;
-}
-
-if (System.Array.Exists(
-    args,
-    argument => argument == "--validate-audio"))
-{
-    DungeonAscendant.Audio.AudioProfileValidation.ValidateOrThrow();
-    System.Console.WriteLine("Full Map 1/Map 2 audio manifest and profile validation passed.");
-    return;
-}
-
-using var game = new DungeonAscendant.Game1();
-game.Run();

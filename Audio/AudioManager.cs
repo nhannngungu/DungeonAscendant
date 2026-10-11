@@ -32,6 +32,12 @@ public sealed class AudioManager : IDisposable
 
     public IReadOnlyList<string> MissingAssets => _missingAssets;
 
+    private AudioManager()
+    {
+    }
+
+    public static AudioManager CreateDisabled() => new();
+
     public AudioManager(ContentManager content)
     {
         foreach (string asset in AudioProfiles.EnumerateAssets())

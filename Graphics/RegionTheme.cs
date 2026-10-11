@@ -57,6 +57,14 @@ public readonly struct RegionTheme
                 new Color(75, 91, 49, 92),
                 new Color(73, 53, 35),
                 new Color(82, 42, 75, 120)),
+            RegionType.RuinedCity => new RegionTheme(
+                new Color(13, 13, 16),
+                new Color(53, 51, 52),
+                new Color(104, 89, 78),
+                new Color(55, 53, 52),
+                new Color(105, 84, 68, 70),
+                new Color(78, 58, 45),
+                new Color(106, 48, 50, 92)),
             _ => new RegionTheme(
                 new Color(9, 11, 16),
                 new Color(48, 43, 46),

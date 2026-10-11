@@ -48,7 +48,13 @@ public static class AudioProfileValidation
             string asset = sourcePath.Replace('\\','/').Replace("Content/", "");
             asset = asset[..^Path.GetExtension(asset).Length];
             Need(mapped.Contains(asset), $"Manifest asset is not routed by a semantic profile: {asset}");
-            Need(File.Exists(sourcePath.Replace('/', Path.DirectorySeparatorChar)), $"Manifest WAV is missing: {sourcePath}");
+            string sourceFile = sourcePath.Replace('/', Path.DirectorySeparatorChar);
+            string compiledFile = Path.Combine(
+                AppContext.BaseDirectory,
+                "Content",
+                asset.Replace('/', Path.DirectorySeparatorChar) + ".xnb");
+            Need(File.Exists(sourceFile) || File.Exists(compiledFile),
+                $"Manifest audio is missing as source WAV or compiled XNB: {sourcePath}");
         }
     }
 

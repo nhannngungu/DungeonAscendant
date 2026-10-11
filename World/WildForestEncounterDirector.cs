@@ -27,7 +27,8 @@ public sealed class WildForestEncounterDirector
         _states.Clear();
         WarningZoneId = string.Empty;
         ActiveZoneId = string.Empty;
-        if (map == null || (!map.IsAuthoredWildForest && !map.IsAncientCatacombs))
+        if (map == null || (!map.IsAuthoredWildForest &&
+            !map.IsAncientCatacombs && !map.IsFallenCity))
             return;
         foreach (EncounterZone zone in map.EncounterZones)
             _states[zone.ZoneId] = new ZoneState(zone);
@@ -42,7 +43,8 @@ public sealed class WildForestEncounterDirector
         int worldTier,
         bool suppressActivation = false)
     {
-        if (map == null || (!map.IsAuthoredWildForest && !map.IsAncientCatacombs))
+        if (map == null || (!map.IsAuthoredWildForest &&
+            !map.IsAncientCatacombs && !map.IsFallenCity))
             return;
 
         WarningZoneId = string.Empty;
@@ -92,6 +94,22 @@ public sealed class WildForestEncounterDirector
 
     public bool IsCleared(string zoneId) =>
         _states.TryGetValue(zoneId, out ZoneState state) && state.Cleared;
+
+    public bool MarkCleared(string zoneId)
+    {
+        if (!_states.TryGetValue(zoneId ?? string.Empty, out ZoneState state))
+            return false;
+        state.Enemies.Clear();
+        state.WarningStarted = false;
+        state.WarningRemaining = 0f;
+        state.Spawned = true;
+        state.Cleared = true;
+        if (WarningZoneId == zoneId)
+            WarningZoneId = string.Empty;
+        if (ActiveZoneId == zoneId)
+            ActiveZoneId = string.Empty;
+        return true;
+    }
 
     public bool ResetZone(string zoneId, EnemyManager enemies)
     {

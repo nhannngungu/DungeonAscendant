@@ -3,6 +3,14 @@ using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.Combat;
 
+public enum RootHazardVisualKind
+{
+    Roots,
+    AshTrail,
+    CinderZone,
+    CommandSeal
+}
+
 public sealed class RootHazard
 {
     public Vector2 Position { get; }
@@ -13,6 +21,7 @@ public sealed class RootHazard
     public int RoomId { get; }
     public object Owner { get; }
     public bool IsTerrainRoot { get; }
+    public RootHazardVisualKind VisualKind { get; }
     public RootHazardState State { get; internal set; }
     public float TimeRemaining { get; internal set; }
     public float TelegraphDurationSeconds { get; }
@@ -42,7 +51,8 @@ public sealed class RootHazard
         float slowDurationSeconds,
         int roomId,
         object owner,
-        bool isTerrainRoot)
+        bool isTerrainRoot,
+        RootHazardVisualKind visualKind = RootHazardVisualKind.Roots)
     {
         Position = position;
         Size = size;
@@ -52,6 +62,7 @@ public sealed class RootHazard
         RoomId = roomId;
         Owner = owner;
         IsTerrainRoot = isTerrainRoot;
+        VisualKind = visualKind;
         State = RootHazardState.Telegraph;
         TimeRemaining = telegraphSeconds;
         TelegraphDurationSeconds = telegraphSeconds;

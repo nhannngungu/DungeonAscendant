@@ -153,8 +153,19 @@ public sealed class GameRenderer : IDisposable
         _catacombGuardBatSpriteRenderer;
     private readonly CatacombEliteSpriteRenderer _catacombEliteSpriteRenderer;
     private readonly CatacombKnightSpriteRenderer _catacombKnightSpriteRenderer;
+    private readonly FallenCityMilitiaSpriteRenderer
+        _fallenCityMilitiaSpriteRenderer;
+    private readonly FallenCityHoundPlagueSpriteRenderer
+        _fallenCityHoundPlagueSpriteRenderer;
+    private readonly FallenCityWatcherExecutionerSpriteRenderer
+        _fallenCityWatcherExecutionerSpriteRenderer;
+    private readonly FallenCityRoyalAshSpriteRenderer
+        _fallenCityRoyalAshSpriteRenderer;
+    private readonly FallenCityBishopKingSpriteRenderer
+        _fallenCityBishopKingSpriteRenderer;
     private readonly CatacombEnvironmentRenderer _catacombEnvironmentRenderer;
     private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
+    private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
 
     public GameRenderer(GraphicsDevice graphicsDevice)
     {
@@ -193,25 +204,47 @@ public sealed class GameRenderer : IDisposable
         _catacombKnightSpriteRenderer = new CatacombKnightSpriteRenderer(
             _spriteBatch,
             _pixel);
+        _fallenCityMilitiaSpriteRenderer =
+            new FallenCityMilitiaSpriteRenderer(_spriteBatch, _pixel);
+        _fallenCityHoundPlagueSpriteRenderer =
+            new FallenCityHoundPlagueSpriteRenderer(_spriteBatch, _pixel);
+        _fallenCityWatcherExecutionerSpriteRenderer =
+            new FallenCityWatcherExecutionerSpriteRenderer(
+                _spriteBatch,
+                _pixel);
+        _fallenCityRoyalAshSpriteRenderer =
+            new FallenCityRoyalAshSpriteRenderer(_spriteBatch, _pixel);
+        _fallenCityBishopKingSpriteRenderer =
+            new FallenCityBishopKingSpriteRenderer(_spriteBatch, _pixel);
         _catacombEnvironmentRenderer = new CatacombEnvironmentRenderer(
             _spriteBatch,
             _pixel);
         _ancientScholarTombRenderer = new AncientScholarTombRenderer(
             _spriteBatch,
             _pixel);
+        _fallenCityEnvironmentRenderer = new FallenCityEnvironmentRenderer(
+            _spriteBatch,
+            _pixel);
     }
 
-    public void Draw(GameSession gameSession, GameTime gameTime)
+    public void Draw(
+        GameSession gameSession,
+        GameTime gameTime,
+        Action<string> diagnosticLog = null)
     {
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         _graphicsDevice.Clear(theme.Background);
+        diagnosticLog?.Invoke("[DRAW] GraphicsDevice.Clear completed");
 
         if (gameSession.State == GameState.Start)
         {
             _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            diagnosticLog?.Invoke("[DRAW] SpriteBatch.Begin completed");
             DrawArena();
             DrawStartScreen(gameSession);
+            diagnosticLog?.Invoke("[DRAW] Frontend render completed");
             _spriteBatch.End();
+            diagnosticLog?.Invoke("[DRAW] SpriteBatch.End completed");
             return;
         }
 
@@ -245,6 +278,12 @@ public sealed class GameRenderer : IDisposable
         {
             if (patch.Bounds.Intersects(gameSession.Camera.ViewBounds))
                 DrawWebPatch(patch);
+        }
+
+        foreach (PlagueCloud cloud in gameSession.Projectiles.PlagueClouds)
+        {
+            if (cloud.Bounds.Intersects(gameSession.Camera.ViewBounds))
+                DrawPlagueCloud(cloud, gameTime);
         }
 
         foreach (RootHazard hazard in gameSession.RootHazards.Hazards)
@@ -328,9 +367,14 @@ public sealed class GameRenderer : IDisposable
         foreach (ProjectileImpact impact in gameSession.Projectiles.Impacts)
         {
             if (!impact.Projectile.IsPlayerOwned &&
-                impact.Projectile.Type == ProjectileType.Arrow)
+                impact.Projectile.Type is ProjectileType.Arrow or
+                    ProjectileType.CrossbowBolt)
             {
                 DrawEnemyArrowImpact(impact);
+            }
+            else if (impact.Projectile.Type == ProjectileType.PlagueFlask)
+            {
+                DrawPlagueFlaskImpact(impact);
             }
             else
             {
@@ -376,6 +420,10 @@ public sealed class GameRenderer : IDisposable
             gameSession,
             gameSession.Camera.ViewBounds,
             gameTime);
+        _fallenCityEnvironmentRenderer.DrawForeground(
+            gameSession,
+            gameSession.Camera.ViewBounds,
+            gameTime);
 
         if (gameSession.ShowMapDebug)
             DrawWildForestMapDebug(gameSession);
@@ -390,6 +438,8 @@ public sealed class GameRenderer : IDisposable
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerStamina(gameSession.Player);
         DrawCurseMeter(gameSession);
+        DrawCityAlarm(gameSession);
+        DrawBrokenKingBossBar(gameSession);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
         DrawWeaponResource(gameSession.Player);
         DrawTechniqueFeedback(gameSession.Player);
@@ -1156,6 +1206,131 @@ public sealed class GameRenderer : IDisposable
         Rectangle bar=new(270,58,150,8);_spriteBatch.Draw(_pixel,bar,new Color(35,27,42));int fill=(int)((bar.Width-2)*session.Curse.Ratio);if(fill>0)_spriteBatch.Draw(_pixel,new Rectangle(bar.X+1,bar.Y+1,fill,bar.Height-2),new Color(119,73,145));DrawRectangleOutline(bar,1,new Color(151,139,158));DrawDebugText(Loc.Get("hud.curse"),270,46,new Color(182,170,190),1);
     }
 
+    private void DrawCityAlarm(GameSession session)
+    {
+        if (session.CurrentDungeon?.IsFallenCity != true)
+            return;
+        string alarm = string.Format(Loc.Get("hud.city_alarm"), session.CityAlarm.Level);
+        Color alarmColor = session.CityAlarm.Level switch
+        {
+            3 => new Color(230, 73, 61), 2 => new Color(221, 130, 60),
+            1 => new Color(209, 174, 77), _ => new Color(137, 148, 145)
+        };
+        if (session.CityAlarm.WatcherSignalFeedbackTimeRemaining > 0f)
+        {
+            float pulse = .5f + .5f * MathF.Sin(
+                session.CityAlarm.WatcherSignalFeedbackTimeRemaining * 24f);
+            alarmColor = Color.Lerp(
+                new Color(238, 92, 57),
+                new Color(249, 211, 105),
+                pulse);
+            DrawRectangleOutline(
+                new Rectangle(263, 40, 152, 17),
+                2,
+                new Color(alarmColor, 180));
+        }
+        DrawDebugText(alarm, 270, 46, alarmColor, 1);
+        foreach (Enemy enemy in session.Enemies.Enemies)
+        {
+            if (enemy is FallenCityEnemy watcher &&
+                watcher.Type == EnemyType.BellWatcher &&
+                watcher.IsSignalingAlarm)
+            {
+                DrawCenteredDebugText(
+                    Loc.Get("hud.city_alarm_interrupt"),
+                    _graphicsDevice.Viewport.Width / 2,
+                    76,
+                    new Color(232, 151, 68),
+                    1);
+                break;
+            }
+        }
+        foreach (CityAlarmObjectDefinition alarmObject in session.CurrentDungeon.CityAlarmObjects)
+        {
+            if (!session.CityAlarm.IsDisabled(alarmObject.ObjectId) &&
+                Vector2.DistanceSquared(session.Player.Position, alarmObject.Position) <=
+                    alarmObject.DisableRadius * alarmObject.DisableRadius)
+            {
+                DrawCenteredDebugText(Loc.Get("hud.city_alarm_disable"),
+                    _graphicsDevice.Viewport.Width / 2,
+                    _graphicsDevice.Viewport.Height - 70,
+                    new Color(221, 188, 112), 1);
+                break;
+            }
+        }
+        if (session.Map03ExitPrepared)
+            DrawCenteredDebugText(Loc.Get("hud.path_unfinished"),
+                _graphicsDevice.Viewport.Width / 2, 112,
+                new Color(190, 151, 104), 1);
+    }
+
+    private void DrawBrokenKingBossBar(GameSession session)
+    {
+        if (session.CurrentDungeon?.IsFallenCity != true)
+            return;
+        FallenCityEnemy king = null;
+        foreach (Enemy enemy in session.Enemies.Enemies)
+        {
+            if (enemy is FallenCityEnemy candidate &&
+                candidate.Type == EnemyType.BrokenKing && candidate.IsAlive)
+            {
+                king = candidate;
+                break;
+            }
+        }
+        if (king == null || !king.IsHealthBarVisible)
+            return;
+
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int viewportHeight = _graphicsDevice.Viewport.Height;
+        int width = Math.Clamp(viewportWidth * 7 / 16, 360, 680);
+        int x = (viewportWidth - width) / 2;
+        int y = viewportHeight - 104;
+        DrawCenteredDebugText(
+            Loc.Get("enemy.broken_king.name"),
+            viewportWidth / 2,
+            y - 24,
+            new Color(220, 196, 139),
+            1);
+        DrawCenteredDebugText(
+            Loc.Get("enemy.broken_king.title"),
+            viewportWidth / 2,
+            y - 11,
+            new Color(151, 139, 124),
+            1);
+
+        var frame = new Rectangle(x, y + 4, width, 16);
+        _spriteBatch.Draw(_pixel, frame, new Color(19, 15, 17, 235));
+        DrawRectangleOutline(frame, 2, new Color(143, 111, 66, 235));
+        var track = new Rectangle(x + 3, y + 7, width - 6, 10);
+        _spriteBatch.Draw(_pixel, track, new Color(56, 23, 27, 240));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(
+            king.CurrentHealth / (float)king.MaxHealth,
+            0f,
+            1f));
+        if (fill > 0)
+        {
+            Color health = king.CombatPhase switch
+            {
+                3 => new Color(188, 68, 42),
+                2 => new Color(151, 62, 47),
+                _ => new Color(126, 48, 53)
+            };
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(track.X, track.Y, fill, track.Height),
+                health);
+        }
+        int phaseOne = track.X + track.Width * 3 / 5;
+        int phaseTwo = track.X + track.Width / 4;
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(phaseOne, track.Y - 2, 2, track.Height + 4),
+            new Color(218, 188, 126, 190));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(phaseTwo, track.Y - 2, 2, track.Height + 4),
+            new Color(218, 188, 126, 190));
+    }
+
     private void DrawDungeon(
         GameSession gameSession,
         Rectangle cameraBounds,
@@ -1165,6 +1340,19 @@ public sealed class GameRenderer : IDisposable
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         Rectangle visibleBounds = cameraBounds;
         visibleBounds.Inflate(80, 80);
+
+        if (dungeon.IsFallenCity)
+        {
+            _fallenCityEnvironmentRenderer.DrawWorld(
+                gameSession,
+                visibleBounds,
+                gameTime);
+            if (dungeon.BossRoom.Bounds.Intersects(visibleBounds))
+                DrawExitMarker(
+                    gameSession.ExitPosition,
+                    gameSession.IsExitUnlocked);
+            return;
+        }
 
         if (dungeon.IsAuthoredWildForest)
         {
@@ -1896,6 +2084,39 @@ public sealed class GameRenderer : IDisposable
                     DrawCatacombEnemy(catacomb);
                 }
                 break;
+            case FallenCityEnemy city:
+                if (city.Type is EnemyType.FallenMilitiaman or
+                    EnemyType.RuinedCrossbowman)
+                {
+                    _fallenCityMilitiaSpriteRenderer.Draw(city, gameTime);
+                }
+                else if (city.Type is EnemyType.RabidHound or
+                    EnemyType.PlagueCarrier)
+                {
+                    _fallenCityHoundPlagueSpriteRenderer.Draw(city, gameTime);
+                }
+                else if (city.Type is EnemyType.BellWatcher or
+                    EnemyType.StreetExecutioner)
+                {
+                    _fallenCityWatcherExecutionerSpriteRenderer.Draw(
+                        city,
+                        gameTime);
+                }
+                else if (city.Type is EnemyType.RoyalGuard or
+                    EnemyType.AshKnight)
+                {
+                    _fallenCityRoyalAshSpriteRenderer.Draw(city, gameTime);
+                }
+                else if (city.Type is EnemyType.WarBishop or
+                    EnemyType.BrokenKing)
+                {
+                    _fallenCityBishopKingSpriteRenderer.Draw(city, gameTime);
+                }
+                else
+                {
+                    DrawFallenCityEnemy(city);
+                }
+                break;
         }
 
         if (enemy.IsBuffed)
@@ -1908,6 +2129,46 @@ public sealed class GameRenderer : IDisposable
                 new Rectangle(enemy.Bounds.Center.X - 8, enemy.Bounds.Y - 9, 16, 4),
                 new Color(225, 183, 244, 220));
         }
+    }
+
+    private void DrawFallenCityEnemy(FallenCityEnemy enemy)
+    {
+        Rectangle bounds = enemy.Bounds;
+        Color body = enemy.IsHitFlashing ? new Color(231, 222, 204) : enemy.Type switch
+        {
+            EnemyType.RabidHound => new Color(91, 69, 58),
+            EnemyType.PlagueCarrier => new Color(92, 96, 64),
+            EnemyType.BellWatcher => new Color(115, 84, 52),
+            EnemyType.AshKnight => new Color(76, 70, 69),
+            EnemyType.WarBishop => new Color(92, 55, 75),
+            EnemyType.BrokenKing => enemy.CombatPhase switch
+            {
+                3 => new Color(141, 53, 48), 2 => new Color(111, 67, 67),
+                _ => new Color(86, 77, 82)
+            },
+            _ => new Color(83, 79, 76)
+        };
+        Color metal = enemy.Type is EnemyType.RoyalGuard or EnemyType.AshKnight or
+            EnemyType.StreetExecutioner or EnemyType.BrokenKing
+            ? new Color(119, 115, 111) : body;
+        if (enemy.Type == EnemyType.RabidHound)
+        {
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(bounds.X, bounds.Y + 8, bounds.Width, bounds.Height - 12), body);
+            return;
+        }
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 5, bounds.Y + 15, bounds.Width - 10,
+                bounds.Height - 15), metal);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.Center.X - 10, bounds.Y, 20, 19), body);
+        if (enemy.Type == EnemyType.BellWatcher && enemy.IsSignalingAlarm)
+            DrawRectangleOutline(new Rectangle(bounds.X - 8, bounds.Y - 12,
+                bounds.Width + 16, bounds.Height + 20), 3, new Color(218, 115, 52));
+        if (enemy.Type == EnemyType.BrokenKing)
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(bounds.Center.X - 15, bounds.Y - 8, 30, 8),
+                new Color(178, 133, 56));
     }
 
     private void DrawDireWolf(DireWolf wolf)
@@ -2202,6 +2463,7 @@ public sealed class GameRenderer : IDisposable
             !enemy.IsAlive ||
             !enemy.IsHealthBarVisible ||
             enemy.Type == EnemyType.FallenKnight ||
+            enemy.Type == EnemyType.BrokenKing ||
             enemy.MaxHealth <= 0)
         {
             return;
@@ -2309,6 +2571,51 @@ public sealed class GameRenderer : IDisposable
 
     private void DrawProjectile(Projectile projectile)
     {
+        if (projectile.Type == ProjectileType.PlagueFlask)
+        {
+            Vector2 flaskDirection = projectile.Velocity;
+            if (flaskDirection.LengthSquared() > .01f)
+                flaskDirection.Normalize();
+            else
+                flaskDirection = Vector2.UnitX;
+            Vector2 normal = new(-flaskDirection.Y, flaskDirection.X);
+            DrawWorldLine(
+                projectile.Position - flaskDirection * 7f,
+                projectile.Position + flaskDirection * 5f,
+                7f,
+                new Color(42, 43, 35));
+            DrawWorldLine(
+                projectile.Position - flaskDirection * 5f,
+                projectile.Position + flaskDirection * 4f,
+                4f,
+                new Color(112, 117, 83));
+            DrawWorldLine(
+                projectile.Position - normal * 5f,
+                projectile.Position + normal * 5f,
+                3f,
+                new Color(75, 54, 38));
+
+            if (projectile.HasTelegraphPosition)
+            {
+                Vector2 landing = projectile.TelegraphPosition;
+                var marker = new Rectangle(
+                    (int)MathF.Round(landing.X - 25f),
+                    (int)MathF.Round(landing.Y - 5f),
+                    50,
+                    10);
+                DrawRectangleOutline(
+                    marker,
+                    2,
+                    new Color(133, 128, 82, 145));
+                DrawWorldLine(
+                    new Vector2(marker.Left + 7, marker.Center.Y),
+                    new Vector2(marker.Right - 7, marker.Center.Y),
+                    1f,
+                    new Color(158, 147, 93, 125));
+            }
+            return;
+        }
+
         if (projectile.Type == ProjectileType.SoulBolt)
         {
             Vector2 center = projectile.Position;
@@ -2399,7 +2706,8 @@ public sealed class GameRenderer : IDisposable
         float rotation = MathF.Atan2(direction.Y, direction.X);
         float shaftLength = MathF.Max(projectile.Size.X, projectile.Size.Y);
         Vector2 shaftStart = projectile.Position - direction * (shaftLength / 2f);
-        if (!projectile.IsPlayerOwned && projectile.EmpoweredVisual)
+        if (!projectile.IsPlayerOwned && projectile.EmpoweredVisual &&
+            projectile.Type != ProjectileType.CrossbowBolt)
         {
             DrawWorldLine(
                 projectile.PreviousPosition,
@@ -2848,9 +3156,15 @@ public sealed class GameRenderer : IDisposable
     private void DrawEnemyArrowImpact(ProjectileImpact impact)
     {
         Vector2 center = impact.Position;
-        Color spark = impact.Projectile.EmpoweredVisual
-            ? new Color(104, 160, 177, 205)
-            : new Color(151, 128, 91, 195);
+        bool crossbowBolt =
+            impact.Projectile.Type == ProjectileType.CrossbowBolt;
+        Color spark = crossbowBolt
+            ? impact.Projectile.EmpoweredVisual
+                ? new Color(190, 164, 112, 220)
+                : new Color(157, 139, 105, 205)
+            : impact.Projectile.EmpoweredVisual
+                ? new Color(104, 160, 177, 205)
+                : new Color(151, 128, 91, 195);
         DrawWorldLine(center + new Vector2(-7f, -5f),
             center + new Vector2(4f, 3f), 2f, spark);
         DrawWorldLine(center + new Vector2(-3f, 5f),
@@ -2858,7 +3172,26 @@ public sealed class GameRenderer : IDisposable
             new Color(175, 167, 143, 175));
         _spriteBatch.Draw(_pixel,
             new Rectangle((int)center.X - 5, (int)center.Y + 2, 3, 2),
-            new Color(119, 113, 101, 160));
+            crossbowBolt
+                ? new Color(118, 101, 77, 175)
+                : new Color(119, 113, 101, 160));
+    }
+
+    private void DrawPlagueFlaskImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        DrawWorldLine(center + new Vector2(-9f, -3f),
+            center + new Vector2(-2f, 4f), 2f,
+            new Color(117, 122, 88, 185));
+        DrawWorldLine(center + new Vector2(1f, -5f),
+            center + new Vector2(7f, 3f), 2f,
+            new Color(84, 89, 67, 180));
+        DrawWorldLine(center + new Vector2(-3f, 3f),
+            center + new Vector2(10f, 1f), 1.5f,
+            new Color(142, 126, 84, 165));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)center.X - 12, (int)center.Y + 2, 5, 2),
+            new Color(124, 106, 76, 135));
     }
 
     private void DrawWebPatch(WebPatch patch)
@@ -2883,6 +3216,64 @@ public sealed class GameRenderer : IDisposable
             new Rectangle(bounds.Left + 12, bounds.Top + 4,
                 bounds.Width - 24, 2),
             new Color(230, 236, 229, 90));
+    }
+
+    private void DrawPlagueCloud(PlagueCloud cloud, GameTime gameTime)
+    {
+        Rectangle bounds = cloud.Bounds;
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 4.1f +
+            cloud.Position.X * .013f);
+
+        if (cloud.State == PlagueCloudState.Warning)
+        {
+            int inset = (int)MathF.Round((1f - cloud.PhaseProgress) * 8f);
+            var warning = new Rectangle(
+                bounds.X + inset,
+                bounds.Y + inset / 3,
+                Math.Max(2, bounds.Width - inset * 2),
+                Math.Max(2, bounds.Height - inset * 2 / 3));
+            DrawRectangleOutline(
+                warning,
+                2,
+                cloud.IsCollapseCloud
+                    ? new Color(151, 122, 75, 185)
+                    : new Color(137, 132, 82, 165));
+            DrawWorldLine(
+                new Vector2(warning.Left + 8, warning.Bottom - 2),
+                new Vector2(warning.Right - 8, warning.Bottom - 2),
+                2f,
+                new Color(106, 103, 72, 130));
+            return;
+        }
+
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            new Color(78, 82, 58, 42 + (int)(pulse * 13f)));
+        DrawRectangleOutline(bounds, 2, new Color(118, 120, 76, 125));
+        DrawWorldLine(
+            new Vector2(bounds.Left + 5, bounds.Bottom - 3),
+            new Vector2(bounds.Right - 5, bounds.Bottom - 3),
+            3f,
+            new Color(91, 87, 61, 140));
+
+        for (int index = 0; index < 7; index++)
+        {
+            float phase = (float)gameTime.TotalGameTime.TotalSeconds *
+                (.55f + index * .07f) + index * 1.27f;
+            float x = bounds.Center.X + MathF.Sin(phase * 1.7f) *
+                (bounds.Width * .38f);
+            float rise = (phase * 13f) % Math.Max(8f, bounds.Height - 5f);
+            float y = bounds.Bottom - 5f - rise;
+            int size = index % 3 == 0 ? 4 : 3;
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle((int)x, (int)y, size, size),
+                index % 2 == 0
+                    ? new Color(124, 128, 82, 100)
+                    : new Color(93, 98, 70, 90));
+        }
     }
 
     private void DrawWorldLine(
@@ -2912,6 +3303,19 @@ public sealed class GameRenderer : IDisposable
     private void DrawRootHazard(RootHazard hazard)
     {
         Rectangle bounds = hazard.Bounds;
+
+        if (hazard.VisualKind == RootHazardVisualKind.CommandSeal)
+        {
+            DrawCommandSeal(hazard, bounds);
+            return;
+        }
+
+        if (hazard.VisualKind is RootHazardVisualKind.AshTrail or
+            RootHazardVisualKind.CinderZone)
+        {
+            DrawAshHazard(hazard, bounds);
+            return;
+        }
 
         if (hazard.Owner is AncientTreant)
         {
@@ -2961,6 +3365,94 @@ public sealed class GameRenderer : IDisposable
         }
 
         DrawRectangleOutline(bounds, 2, new Color(143, 72, 67, 190));
+    }
+
+    private void DrawAshHazard(RootHazard hazard, Rectangle bounds)
+    {
+        float progress = hazard.PhaseProgress;
+        bool cinder = hazard.VisualKind == RootHazardVisualKind.CinderZone;
+        if (hazard.State == RootHazardState.Telegraph)
+        {
+            byte alpha = (byte)MathHelper.Lerp(44f, 112f, progress);
+            _spriteBatch.Draw(
+                _pixel,
+                bounds,
+                new Color((byte)111, (byte)70, (byte)54, alpha));
+            DrawRectangleOutline(
+                bounds,
+                2,
+                new Color(188, 104, 58, 175));
+            for (int x = bounds.Left + 6; x < bounds.Right - 2; x += 12)
+            {
+                _spriteBatch.Draw(
+                    _pixel,
+                    new Rectangle(x, bounds.Center.Y - 1, 6, 2),
+                    new Color(215, 128, 70, 150));
+            }
+            return;
+        }
+
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            cinder
+                ? new Color(70, 51, 45, 125)
+                : new Color(65, 55, 51, 104));
+        DrawRectangleOutline(
+            bounds,
+            2,
+            new Color(143, 74, 50, 178));
+        int spacing = cinder ? 11 : 16;
+        for (int x = bounds.Left + 5; x < bounds.Right - 3; x += spacing)
+        {
+            int height = 4 + Math.Abs(x / spacing) % (cinder ? 8 : 5);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, bounds.Bottom - height, 3, height),
+                new Color(198, 78, 37, 176));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x + 1, bounds.Bottom - height - 2, 2, 3),
+                new Color(231, 137, 60, 142));
+        }
+    }
+
+    private void DrawCommandSeal(RootHazard hazard, Rectangle bounds)
+    {
+        float progress = hazard.PhaseProgress;
+        Color edge = hazard.State == RootHazardState.Telegraph
+            ? new Color(
+                (byte)181,
+                (byte)142,
+                (byte)76,
+                (byte)MathHelper.Lerp(90f, 205f, progress))
+            : new Color(165, 118, 64, 190);
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            hazard.State == RootHazardState.Telegraph
+                ? new Color(91, 54, 47, 48)
+                : new Color(82, 43, 42, 78));
+        DrawRectangleOutline(bounds, 2, edge);
+        int inset = Math.Max(4, bounds.Height / 4);
+        DrawRectangleOutline(
+            new Rectangle(
+                bounds.X + inset,
+                bounds.Y + inset / 2,
+                Math.Max(2, bounds.Width - inset * 2),
+                Math.Max(2, bounds.Height - inset)),
+            2,
+            new Color(210, 184, 118, 150));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.Center.X - 2, bounds.Y + 3, 4,
+                Math.Max(2, bounds.Height - 6)),
+            new Color(126, 51, 45, 155));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.X + 7, bounds.Center.Y - 1,
+                Math.Max(2, bounds.Width - 14), 3),
+            new Color(198, 159, 91, 125));
     }
 
     private void DrawAncientTreantRootHazard(
@@ -4280,6 +4772,36 @@ public sealed class GameRenderer : IDisposable
             CatacombEnemy catacomb when
                 catacomb.Type == EnemyType.SoulCollector =>
                 EnemyVisualProfile.SoulCollector.VisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.FallenMilitiaman =>
+                FallenCityMilitiaSpriteRenderer.MilitiamanVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.RuinedCrossbowman =>
+                FallenCityMilitiaSpriteRenderer.CrossbowmanVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.RabidHound =>
+                FallenCityHoundPlagueSpriteRenderer.HoundVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.PlagueCarrier =>
+                FallenCityHoundPlagueSpriteRenderer.CarrierVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.BellWatcher =>
+                FallenCityWatcherExecutionerSpriteRenderer.WatcherVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.StreetExecutioner =>
+                FallenCityWatcherExecutionerSpriteRenderer.ExecutionerVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.RoyalGuard =>
+                FallenCityRoyalAshSpriteRenderer.RoyalGuardVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.AshKnight =>
+                FallenCityRoyalAshSpriteRenderer.AshKnightVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.WarBishop =>
+                FallenCityBishopKingSpriteRenderer.WarBishopVisualSize,
+            FallenCityEnemy city when
+                city.Type == EnemyType.BrokenKing =>
+                FallenCityBishopKingSpriteRenderer.BrokenKingVisualSize,
             _ => enemy.Size
         };
         return new Rectangle(
@@ -5499,14 +6021,22 @@ public sealed class GameRenderer : IDisposable
     {
         Viewport viewport = _graphicsDevice.Viewport;
         var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
-        int margin = Math.Clamp(viewport.Width / 50, 10, 24);
-        int gap = Math.Clamp(viewport.Width / 70, 8, 18);
-        int top = Math.Clamp(viewport.Height / 8, 54, 82);
-        int footerHeight = Math.Clamp(viewport.Height / 10, 38, 58);
-        int panelHeight = Math.Max(260, viewport.Height - top - footerHeight - margin);
-        int panelWidth = Math.Max(
-            180,
-            (viewport.Width - margin * 2 - gap * 2) / SaveSlotManager.SlotCount);
+        int gap = Math.Clamp(viewport.Width / 57, 18, 36);
+        int preferredMargin = Math.Clamp(viewport.Width / 25, 42, 86);
+        int panelWidth = Math.Clamp(
+            (viewport.Width - preferredMargin * 2 - gap * 2) /
+                SaveSlotManager.SlotCount,
+            230,
+            540);
+        int margin = Math.Max(
+            18,
+            (viewport.Width - panelWidth * SaveSlotManager.SlotCount -
+                gap * (SaveSlotManager.SlotCount - 1)) / 2);
+        int top = Math.Clamp((int)MathF.Round(viewport.Height * .11f), 74, 112);
+        int panelHeight = Math.Clamp(
+            (int)MathF.Round(viewport.Height * .70f),
+            430,
+            756);
         double time = gameTime.TotalGameTime.TotalSeconds;
 
         _graphicsDevice.Clear(new Color(6, 9, 12));
@@ -5536,13 +6066,13 @@ public sealed class GameRenderer : IDisposable
             screen.Center.X,
             17,
             new Color(225, 188, 90),
-            viewport.Width >= 950 ? 3 : 2);
+            viewport.Width >= 1800 ? 4 : viewport.Width >= 1100 ? 3 : 2);
         DrawCenteredText(
             Loc.Get("character.select.subtitle"),
             screen.Center.X,
-            viewport.Width >= 950 ? 46 : 39,
+            viewport.Width >= 1800 ? 52 : viewport.Width >= 1100 ? 46 : 39,
             new Color(123, 130, 130),
-            1);
+            viewport.Width >= 1600 ? 2 : 1);
 
         for (int index = 0; index < SaveSlotManager.SlotCount; index++)
         {
@@ -5557,13 +6087,12 @@ public sealed class GameRenderer : IDisposable
             DrawCharacterSlotBase(panel, index, selected, session.SaveSlots[index].Occupied);
         }
 
-        int footerY = top + panelHeight + Math.Max(5, gap / 2);
         DrawCenteredText(
             Loc.Get("character.select.controls"),
             screen.Center.X,
-            Math.Min(screen.Height - 22, footerY + 8),
+            screen.Height - (viewport.Height >= 900 ? 34 : 24),
             new Color(166, 171, 169),
-            1);
+            viewport.Width >= 1600 ? 2 : 1);
         _spriteBatch.End();
 
         for (int index = 0; index < SaveSlotManager.SlotCount; index++)
@@ -5580,10 +6109,17 @@ public sealed class GameRenderer : IDisposable
                 top,
                 panelWidth,
                 panelHeight);
-            float scale = Math.Clamp(panel.Width / 175f, 1.05f, 1.65f);
+            float largeWindowProgress = Math.Clamp(
+                (viewport.Height - 720f) / 360f,
+                0f,
+                1f);
+            float scale = Math.Clamp(
+                1.65f + largeWindowProgress * 1.05f,
+                1.55f,
+                2.70f);
             var anchor = new Vector2(
                 panel.Center.X / scale,
-                (panel.Y + Math.Min(164, panel.Height / 2)) / scale);
+                GetCharacterPreviewGroundY(panel) / scale);
             _spriteBatch.Begin(
                 samplerState: SamplerState.PointClamp,
                 transformMatrix: Matrix.CreateScale(scale));
@@ -5660,16 +6196,16 @@ public sealed class GameRenderer : IDisposable
         DrawCenteredText(
             Loc.Format("character.slot", index + 1),
             panel.Center.X,
-            panel.Y + 12,
+            panel.Y + 13,
             selected ? new Color(235, 207, 137) : new Color(137, 142, 141),
-            1);
+            panel.Width >= 470 ? 2 : 1);
 
-        int pedestalY = panel.Y + Math.Min(170, panel.Height / 2 + 5);
+        int pedestalY = GetCharacterPreviewGroundY(panel) + 6;
         var pedestal = new Rectangle(
-            panel.Center.X - Math.Min(62, panel.Width / 3),
+            panel.Center.X - Math.Min(82, panel.Width / 3),
             pedestalY,
-            Math.Min(124, panel.Width * 2 / 3),
-            12);
+            Math.Min(164, panel.Width * 2 / 3),
+            panel.Height >= 600 ? 15 : 12);
         _spriteBatch.Draw(
             _pixel,
             pedestal,
@@ -5682,66 +6218,85 @@ public sealed class GameRenderer : IDisposable
 
         if (!occupied)
         {
-            int runeY = panel.Y + Math.Min(104, panel.Height / 3);
+            int runeY = panel.Y + (int)MathF.Round(panel.Height * .39f);
+            int runeSize = Math.Clamp(panel.Width / 6, 54, 84);
             DrawRectangleOutline(
-                new Rectangle(panel.Center.X - 23, runeY - 23, 46, 46),
-                2,
+                new Rectangle(
+                    panel.Center.X - runeSize / 2,
+                    runeY - runeSize / 2,
+                    runeSize,
+                    runeSize),
+                panel.Width >= 450 ? 4 : 3,
                 new Color(93, 82, 60));
+            int stroke = Math.Clamp(runeSize / 12, 4, 7);
+            int arm = runeSize / 3;
             _spriteBatch.Draw(
                 _pixel,
-                new Rectangle(panel.Center.X - 2, runeY - 13, 4, 26),
+                new Rectangle(panel.Center.X - stroke / 2, runeY - arm, stroke, arm * 2),
                 new Color(142, 119, 69));
             _spriteBatch.Draw(
                 _pixel,
-                new Rectangle(panel.Center.X - 13, runeY - 2, 26, 4),
+                new Rectangle(panel.Center.X - arm, runeY - stroke / 2, arm * 2, stroke),
                 new Color(142, 119, 69));
         }
     }
+
+    private static int GetCharacterPreviewGroundY(Rectangle panel) =>
+        panel.Y + Math.Clamp((int)MathF.Round(panel.Height * .40f), 190, 302);
 
     private void DrawCharacterSlotDetails(Rectangle panel, SaveSlotData slot)
     {
         if (!slot.Occupied)
         {
+            int centerY = panel.Y + (int)MathF.Round(panel.Height * .39f);
+            int emptyScale = panel.Width >= 450 ? 2 : 1;
             DrawCenteredText(
                 Loc.Get("character.empty"),
                 panel.Center.X,
-                panel.Y + Math.Min(205, panel.Height * 3 / 5),
-                new Color(133, 137, 136),
-                1);
+                centerY + Math.Clamp(panel.Width / 9, 54, 76),
+                new Color(160, 164, 161),
+                emptyScale);
             DrawCenteredText(
                 Loc.Get("character.create"),
                 panel.Center.X,
-                panel.Y + Math.Min(231, panel.Height * 2 / 3),
-                new Color(184, 151, 79),
-                1);
+                centerY + Math.Clamp(panel.Width / 9, 78, 106),
+                new Color(210, 171, 83),
+                emptyScale);
             return;
         }
 
+        int nameScale = panel.Width >= 470 && slot.CharacterName.Length <= 14
+            ? 3
+            : panel.Width >= 300 && slot.CharacterName.Length <= 16
+                ? 2
+                : 1;
         DrawCenteredText(
             slot.CharacterName,
             panel.Center.X,
-            panel.Y + 31,
+            panel.Y + (panel.Width >= 470 ? 46 : 34),
             new Color(225, 197, 126),
-            slot.CharacterName.Length <= 11 && panel.Width >= 225 ? 2 : 1);
+            nameScale);
 
-        int x = panel.X + 13;
-        int y = panel.Y + Math.Min(200, panel.Height / 2 + 28);
+        int infoScale = panel.Width >= 450 ? 2 : 1;
+        int rowHeight = infoScale == 2 ? 27 : 20;
+        int x = panel.X + Math.Clamp(panel.Width / 18, 14, 27);
+        int y = panel.Y + (int)MathF.Round(panel.Height * .57f);
         Color label = new(112, 120, 124);
         Color value = new(190, 193, 188);
         DrawSlotValue(Loc.Get("character.create.body"),
             Loc.Get(slot.Appearance.BodyType == CharacterBodyType.Male
                 ? "character.value.male"
-                : "character.value.female"), x, y, panel, label, value);
-        y += 18;
-        DrawSlotValue(Loc.Get("character.level").Split(' ')[0], slot.Level.ToString(), x, y, panel, label, value);
-        y += 18;
-        DrawSlotValue(Loc.Get("character.area").Split(':')[0], slot.CurrentArea, x, y, panel, label, value);
-        y += 18;
-        DrawSlotValue(Loc.Get("character.weapon").Split(':')[0], slot.EquippedWeaponName, x, y, panel, label, value);
-        y += 18;
-        DrawSlotValue(Loc.Get("character.armor").Split(':')[0], slot.EquippedArmorName, x, y, panel, label, value);
-        y += 18;
-        DrawSlotValue(Loc.Get("character.play_time").Split(':')[0], FormatPlayTime(slot.PlayTimeSeconds), x, y, panel, label, value);
+                : "character.value.female"), x, y, panel, label, value, infoScale);
+        y += rowHeight;
+        DrawSlotValue(Loc.Get("character.level").Split(' ')[0], slot.Level.ToString(), x, y, panel, label, value, infoScale);
+        y += rowHeight;
+        DrawSlotValue(Loc.Get("character.area").Split(':')[0], slot.CurrentArea, x, y, panel, label, value, infoScale);
+        y += rowHeight;
+        DrawSlotValue(Loc.Get("character.weapon").Split(':')[0], slot.EquippedWeaponName, x, y, panel, label, value, infoScale);
+        y += rowHeight;
+        DrawSlotValue(Loc.Get("character.armor").Split(':')[0], slot.EquippedArmorName, x, y, panel, label, value, infoScale);
+        y += rowHeight;
+        DrawSlotValue(Loc.Get("character.play_time").Split(':')[0], FormatPlayTime(slot.PlayTimeSeconds), x, y, panel, label, value, infoScale);
     }
 
     private void DrawSlotValue(
@@ -5751,11 +6306,20 @@ public sealed class GameRenderer : IDisposable
         int y,
         Rectangle panel,
         Color labelColor,
-        Color valueColor)
+        Color valueColor,
+        int scale)
     {
-        DrawDebugText(label, x, y, labelColor, 1);
-        int valueX = x + Math.Min(52, panel.Width / 4);
-        DrawDebugText(value ?? string.Empty, valueX, y, valueColor, 1);
+        DrawDebugText(label, x, y, labelColor, scale);
+        int valueX = panel.X + (int)MathF.Round(panel.Width * .42f);
+        string displayedValue = value ?? string.Empty;
+        int maximumCharacters = Math.Max(
+            4,
+            (panel.Right - valueX - 12) / (6 * scale));
+        if (displayedValue.Length > maximumCharacters)
+            displayedValue = maximumCharacters > 3
+                ? displayedValue[..(maximumCharacters - 3)] + "..."
+                : displayedValue[..maximumCharacters];
+        DrawDebugText(displayedValue, valueX, y, valueColor, scale);
     }
 
     private static string FormatPlayTime(double totalSeconds)
@@ -6257,9 +6821,9 @@ public sealed class GameRenderer : IDisposable
         var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
         var panel = new Rectangle(
             viewport.Width / 2 - 220,
-            viewport.Height / 2 - 180,
+            viewport.Height / 2 - 220,
             440,
-            360);
+            440);
         _spriteBatch.Draw(_pixel, screen, new Color(5, 7, 10, 210));
         _spriteBatch.Draw(_pixel, panel, new Color(22, 27, 35, 252));
         DrawRectangleOutline(panel, 4, new Color(132, 153, 159));
@@ -6308,6 +6872,22 @@ public sealed class GameRenderer : IDisposable
                 "settings.sfx_volume",
                 (int)MathF.Round(Loc.SfxVolume * 100f)),
             session.LanguageSettings.SelectedRow == SettingsRow.SfxVolume);
+        string displayModeKey = Loc.DisplayMode switch
+        {
+            GameDisplayMode.BorderlessWindowed => "settings.borderless",
+            GameDisplayMode.Fullscreen => "settings.fullscreen",
+            _ => "settings.windowed"
+        };
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 283,
+            Loc.Format("settings.display_mode", Loc.Get(displayModeKey)),
+            session.LanguageSettings.SelectedRow == SettingsRow.DisplayMode);
+        DrawPauseConfirmationChoice(
+            panel,
+            panel.Y + 321,
+            Loc.Format("settings.resolution", Loc.WindowWidth, Loc.WindowHeight),
+            session.LanguageSettings.SelectedRow == SettingsRow.Resolution);
         DrawCenteredText(
             Loc.Get("settings.change_hint"),
             panel.Center.X,

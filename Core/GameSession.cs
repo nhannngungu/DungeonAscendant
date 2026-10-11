@@ -95,6 +95,7 @@ public sealed class GameSession
 
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly CatacombMapGenerator _catacombGenerator;
+    private readonly FallenCityMapGenerator _fallenCityGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
     private readonly List<RottenCorpseBurst> _rottenCorpseBursts = new();
     private readonly HashSet<Enemy> _playerAttackHits = new();
@@ -171,6 +172,10 @@ public sealed class GameSession
     public IReadOnlyList<Enemy> DefeatedEnemiesThisFrame => _defeatedEnemies;
     public bool Map01Cleared { get; private set; }
     public bool Map02Cleared { get; private set; }
+    public bool Map03Cleared { get; private set; }
+    public bool Map03ExitPrepared { get; private set; }
+    public CityAlarmSystem CityAlarm { get; }
+    public CollapsingCitySystem CollapsingCity { get; }
     public ProjectileManager Projectiles { get; }
     public GroundRuneManager GroundRunes { get; }
     public IReadOnlyList<BreakerShockwave> BreakerShockwaves =>
@@ -245,12 +250,15 @@ public sealed class GameSession
         DungeonDepth == 1;
     public bool IsSequentialEnemyTestMode => IsWildForestShowcaseMode;
     public bool IsMapEntryFallActive => _mapEntryFallActive;
-    public string CurrentMapName => CurrentDungeon?.IsAncientCatacombs == true
-        ? Loc.Get("hud.map_catacombs")
-        : Loc.Get("hud.map_wilderness");
+    public string CurrentMapName => CurrentDungeon?.IsFallenCity == true
+        ? Loc.Get("hud.map_fallen_city")
+        : CurrentDungeon?.IsAncientCatacombs == true
+            ? Loc.Get("hud.map_catacombs")
+            : Loc.Get("hud.map_wilderness");
     public string CurrentZoneName => GetCurrentZoneName();
     public int ActiveEnemyCount => CountActiveEnemies();
-    public bool ShouldRenderBoss => CurrentDungeon?.IsAncientCatacombs != true;
+    public bool ShouldRenderBoss => CurrentDungeon != null &&
+        !CurrentDungeon.IsAncientCatacombs && !CurrentDungeon.IsFallenCity;
     public IReadOnlyList<Enemy> WildForestShowcaseEnemies =>
         _wildForestShowcaseEnemies;
     public bool IsSequentialEnemyTestComplete => _sequentialTestComplete;
@@ -300,12 +308,15 @@ public sealed class GameSession
         _saveSlotManager = new SaveSlotManager(savePath);
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         _catacombGenerator = new CatacombMapGenerator();
+        _fallenCityGenerator = new FallenCityMapGenerator();
         Enemies = new EnemyManager(randomSeed);
         WildForestEncounters = new WildForestEncounterDirector();
         EnemyIntroductions = new EnemyIntroductionManager();
         Curse = new CurseSystem();
         Tombs = new TombInteractionManager();
         ScholarTomb = new AncientScholarTombSystem();
+        CityAlarm = new CityAlarmSystem();
+        CollapsingCity = new CollapsingCitySystem();
         Projectiles = new ProjectileManager();
         GroundRunes = new GroundRuneManager();
         RootHazards = new RootHazardManager();
@@ -318,12 +329,19 @@ public sealed class GameSession
         State = GameState.Start;
     }
 
+    public void ResizeViewport(Rectangle viewportBounds)
+    {
+        Camera.ResizeViewport(viewportBounds.Width, viewportBounds.Height);
+    }
+
     public void Update(
         GameTime gameTime,
         KeyboardState keyboardState,
         MouseState mouseState)
     {
         bool startPressed = keyboardState.IsKeyDown(Keys.Enter) &&
+            !keyboardState.IsKeyDown(Keys.LeftAlt) &&
+            !keyboardState.IsKeyDown(Keys.RightAlt) &&
             !_previousKeyboardState.IsKeyDown(Keys.Enter);
         bool pausePressed = keyboardState.IsKeyDown(Keys.Escape) &&
             !_previousKeyboardState.IsKeyDown(Keys.Escape);
@@ -615,6 +633,15 @@ public sealed class GameSession
             activeEnemyLevel,
             WorldTier,
             suppressActivation: insideScholarSafeZone);
+        CityAlarm.Update(
+            gameTime,
+            CurrentDungeon,
+            Player.Position,
+            Enemies,
+            WildForestEncounters,
+            activeEnemyLevel,
+            WorldTier);
+        CollapsingCity.Update(gameTime);
         Tombs.Update(gameTime,Player,CurrentDungeon,Enemies,activeEnemyLevel,WorldTier);
         if (Tombs.LootOpenedPosition.HasValue)
             Loot.CreateTreasureChestDrops(Tombs.LootOpenedPosition.Value,
@@ -654,7 +681,8 @@ public sealed class GameSession
                 }
             }
         }
-        if (CurrentDungeon.IsAuthoredWildForest || CurrentDungeon.IsAncientCatacombs)
+        if (CurrentDungeon.IsAuthoredWildForest ||
+            CurrentDungeon.IsAncientCatacombs || CurrentDungeon.IsFallenCity)
         {
             EnemyIntroductions.Update(
                 gameTime,
@@ -683,6 +711,9 @@ public sealed class GameSession
                     CurrentDungeon,
                     Projectiles,
                     RootHazards);
+                CollapsingCity.UpdateEliteAttacks(
+                    CurrentDungeon,
+                    Enemies.Enemies);
                 ApplyCatacombEnemyCursePressure();
                 WildForestEncounters.EnforceArenaBounds();
                 Projectiles.Update(gameTime, Player, CurrentDungeon);
@@ -803,6 +834,25 @@ public sealed class GameSession
                     BossDefeated = true;
                     Curse.Reduce(100f);
                 }
+            }
+
+            if (CurrentDungeon.IsFallenCity &&
+                enemy.Type == EnemyType.PlagueCarrier)
+            {
+                Projectiles.TryCreatePlagueCloud(
+                    new Vector2(
+                        enemy.Position.X,
+                        enemy.Bounds.Bottom - 12f),
+                    enemy.RoomId,
+                    CurrentDungeon,
+                    collapseCloud: true);
+            }
+
+            if (CurrentDungeon.IsFallenCity &&
+                enemy.Type == EnemyType.BrokenKing)
+            {
+                Map03Cleared = true;
+                BossDefeated = true;
             }
 
             if (enemy.CanDropLoot)
@@ -958,6 +1008,8 @@ public sealed class GameSession
         WildForestEncounters.Reset(null);
         EnemyIntroductions.Reset();
         Curse.Reset();
+        CityAlarm.Reset();
+        CollapsingCity.Reset(CurrentDungeon);
         Tombs.Reset(null);
         ScholarTomb.ResetForNewRun();
         Camera.ResetRuntime();
@@ -1057,6 +1109,8 @@ public sealed class GameSession
         DungeonDepth = 1;
         Map01Cleared = false;
         Map02Cleared = false;
+        Map03Cleared = false;
+        Map03ExitPrepared = false;
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
@@ -1174,15 +1228,15 @@ public sealed class GameSession
         _autosaveTimeRemaining = AutosaveIntervalSeconds;
 
         ScholarTomb.ResetForNewRun();
-        DungeonDepth = Math.Max(1, slot.DungeonDepth);
+        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 3);
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
-        Region = RegionDefinition.WildForest;
+        Region = GetRegionForDepth(DungeonDepth);
         _worldTierTransitionTimeRemaining = 0f;
         CurrentDungeon = DungeonDepth == 1
             ? _dungeonGenerator.GenerateWildForest()
             : DungeonDepth == 2
                 ? _catacombGenerator.Generate()
-                : _dungeonGenerator.Generate();
+                : _fallenCityGenerator.Generate();
         Player = new PlayerCharacter(
             GetRoomEntranceSpawn(CurrentDungeon.StartRoom),
             appearance: RunAppearance);
@@ -1229,6 +1283,11 @@ public sealed class GameSession
 
         Map01Cleared = slot.Map01Cleared;
         Map02Cleared = slot.Map02Cleared;
+        Map03Cleared = slot.Map03Cleared;
+        if (CurrentDungeon.IsAncientCatacombs && Map02Cleared)
+            WildForestEncounters.MarkCleared("fallen-knight");
+        if (CurrentDungeon.IsFallenCity && Map03Cleared)
+            WildForestEncounters.MarkCleared("broken-king");
         if (slot.BossDefeated)
         {
             BossDefeated = true;
@@ -1248,7 +1307,8 @@ public sealed class GameSession
                 Player.Facing,
                 CurrentDungeon.WorldBounds,
                 CurrentDungeon.IsAuthoredWildForest ? .54f :
-                    CurrentDungeon.IsAncientCatacombs ? .55f : .57f);
+                    CurrentDungeon.IsAncientCatacombs ? .55f :
+                    CurrentDungeon.IsFallenCity ? .56f : .57f);
         }
     }
 
@@ -1299,6 +1359,7 @@ public sealed class GameSession
             Notes = CaptureNotes(Player),
             Map01Cleared = Map01Cleared,
             Map02Cleared = Map02Cleared,
+            Map03Cleared = Map03Cleared,
             BossDefeated = BossDefeated,
             KillCount = KillCount,
             PlayTimeSeconds = _activePlayTimeSeconds,
@@ -1349,7 +1410,8 @@ public sealed class GameSession
 
         CurrentDungeon = DungeonDepth == 2
             ? _catacombGenerator.Generate()
-            : _dungeonGenerator.Generate();
+            : _fallenCityGenerator.Generate();
+        Region = GetRegionForDepth(DungeonDepth);
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
         IsInventoryOpen = false;
         _pendingFusionItem = null;
@@ -1392,13 +1454,17 @@ public sealed class GameSession
             isFirstDungeonOfRun: DungeonDepth == 1,
             suppressProceduralSpawns: IsWildForestShowcaseMode ||
                 CurrentDungeon.IsAuthoredWildForest ||
-                CurrentDungeon.IsAncientCatacombs);
+                CurrentDungeon.IsAncientCatacombs ||
+                CurrentDungeon.IsFallenCity);
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom, avoidEnemies: true);
         WildForestEncounters.Reset(CurrentDungeon);
         EnemyIntroductions.Reset();
         Curse.Reset();
         Tombs.Reset(CurrentDungeon);
         ScholarTomb.Configure(CurrentDungeon);
+        CityAlarm.Reset();
+        CollapsingCity.Reset(CurrentDungeon);
+        Map03ExitPrepared = false;
         _rottenCorpseBursts.Clear();
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
@@ -1420,7 +1486,8 @@ public sealed class GameSession
             Player.Facing,
             CurrentDungeon.WorldBounds,
             CurrentDungeon.IsAuthoredWildForest ? .54f :
-                CurrentDungeon.IsAncientCatacombs ? .55f : .57f);
+                CurrentDungeon.IsAncientCatacombs ? .55f :
+                CurrentDungeon.IsFallenCity ? .56f : .57f);
     }
 
     private AncientTreant CreateRegionBoss()
@@ -1563,6 +1630,9 @@ public sealed class GameSession
         if (IsWildForestShowcaseMode)
             return false;
 
+        if (CityAlarm.TryDisableNearest(Player.Position, CurrentDungeon))
+            return true;
+
         if (ScholarTomb.TryInspect(Player.Position))
         {
             Player.Combat.CancelActions(restoreStamina: false);
@@ -1597,6 +1667,11 @@ public sealed class GameSession
 
         if (IsExitUnlocked && IsPlayerNearExit())
         {
+            if (CurrentDungeon.IsFallenCity)
+            {
+                Map03ExitPrepared = true;
+                return true;
+            }
             CompleteDungeon();
             return true;
         }
@@ -1752,7 +1827,8 @@ public sealed class GameSession
             CurrentDungeon.WorldBounds,
             elapsedSeconds,
             CurrentDungeon.IsAuthoredWildForest ? .54f :
-                CurrentDungeon.IsAncientCatacombs ? .55f : .57f);
+                CurrentDungeon.IsAncientCatacombs ? .55f :
+                CurrentDungeon.IsFallenCity ? .56f : .57f);
     }
 
     internal void ExecuteDeveloperCommand(
@@ -1803,6 +1879,13 @@ public sealed class GameSession
             case DeveloperCommand.ToggleMap02Cleared:
                 Map02Cleared = !Map02Cleared;
                 break;
+            case DeveloperCommand.ToggleMap03Cleared:
+                Map03Cleared = !Map03Cleared;
+                break;
+            case DeveloperCommand.ResetCitySystems:
+                CityAlarm.Reset();
+                CollapsingCity.Reset(CurrentDungeon);
+                break;
             case DeveloperCommand.ResetCurrentBoss:
                 DeveloperResetCurrentBoss();
                 break;
@@ -1831,6 +1914,15 @@ public sealed class GameSession
             return FindNearestCatacombZone();
         }
 
+        if (CurrentDungeon.IsFallenCity)
+        {
+            for (int index = 0; index < CurrentDungeon.FallenCityZones.Count; index++)
+                if (CurrentDungeon.FallenCityZones[index].Bounds.Contains(
+                    Player.Position.ToPoint()))
+                    return index;
+            return FindNearestFallenCityZone();
+        }
+
         for (int index = 0; index < CurrentDungeon.WildForestSections.Count; index++)
             if (CurrentDungeon.WildForestSections[index].Bounds.Contains(Player.Position.ToPoint()))
                 return index;
@@ -1839,14 +1931,17 @@ public sealed class GameSession
 
     private void DeveloperLoadMap(int mapNumber)
     {
-        mapNumber = System.Math.Clamp(mapNumber, 1, 2);
+        mapNumber = System.Math.Clamp(mapNumber, 1, 3);
         DungeonDepth = mapNumber;
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
-        Region = RegionDefinition.WildForest;
+        Region = GetRegionForDepth(DungeonDepth);
         _worldTierTransitionTimeRemaining = 0f;
-        CurrentDungeon = mapNumber == 2
-            ? _catacombGenerator.Generate()
-            : _dungeonGenerator.GenerateWildForest();
+        CurrentDungeon = mapNumber switch
+        {
+            2 => _catacombGenerator.Generate(),
+            3 => _fallenCityGenerator.Generate(),
+            _ => _dungeonGenerator.GenerateWildForest()
+        };
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
         IsInventoryOpen = false;
         _pendingFusionItem = null;
@@ -1880,16 +1975,20 @@ public sealed class GameSession
             return;
         }
 
-        int count = CurrentDungeon.IsAncientCatacombs
-            ? CurrentDungeon.CatacombZones.Count
-            : CurrentDungeon.WildForestSections.Count;
+        int count = CurrentDungeon.IsFallenCity
+            ? CurrentDungeon.FallenCityZones.Count
+            : CurrentDungeon.IsAncientCatacombs
+                ? CurrentDungeon.CatacombZones.Count
+                : CurrentDungeon.WildForestSections.Count;
         if (count == 0)
             return;
 
         zoneIndex = System.Math.Clamp(zoneIndex, 0, count - 1);
-        Rectangle bounds = CurrentDungeon.IsAncientCatacombs
-            ? CurrentDungeon.CatacombZones[zoneIndex].Bounds
-            : CurrentDungeon.WildForestSections[zoneIndex].Bounds;
+        Rectangle bounds = CurrentDungeon.IsFallenCity
+            ? CurrentDungeon.FallenCityZones[zoneIndex].Bounds
+            : CurrentDungeon.IsAncientCatacombs
+                ? CurrentDungeon.CatacombZones[zoneIndex].Bounds
+                : CurrentDungeon.WildForestSections[zoneIndex].Bounds;
         ClearDeveloperTransientState();
         List<Rectangle> blockers = GetAliveEnemyBounds();
         Vector2 spawn = SideScrollingCollision.ResolveSafeEntrySpawn(
@@ -1958,6 +2057,12 @@ public sealed class GameSession
             Map02Cleared = false;
             BossDefeated = false;
         }
+        else if (zoneId == "broken-king")
+        {
+            Map03Cleared = false;
+            BossDefeated = false;
+            Map03ExitPrepared = false;
+        }
         ClearDeveloperTransientState();
     }
 
@@ -1974,9 +2079,11 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return string.Empty;
-        string sectionId = CurrentDungeon.IsAncientCatacombs
-            ? CurrentDungeon.CatacombZones[index].ZoneId
-            : CurrentDungeon.WildForestSections[index].SectionId;
+        string sectionId = CurrentDungeon.IsFallenCity
+            ? CurrentDungeon.FallenCityZones[index].ZoneId
+            : CurrentDungeon.IsAncientCatacombs
+                ? CurrentDungeon.CatacombZones[index].ZoneId
+                : CurrentDungeon.WildForestSections[index].SectionId;
         foreach (EncounterZone zone in CurrentDungeon.EncounterZones)
         {
             if (zone.SectionId == sectionId &&
@@ -1995,6 +2102,9 @@ public sealed class GameSession
         RootHazards.Clear();
         ClearBreakerEffects();
         _rottenCorpseBursts.Clear();
+        Enemies.ClearTemporaryBuffs();
+        CityAlarm.Reset();
+        CollapsingCity.Reset(CurrentDungeon);
         Player.ClearTemporaryStatus();
     }
 
@@ -2012,9 +2122,11 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return "UNKNOWN";
-        return CurrentDungeon.IsAncientCatacombs
-            ? CurrentDungeon.CatacombZones[index].Name
-            : CurrentDungeon.WildForestSections[index].Name;
+        return CurrentDungeon.IsFallenCity
+            ? Loc.Get(CurrentDungeon.FallenCityZones[index].NameKey)
+            : CurrentDungeon.IsAncientCatacombs
+                ? CurrentDungeon.CatacombZones[index].Name
+                : CurrentDungeon.WildForestSections[index].Name;
     }
 
     private int CountActiveEnemies()
@@ -2055,6 +2167,32 @@ public sealed class GameSession
         }
         return result;
     }
+
+    private int FindNearestFallenCityZone()
+    {
+        int result = 0;
+        float distance = float.MaxValue;
+        for (int index = 0; index < CurrentDungeon.FallenCityZones.Count; index++)
+        {
+            float candidate = MathF.Abs(
+                CurrentDungeon.FallenCityZones[index].Bounds.Center.X -
+                Player.Position.X);
+            if (candidate < distance)
+            {
+                distance = candidate;
+                result = index;
+            }
+        }
+        return result;
+    }
+
+    private static RegionDefinition GetRegionForDepth(int dungeonDepth) =>
+        dungeonDepth switch
+        {
+            2 => RegionDefinition.AncientCatacombs,
+            >= 3 => RegionDefinition.FallenCity,
+            _ => RegionDefinition.WildForest
+        };
 
     private void RecoverPlayerFromFallIfNeeded()
     {
@@ -2482,6 +2620,11 @@ public sealed class GameSession
         }
 
         AttackDefinition attack = Player.Combat.CurrentAttack;
+
+        if (attack.IsHeavy)
+            CollapsingCity.TryBreakWithHeavyAttack(
+                PlayerAttackArea,
+                CurrentDungeon);
 
         if (attack.Delivery != AttackDelivery.Melee)
         {

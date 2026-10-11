@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'DungeonAscendant.WindowsDX'">
+    <BaseIntermediateOutputPath>obj\WindowsDX\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>obj\WindowsDX\</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>

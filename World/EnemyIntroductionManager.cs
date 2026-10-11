@@ -20,7 +20,10 @@ public enum WildForestEnemyIdentity
     MotherSpider,
     AncientTreant,
     Skeleton, SkeletonArcher, RottenCorpse, Wraith, UndeadGuard,
-    CursedKnight, GraveBat, DeathKnight, SoulCollector, FallenKnight
+    CursedKnight, GraveBat, DeathKnight, SoulCollector, FallenKnight,
+    FallenMilitiaman, RuinedCrossbowman, RabidHound, PlagueCarrier,
+    BellWatcher, StreetExecutioner, RoyalGuard, AshKnight, WarBishop,
+    BrokenKing
 }
 
 public sealed class EnemyIntroductionDefinition
@@ -56,6 +59,16 @@ public sealed class EnemyIntroductionDefinition
         WildForestEnemyIdentity.DeathKnight => "death_knight",
         WildForestEnemyIdentity.SoulCollector => "soul_collector",
         WildForestEnemyIdentity.FallenKnight => "fallen_knight",
+        WildForestEnemyIdentity.FallenMilitiaman => "fallen_militiaman",
+        WildForestEnemyIdentity.RuinedCrossbowman => "ruined_crossbowman",
+        WildForestEnemyIdentity.RabidHound => "rabid_hound",
+        WildForestEnemyIdentity.PlagueCarrier => "plague_carrier",
+        WildForestEnemyIdentity.BellWatcher => "bell_watcher",
+        WildForestEnemyIdentity.StreetExecutioner => "street_executioner",
+        WildForestEnemyIdentity.RoyalGuard => "royal_guard",
+        WildForestEnemyIdentity.AshKnight => "ash_knight",
+        WildForestEnemyIdentity.WarBishop => "war_bishop",
+        WildForestEnemyIdentity.BrokenKing => "broken_king",
         _ => "unknown"
     };
 
@@ -100,7 +113,17 @@ public sealed class EnemyIntroductionManager
         new(WildForestEnemyIdentity.GraveBat,"GRAVE BAT","WHISPER OF THE CRYPT","ITS CRY DRAINS THE STRENGTH FROM THOSE WHO STILL BREATHE",1),
         new(WildForestEnemyIdentity.DeathKnight,"DEATH KNIGHT","GUARDIAN OF THE WAR TOMB","DEATH ENDED THE BATTLE. IT DID NOT END HIS DUTY.",2),
         new(WildForestEnemyIdentity.SoulCollector,"SOUL COLLECTOR","WARDEN OF LOST SOULS","IT GATHERS THE DEAD SO NONE MAY EVER LEAVE",2),
-        new(WildForestEnemyIdentity.FallenKnight,"THE FALLEN KNIGHT","THE LAST OATH OF THE CATACOMBS","ONCE A GUARDIAN OF THE DEAD. NOW THEIR FINAL PRISONER.",3)
+        new(WildForestEnemyIdentity.FallenKnight,"THE FALLEN KNIGHT","THE LAST OATH OF THE CATACOMBS","ONCE A GUARDIAN OF THE DEAD. NOW THEIR FINAL PRISONER.",3),
+        new(WildForestEnemyIdentity.FallenMilitiaman,"FALLEN MILITIAMAN","THE SOLDIER WHO NEVER RETURNED","A common defender still fighting a war already lost.",1),
+        new(WildForestEnemyIdentity.RuinedCrossbowman,"RUINED CROSSBOWMAN","WATCHER OF EMPTY STREETS","A patient marksman entrenched in shattered masonry.",1),
+        new(WildForestEnemyIdentity.RabidHound,"RABID HOUND","HOUND OF THE FALLEN CITY","War left it only hunger and fear.",1),
+        new(WildForestEnemyIdentity.PlagueCarrier,"PLAGUE CARRIER","BEARER OF THE BLACK BREATH","The city disease follows wherever it falls.",1),
+        new(WildForestEnemyIdentity.BellWatcher,"BELL WATCHER","VOICE OF THE ALARM","Kill the watcher before the city answers.",1),
+        new(WildForestEnemyIdentity.StreetExecutioner,"STREET EXECUTIONER","THE LAST SENTENCE","The square still remembers his axe.",2),
+        new(WildForestEnemyIdentity.RoyalGuard,"ROYAL GUARD","SHIELD OF A DEAD KINGDOM","A final formation guards a crown already lost.",2),
+        new(WildForestEnemyIdentity.AshKnight,"ASH KNIGHT","KNIGHT OF THE BURNING QUARTER","Embers still breathe beneath the blackened plate.",2),
+        new(WildForestEnemyIdentity.WarBishop,"WAR BISHOP","PREACHER OF THE FINAL WAR","His last sermon turns nearby survivors into soldiers.",2),
+        new(WildForestEnemyIdentity.BrokenKing,"THE BROKEN KING","LAST SOVEREIGN OF THE FALLEN CITY","A wounded king still holds the ruined throne plaza.",3)
     };
 
     private readonly HashSet<WildForestEnemyIdentity> _discovered = new();
@@ -209,6 +232,16 @@ public sealed class EnemyIntroductionManager
             EnemyType.DeathKnight => WildForestEnemyIdentity.DeathKnight,
             EnemyType.SoulCollector => WildForestEnemyIdentity.SoulCollector,
             EnemyType.FallenKnight => WildForestEnemyIdentity.FallenKnight,
+            EnemyType.FallenMilitiaman => WildForestEnemyIdentity.FallenMilitiaman,
+            EnemyType.RuinedCrossbowman => WildForestEnemyIdentity.RuinedCrossbowman,
+            EnemyType.RabidHound => WildForestEnemyIdentity.RabidHound,
+            EnemyType.PlagueCarrier => WildForestEnemyIdentity.PlagueCarrier,
+            EnemyType.BellWatcher => WildForestEnemyIdentity.BellWatcher,
+            EnemyType.StreetExecutioner => WildForestEnemyIdentity.StreetExecutioner,
+            EnemyType.RoyalGuard => WildForestEnemyIdentity.RoyalGuard,
+            EnemyType.AshKnight => WildForestEnemyIdentity.AshKnight,
+            EnemyType.WarBishop => WildForestEnemyIdentity.WarBishop,
+            EnemyType.BrokenKing => WildForestEnemyIdentity.BrokenKing,
             _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
         };
 }

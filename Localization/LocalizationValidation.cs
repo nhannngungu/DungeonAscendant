@@ -26,6 +26,8 @@ public static class LocalizationValidation
         Loc.SetMasterVolume(.8f);
         Loc.SetMusicVolume(.5f);
         Loc.SetSfxVolume(.6f);
+        Loc.SetDisplayMode(GameDisplayMode.BorderlessWindowed);
+        Loc.SetWindowResolution(1600, 900);
         Need(Loc.Get("settings.language") == "NGÔN NGỮ",
             "Language did not switch immediately.");
         Loc.UseSettingsPathForValidation(path);
@@ -36,10 +38,15 @@ public static class LocalizationValidation
         Need(Math.Abs(Loc.MasterVolume - .8f) < .001f &&
             Math.Abs(Loc.MusicVolume - .5f) < .001f,
             "Global master/music volumes did not persist.");
+        Need(Loc.DisplayMode == GameDisplayMode.BorderlessWindowed &&
+            Loc.WindowWidth == 1600 && Loc.WindowHeight == 900,
+            "Global display settings did not persist.");
         Loc.SetLanguage(Language.English);
         Loc.SetMasterVolume(1f);
         Loc.SetMusicVolume(.55f);
         Loc.SetSfxVolume(.75f);
+        Loc.SetDisplayMode(GameDisplayMode.Windowed);
+        Loc.SetWindowResolution(1280, 720);
         if (File.Exists(path))
             File.Delete(path);
         if (Directory.Exists(directory) && Directory.GetFiles(directory).Length == 0)

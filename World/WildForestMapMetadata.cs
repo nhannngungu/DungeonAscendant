@@ -43,6 +43,13 @@ public enum EnemyTheme
     ,CatacombGuard
     ,CatacombElite
     ,FallenKnight
+    ,CityMilitia
+    ,CityPlague
+    ,CityWatch
+    ,CityAsh
+    ,CityRoyal
+    ,CityExecution
+    ,BrokenKing
 }
 
 public enum EncounterDifficulty

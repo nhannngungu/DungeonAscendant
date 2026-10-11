@@ -1,9 +1,11 @@
 using System;
 using System.IO;
 using DungeonAscendant.Core;
+using DungeonAscendant.Combat;
 using DungeonAscendant.Lore;
 using DungeonAscendant.Player;
 using DungeonAscendant.UI;
+using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
@@ -26,6 +28,7 @@ public static class SaveSlotValidation
         {
             ValidateManagerRoundTrip(path);
             ValidateFrontendFlow(path);
+            ValidateMapThreeReload(Path.Combine(directory, "map3-slots.json"));
         }
         finally
         {
@@ -52,9 +55,10 @@ public static class SaveSlotValidation
             CharacterName = "SEREN",
             Appearance = appearance,
             Level = 7,
-            DungeonDepth = 2,
-            CurrentMapId = "map-02",
-            CurrentArea = "ANCIENT CATACOMBS",
+            DungeonDepth = 3,
+            CurrentMapId = "map-03",
+            CurrentArea = "FALLEN CITY",
+            Map03Cleared = true,
             PlayTimeSeconds = 3661d,
             LastPlayedUtc = DateTimeOffset.UtcNow
         };
@@ -69,6 +73,8 @@ public static class SaveSlotValidation
             "Saved CharacterAppearance did not survive reload.");
         Need(Math.Abs(slot.PlayTimeSeconds - 3661d) < .01d,
             "Saved play time did not survive reload.");
+        Need(slot.DungeonDepth == 3 && slot.Map03Cleared,
+            "Map 3 progression did not survive reload.");
 
         Need(reloaded.Delete(1), "Save manager could not delete a slot.");
         var afterDelete = new SaveSlotManager(path);
@@ -200,6 +206,101 @@ public static class SaveSlotValidation
         Press(deleteSession, Keys.Enter);
         Need(!new SaveSlotManager(path).GetSlot(0).Occupied,
             "Confirmed delete was not persisted.");
+    }
+
+    private static void ValidateMapThreeReload(string path)
+    {
+        var manager = new SaveSlotManager(path);
+        Need(manager.Store(new SaveSlotData
+        {
+            SlotIndex = 0,
+            Occupied = true,
+            CharacterName = "REGRESSION",
+            Appearance = CharacterAppearance.CreateDefault(),
+            Level = 6,
+            DungeonDepth = 3,
+            WorldTier = 1,
+            CurrentMapId = "map-03",
+            CurrentArea = "FALLEN CITY",
+            Map01Cleared = true,
+            Map02Cleared = true,
+            Map03Cleared = true,
+            BossDefeated = true,
+            LastPlayedUtc = DateTimeOffset.UtcNow
+        }), "Map 3 reload fixture could not be saved.");
+
+        var session = new GameSession(
+            new Rectangle(0, 0, 1280, 720),
+            randomSeed: 5503,
+            savePath: path);
+        Press(session, Keys.Enter);
+        Press(session, Keys.Enter);
+        Need(session.State == GameState.Playing &&
+            session.DungeonDepth == 3 && session.CurrentDungeon.IsFallenCity,
+            "Saved Map 3 slot did not load Fallen City.");
+
+        var structure = session.CurrentDungeon.CollapsingStructures[0];
+        session.CollapsingCity.TryBreakWithHeavyAttack(
+            structure.Bounds,
+            session.CurrentDungeon);
+        session.Projectiles.TryCreatePlagueCloud(
+            session.Player.Position,
+            session.CurrentDungeon.StartRoom.Id,
+            session.CurrentDungeon);
+        session.RootHazards.TryAddEmberHazard(
+            session.Player.Position,
+            new Vector2(90f, 22f),
+            .1f,
+            1f,
+            1,
+            session.CurrentDungeon.StartRoom.Id,
+            session,
+            isCinderZone: true,
+            dungeon: session.CurrentDungeon);
+        session.Player.ApplySlow(.5f, 5f);
+        Need(session.CollapsingCity.BrokenStructureIds.Count > 0 &&
+            session.Projectiles.PlagueClouds.Count > 0 &&
+            session.RootHazards.Hazards.Count > 0 && session.Player.IsSlowed,
+            "Map 3 reload fixture did not create transient state.");
+
+        ReturnThroughPauseMenu(session);
+        Need(session.CurrentDungeon == null &&
+            session.CollapsingCity.BrokenStructureIds.Count == 0 &&
+            session.CityAlarm.Level == 0,
+            "Return to Character Select retained Map 3 city state.");
+        Press(session, Keys.Enter);
+        Need(session.State == GameState.Playing &&
+            session.DungeonDepth == 3 && session.CurrentDungeon.IsFallenCity,
+            "Reloading the same save did not return to Map 3.");
+        Need(session.CityAlarm.Level == 0 &&
+            session.CollapsingCity.BrokenStructureIds.Count == 0 &&
+            session.Projectiles.Projectiles.Count == 0 &&
+            session.Projectiles.PlagueClouds.Count == 0 &&
+            session.RootHazards.Hazards.Count == 0 &&
+            !session.Player.IsSlowed && !session.Map03ExitPrepared,
+            "Reloading Map 3 retained transient alarm, collapse, status, or combat state.");
+
+        EncounterZone throne = session.CurrentDungeon.EncounterZones[^1];
+        session.Player.MoveTo(SideScrollingCollision.ResolveSafeEntrySpawn(
+            throne.ActivationBounds.Left + 3f,
+            session.Player.Size,
+            session.CurrentDungeon,
+            dropOffset: 0f));
+        for (int frame = 0; frame < 40; frame++)
+        {
+            session.Update(
+                new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(.05f)),
+                new KeyboardState(),
+                new MouseState());
+        }
+        foreach (Enemies.Enemy enemy in session.Enemies.Enemies)
+        {
+            Need(enemy.Type != Enemies.EnemyType.BrokenKing,
+                "Completed Broken King encounter respawned after save reload.");
+        }
+        Need(session.WildForestEncounters.IsCleared("broken-king") &&
+            session.BossDefeated && session.Map03Cleared,
+            "Completed Map 3 save did not restore its cleared boss state.");
     }
 
     private static void ReturnThroughPauseMenu(GameSession session)
