@@ -286,6 +286,28 @@ public static class DeveloperPanelValidation
         Need(resetKing != null,
             "Admin Broken King reset did not restore a clean boss encounter.");
         Press(session, Keys.F10);
+
+        session.LastDiceTable.Restore(
+            started: true,
+            completed: false,
+            roundIndex: 1,
+            wins: 1,
+            roundCommitted: true,
+            roundResolved: false,
+            completionReached: false,
+            choice: LastDiceChoice.Tai,
+            die1: 6,
+            die2: 2,
+            die3: 5,
+            revealProgress: .42f,
+            rewardGranted: false,
+            rewardWeaponIndex: -1);
+        session.ExecuteDeveloperCommand(
+            DeveloperCommand.ResetLastDiceChallenge, 3, 2);
+        Need(session.LastDiceTable.State == LastDiceTableState.Ready &&
+            !session.LastDiceTable.Started &&
+            session.LastDiceTable.RevealProgress == 0f,
+            "Admin Last Dice reset retained a committed round.");
     }
 
     private static void SettleEntry(GameSession session)

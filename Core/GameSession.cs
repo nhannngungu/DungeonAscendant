@@ -157,6 +157,7 @@ public sealed class GameSession
     public CurseSystem Curse { get; }
     public TombInteractionManager Tombs { get; }
     public AncientScholarTombSystem ScholarTomb { get; }
+    public LastDiceTableSystem LastDiceTable { get; }
     public DeveloperPanel DeveloperPanel { get; } = new();
     public PauseMenuState PauseMenu { get; } = new();
     public MainMenuState MainMenu { get; } = new();
@@ -315,6 +316,7 @@ public sealed class GameSession
         Curse = new CurseSystem();
         Tombs = new TombInteractionManager();
         ScholarTomb = new AncientScholarTombSystem();
+        LastDiceTable = new LastDiceTableSystem(randomSeed);
         CityAlarm = new CityAlarmSystem();
         CollapsingCity = new CollapsingCitySystem();
         Projectiles = new ProjectileManager();
@@ -374,6 +376,13 @@ public sealed class GameSession
         if (State == GameState.Paused)
         {
             UpdatePauseMenu(keyboardState, startPressed, pausePressed);
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
+
+        if (State == GameState.Playing && LastDiceTable.IsModalActive)
+        {
+            UpdateLastDiceTableModal(gameTime, keyboardState);
             StoreInputStates(keyboardState, mouseState);
             return;
         }
@@ -1012,6 +1021,7 @@ public sealed class GameSession
         CollapsingCity.Reset(CurrentDungeon);
         Tombs.Reset(null);
         ScholarTomb.ResetForNewRun();
+        LastDiceTable.ResetForNewRun();
         Camera.ResetRuntime();
         _defeatedEnemies.Clear();
         _rottenCorpseBursts.Clear();
@@ -1106,6 +1116,7 @@ public sealed class GameSession
     private void ResetRun()
     {
         ScholarTomb.ResetForNewRun();
+        LastDiceTable.ResetForNewRun();
         DungeonDepth = 1;
         Map01Cleared = false;
         Map02Cleared = false;
@@ -1228,6 +1239,7 @@ public sealed class GameSession
         _autosaveTimeRemaining = AutosaveIntervalSeconds;
 
         ScholarTomb.ResetForNewRun();
+        LastDiceTable.ResetForNewRun();
         DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 3);
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
@@ -1280,6 +1292,22 @@ public sealed class GameSession
         _debugArmorIndex = 1;
         ClearFusionState();
         InitializeDungeonState();
+
+        LastDiceTable.Restore(
+            slot.LastDiceStarted,
+            slot.LastDiceCompleted,
+            slot.LastDiceRoundIndex,
+            slot.LastDiceWins,
+            slot.LastDiceRoundCommitted,
+            slot.LastDiceRoundResolved,
+            slot.LastDiceCompletionReached,
+            slot.LastDiceChoice,
+            slot.LastDiceDie1,
+            slot.LastDiceDie2,
+            slot.LastDiceDie3,
+            slot.LastDiceRevealProgress,
+            slot.LastDiceRewardGranted,
+            slot.LastDiceRewardWeaponIndex);
 
         Map01Cleared = slot.Map01Cleared;
         Map02Cleared = slot.Map02Cleared;
@@ -1361,6 +1389,20 @@ public sealed class GameSession
             Map02Cleared = Map02Cleared,
             Map03Cleared = Map03Cleared,
             BossDefeated = BossDefeated,
+            LastDiceStarted = LastDiceTable.Started,
+            LastDiceCompleted = LastDiceTable.IsCompleted,
+            LastDiceRoundIndex = LastDiceTable.RoundIndex,
+            LastDiceWins = LastDiceTable.Wins,
+            LastDiceRoundCommitted = LastDiceTable.RoundCommitted,
+            LastDiceRoundResolved = LastDiceTable.RoundResolved,
+            LastDiceCompletionReached = LastDiceTable.CompletionReached,
+            LastDiceChoice = LastDiceTable.Choice,
+            LastDiceDie1 = LastDiceTable.Dice[0],
+            LastDiceDie2 = LastDiceTable.Dice[1],
+            LastDiceDie3 = LastDiceTable.Dice[2],
+            LastDiceRevealProgress = LastDiceTable.RevealProgress,
+            LastDiceRewardGranted = LastDiceTable.RewardGranted,
+            LastDiceRewardWeaponIndex = LastDiceTable.RewardWeaponIndex,
             KillCount = KillCount,
             PlayTimeSeconds = _activePlayTimeSeconds,
             LastPlayedUtc = DateTimeOffset.UtcNow
@@ -1462,6 +1504,7 @@ public sealed class GameSession
         Curse.Reset();
         Tombs.Reset(CurrentDungeon);
         ScholarTomb.Configure(CurrentDungeon);
+        LastDiceTable.Configure(CurrentDungeon);
         CityAlarm.Reset();
         CollapsingCity.Reset(CurrentDungeon);
         Map03ExitPrepared = false;
@@ -1642,6 +1685,16 @@ public sealed class GameSession
             return true;
         }
 
+        if (LastDiceTable.TryOpen(Player.Position))
+        {
+            Player.Combat.CancelActions(restoreStamina: false);
+            Projectiles.Clear();
+            RootHazards.Clear();
+            _rottenCorpseBursts.Clear();
+            SaveActiveSlot();
+            return true;
+        }
+
         if (LoreNotePickup?.TryCollect(
             Player.Position,
             Player.Notes,
@@ -1731,6 +1784,47 @@ public sealed class GameSession
         }
 
         FollowPlayerWithCamera(elapsedSeconds);
+    }
+
+    private void UpdateLastDiceTableModal(
+        GameTime gameTime,
+        KeyboardState keyboardState)
+    {
+        LastDiceTable.Update(
+            gameTime,
+            keyboardState,
+            _previousKeyboardState);
+        float elapsedSeconds = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            .05f);
+        Player.Combat.CancelActions(restoreStamina: false);
+        Projectiles.Clear();
+        RootHazards.Clear();
+        _rottenCorpseBursts.Clear();
+
+        if (LastDiceTable.TryConsumeRewardRequest(
+            out int wins,
+            out int weaponIndex))
+        {
+            GrantLastDiceReward(wins, weaponIndex);
+        }
+
+        if (LastDiceTable.ConsumeSaveRequest())
+            SaveActiveSlot();
+        FollowPlayerWithCamera(elapsedSeconds);
+    }
+
+    private void GrantLastDiceReward(int wins, int weaponIndex)
+    {
+        EquipmentItem sample = EquipmentCatalog.CreateWeaponSample(
+            Math.Clamp(weaponIndex, 0, EquipmentCatalog.WeaponSampleCount - 1));
+        var reward = new EquipmentItem(
+            sample.WeaponDefinition,
+            LastDiceTableSystem.GetRewardRarity(wins) ?? ItemRarity.Epic);
+        if (!Player.Inventory.TryAdd(reward))
+            Loot.CreateRewardDrop(reward, LastDiceTable.Position, CurrentDungeon);
+        RefreshInventoryView();
+        SaveActiveSlot();
     }
 
     private void GrantScholarReward(
@@ -1869,6 +1963,10 @@ public sealed class GameSession
                 break;
             case DeveloperCommand.ResetScholarChallenge:
                 ScholarTomb.ResetChallengeForDebug();
+                break;
+            case DeveloperCommand.ResetLastDiceChallenge:
+                LastDiceTable.ResetChallengeForDebug();
+                SaveActiveSlot();
                 break;
             case DeveloperCommand.KillActiveEnemies:
                 DeveloperKillActiveEnemies();

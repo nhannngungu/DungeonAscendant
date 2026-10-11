@@ -105,6 +105,12 @@ static bool RunRequestedValidation(string[] arguments, out string name)
         System.Console.WriteLine(
             "Fallen City map and progression validation passed.");
     }
+    else if (Has("--validate-last-dice"))
+    {
+        DungeonAscendant.Core.LastDiceTableValidation.ValidateOrThrow();
+        name = "last-dice";
+        System.Console.WriteLine("Last Dice Table validation passed.");
+    }
     else if (Has("--validate-equipment"))
     {
         DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();

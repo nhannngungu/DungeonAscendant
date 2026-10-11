@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Items;
 using DungeonAscendant.Player;
+using DungeonAscendant.World;
 
 namespace DungeonAscendant.Persistence;
 
@@ -45,6 +46,20 @@ public sealed class SaveSlotData
     public bool Map02Cleared { get; set; }
     public bool Map03Cleared { get; set; }
     public bool BossDefeated { get; set; }
+    public bool LastDiceStarted { get; set; }
+    public bool LastDiceCompleted { get; set; }
+    public int LastDiceRoundIndex { get; set; }
+    public int LastDiceWins { get; set; }
+    public bool LastDiceRoundCommitted { get; set; }
+    public bool LastDiceRoundResolved { get; set; }
+    public bool LastDiceCompletionReached { get; set; }
+    public LastDiceChoice LastDiceChoice { get; set; }
+    public int LastDiceDie1 { get; set; }
+    public int LastDiceDie2 { get; set; }
+    public int LastDiceDie3 { get; set; }
+    public float LastDiceRevealProgress { get; set; }
+    public bool LastDiceRewardGranted { get; set; }
+    public int LastDiceRewardWeaponIndex { get; set; } = -1;
     public int KillCount { get; set; }
     public double PlayTimeSeconds { get; set; }
     public DateTimeOffset? LastPlayedUtc { get; set; }
@@ -94,6 +109,30 @@ public sealed class SaveSlotData
         Notes ??= new List<SavedLoreNoteData>();
         Notes.RemoveAll(note => note == null || string.IsNullOrWhiteSpace(note.Id));
         KillCount = Math.Max(0, KillCount);
+        LastDiceRoundIndex = Math.Clamp(
+            LastDiceRoundIndex, 0, LastDiceTableSystem.RoundCount - 1);
+        LastDiceWins = Math.Clamp(LastDiceWins, 0, LastDiceTableSystem.RoundCount);
+        if (!Enum.IsDefined(LastDiceChoice))
+            LastDiceChoice = DungeonAscendant.World.LastDiceChoice.Xiu;
+        LastDiceRevealProgress = Math.Clamp(LastDiceRevealProgress, 0f, 1f);
+        LastDiceRewardWeaponIndex = Math.Clamp(LastDiceRewardWeaponIndex, -1, 6);
+        if (!LastDiceRoundCommitted)
+        {
+            LastDiceRoundResolved = false;
+            LastDiceCompletionReached = false;
+            LastDiceDie1 = 0;
+            LastDiceDie2 = 0;
+            LastDiceDie3 = 0;
+            LastDiceRevealProgress = 0f;
+        }
+        else
+        {
+            LastDiceDie1 = Math.Clamp(LastDiceDie1, 1, 6);
+            LastDiceDie2 = Math.Clamp(LastDiceDie2, 1, 6);
+            LastDiceDie3 = Math.Clamp(LastDiceDie3, 1, 6);
+        }
+        if (LastDiceCompleted)
+            LastDiceCompletionReached = true;
         PlayTimeSeconds = Math.Max(0d, PlayTimeSeconds);
 
         if (!Occupied)

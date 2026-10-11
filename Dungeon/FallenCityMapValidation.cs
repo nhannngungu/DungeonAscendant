@@ -40,6 +40,7 @@ public static class FallenCityMapValidation
         FallenCityEnemyPolishPass3Validation.ValidateOrThrow(map);
         FallenCityEnemyPolishPass4Validation.ValidateOrThrow(map);
         FallenCityEnemyPolishPass5Validation.ValidateOrThrow(map);
+        LastDiceTableValidation.ValidateOrThrow();
         ValidateAlarmAndCollapse(map);
         ValidateStatusAndDeathCleanup(map);
         ValidateBossPhases();

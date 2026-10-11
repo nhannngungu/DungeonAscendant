@@ -273,6 +273,7 @@ public sealed class GameRenderer : IDisposable
             gameSession.ScholarTomb,
             gameSession.Camera.ViewBounds,
             gameTime);
+        DrawLastDiceTableWorld(gameSession, gameTime);
 
         foreach (WebPatch patch in gameSession.Projectiles.WebPatches)
         {
@@ -454,6 +455,20 @@ public sealed class GameRenderer : IDisposable
                 new Color(169, 213, 206));
         }
 
+        if (gameSession.LastDiceTable.CanInteract(gameSession.Player.Position))
+        {
+            string dicePrompt = Loc.Get("dice.interact");
+            DrawCenteredDebugText(
+                dicePrompt,
+                _graphicsDevice.Viewport.Width / 2,
+                _graphicsDevice.Viewport.Height - 70,
+                new Color(229, 190, 105),
+                FitDebugTextScale(
+                    dicePrompt,
+                    _graphicsDevice.Viewport.Width - 40,
+                    2));
+        }
+
         if (gameSession.LoreNotePickup?.CanInteract(
             gameSession.Player.Position) == true)
         {
@@ -485,7 +500,9 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.WorldTierTransitionProgress > 0f)
             DrawWorldTierTransition(gameSession);
 
-        if (gameSession.ScholarTomb.IsModalActive)
+        if (gameSession.LastDiceTable.IsModalActive)
+            DrawLastDiceTable(gameSession);
+        else if (gameSession.ScholarTomb.IsModalActive)
             DrawAncientScholarQuiz(gameSession);
         else if (gameSession.IsInventoryOpen)
             DrawInventoryOverlay(gameSession);
@@ -4960,6 +4977,400 @@ public sealed class GameRenderer : IDisposable
                 new Rectangle(x + 4, y, 8, 50),
                 new Color(211, 169, 247, (int)alpha));
         }
+    }
+
+    private void DrawLastDiceTableWorld(GameSession session, GameTime gameTime)
+    {
+        LastDiceTableSystem dice = session.LastDiceTable;
+        if (dice.State == LastDiceTableState.Unavailable ||
+            !dice.TableBounds.Intersects(session.Camera.ViewBounds))
+        {
+            return;
+        }
+
+        Rectangle table = dice.TableBounds;
+        Color woodDark = new(48, 30, 23);
+        Color wood = new(91, 57, 34);
+        Color edge = new(145, 99, 50);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(table.X - 7, table.Y + 15, table.Width + 14, 18),
+            woodDark);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(table.X, table.Y + 5, table.Width, 16), wood);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(table.X + 7, table.Y + 7, table.Width - 14, 3), edge);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(table.X + 15, table.Y + 21, 12, 45), woodDark);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(table.Right - 27, table.Y + 21, 12, 45), woodDark);
+
+        int centerX = table.Center.X;
+        int plateY = table.Y + 2;
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 48, plateY - 4, 96, 7),
+            new Color(133, 126, 104));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 39, plateY - 7, 78, 5),
+            new Color(188, 177, 137));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 43, plateY - 30, 86, 25),
+            new Color(68, 63, 57));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 34, plateY - 38, 68, 10),
+            new Color(91, 84, 73));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 8, plateY - 43, 16, 7), edge);
+
+        // The dealer remains behind the table and never performs the reveal.
+        int dealerX = table.X - 42;
+        int groundY = table.Bottom;
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(dealerX - 15, groundY - 105, 30, 30),
+            new Color(73, 55, 45));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(dealerX - 23, groundY - 76, 46, 75),
+            new Color(35, 39, 43));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(dealerX - 19, groundY - 69, 38, 4),
+            new Color(129, 91, 49));
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 1.4f);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(dealerX - 8, groundY - 94, 4, 3),
+            new Color(199, 146, 68, (int)(150 + pulse * 80)));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(dealerX + 4, groundY - 94, 4, 3),
+            new Color(199, 146, 68, (int)(150 + pulse * 80)));
+    }
+
+    private void DrawLastDiceTable(GameSession session)
+    {
+        LastDiceTableSystem dice = session.LastDiceTable;
+        Rectangle viewport = _graphicsDevice.Viewport.Bounds;
+        int margin = Math.Max(16, Math.Min(viewport.Width, viewport.Height) / 28);
+        int width = Math.Min(900, viewport.Width - margin * 2);
+        int height = Math.Min(620, viewport.Height - margin * 2);
+        Rectangle panel = new(
+            viewport.Center.X - width / 2,
+            viewport.Center.Y - height / 2,
+            width,
+            height);
+        int scale = panel.Width >= 700 && panel.Height >= 500 ? 2 : 1;
+
+        _spriteBatch.Draw(_pixel, viewport, new Color(4, 5, 7, 224));
+        _spriteBatch.Draw(_pixel, panel, new Color(25, 20, 18, 250));
+        DrawRectangleOutline(panel, 3, new Color(151, 103, 55));
+        DrawRectangleOutline(
+            new Rectangle(panel.X + 8, panel.Y + 8,
+                panel.Width - 16, panel.Height - 16),
+            1,
+            new Color(82, 65, 47));
+        DrawCenteredDebugText(
+            Loc.Get("dice.title"), panel.Center.X, panel.Y + 24,
+            new Color(230, 193, 111), scale);
+        DrawCenteredDebugText(
+            Loc.Format("dice.round", dice.RoundIndex + 1, dice.Wins),
+            panel.Center.X, panel.Y + 54,
+            new Color(163, 154, 132), 1);
+
+        Rectangle scene = new(
+            panel.X + 34,
+            panel.Y + 78,
+            panel.Width - 68,
+            Math.Max(230, panel.Height - 205));
+        _spriteBatch.Draw(_pixel, scene, new Color(39, 29, 24));
+        DrawRectangleOutline(scene, 2, new Color(93, 67, 45));
+        DrawLastDiceScene(dice, scene);
+
+        int controlsY = panel.Bottom - 52;
+        if (dice.State == LastDiceTableState.Preparing)
+        {
+            DrawCenteredDebugText(
+                Loc.Get("dice.preparing"), panel.Center.X, controlsY,
+                new Color(185, 166, 128),
+                FitDebugTextScale(Loc.Get("dice.preparing"), panel.Width - 48, scale));
+            return;
+        }
+
+        if (dice.State == LastDiceTableState.Selecting)
+        {
+            int choiceWidth = Math.Min(270, (panel.Width - 90) / 2);
+            int gap = 24;
+            int left = panel.Center.X - choiceWidth - gap / 2;
+            DrawLastDiceChoice(
+                Loc.Get("dice.xiu"),
+                new Rectangle(left, controlsY - 38, choiceWidth, 34),
+                dice.Choice == LastDiceChoice.Xiu);
+            DrawLastDiceChoice(
+                Loc.Get("dice.tai"),
+                new Rectangle(left + choiceWidth + gap, controlsY - 38,
+                    choiceWidth, 34),
+                dice.Choice == LastDiceChoice.Tai);
+            DrawCenteredDebugText(
+                Loc.Get("dice.choose"), panel.Center.X, controlsY + 7,
+                new Color(153, 172, 166),
+                FitDebugTextScale(Loc.Get("dice.choose"), panel.Width - 44, 1));
+            return;
+        }
+
+        if (dice.State == LastDiceTableState.Revealing)
+        {
+            string choice = Loc.Get(dice.Choice == LastDiceChoice.Tai
+                ? "dice.outcome.tai" : "dice.outcome.xiu");
+            DrawCenteredDebugText(
+                Loc.Format("dice.locked", choice),
+                panel.Center.X, controlsY - 23,
+                new Color(204, 170, 100), 1);
+            DrawCenteredDebugText(
+                Loc.Get("dice.reveal_hint"), panel.Center.X, controlsY + 4,
+                new Color(146, 206, 193),
+                FitDebugTextScale(Loc.Get("dice.reveal_hint"), panel.Width - 44, scale));
+            return;
+        }
+
+        if (dice.State == LastDiceTableState.RoundResult)
+        {
+            DrawLastDiceResult(dice, panel.Center.X, controlsY - 36);
+            DrawCenteredDebugText(
+                Loc.Get("dice.continue"), panel.Center.X, controlsY + 13,
+                new Color(146, 206, 193), 1);
+            return;
+        }
+
+        DrawCenteredDebugText(
+            Loc.Format("dice.final", dice.Wins),
+            panel.Center.X, controlsY - 41,
+            dice.Wins >= 2 ? new Color(142, 215, 163) : new Color(196, 141, 124),
+            scale);
+        string rewardKey = dice.Wins >= 3
+            ? "dice.reward.rare"
+            : dice.Wins >= 2 ? "dice.reward.weapon" : "dice.reward.none";
+        DrawCenteredDebugText(
+            Loc.Get(rewardKey), panel.Center.X, controlsY - 10,
+            new Color(216, 190, 126),
+            FitDebugTextScale(Loc.Get(rewardKey), panel.Width - 44, 1));
+        DrawCenteredDebugText(
+            Loc.Get("dice.finish"), panel.Center.X, controlsY + 16,
+            new Color(146, 206, 193), 1);
+    }
+
+    private void DrawLastDiceScene(LastDiceTableSystem dice, Rectangle scene)
+    {
+        int tableY = scene.Bottom - 48;
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(scene.X + 20, tableY, scene.Width - 40, 22),
+            new Color(87, 51, 30));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(scene.X + 28, tableY + 3, scene.Width - 56, 4),
+            new Color(151, 97, 49));
+        int plateCenterX = scene.Center.X - 25;
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(plateCenterX - 157, tableY - 8, 314, 11),
+            new Color(105, 99, 85));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(plateCenterX - 141, tableY - 12, 282, 7),
+            new Color(184, 171, 132));
+
+        float progress = dice.State is LastDiceTableState.RoundResult or
+            LastDiceTableState.Completion
+            ? 1f
+            : dice.State == LastDiceTableState.Revealing
+                ? dice.RevealProgress
+                : 0f;
+        float preparation = dice.State == LastDiceTableState.Preparing
+            ? dice.PreparationProgress
+            : 1f;
+        int dieY = tableY - 52;
+        int[] dieX = { plateCenterX - 102, plateCenterX - 28, plateCenterX + 46 };
+        float[] thresholds = { .27f, .52f, .74f };
+        for (int index = 0; index < 3; index++)
+        {
+            if (progress + .0001f < thresholds[index])
+                continue;
+            DrawLastDie(
+                new Rectangle(dieX[index], dieY, 52, 52),
+                dice.Dice[index]);
+        }
+
+        float lift = SmoothStep(0f, .15f, progress);
+        float slide = SmoothStep(.15f, .85f, progress);
+        float clear = SmoothStep(.85f, 1f, progress);
+        float shake = dice.State == LastDiceTableState.Preparing && preparation > .35f
+            ? MathF.Sin(preparation * 42f) * (1f - preparation) * 12f
+            : 0f;
+        int bowlX = (int)MathF.Round(
+            plateCenterX - 164 + slide * 330f + clear * 38f + shake);
+        int bowlY = (int)MathF.Round(tableY - 89 - lift * 18f - clear * 4f);
+        DrawLastDiceBowl(new Rectangle(bowlX, bowlY, 328, 86), progress);
+
+        if (dice.State == LastDiceTableState.Revealing)
+            DrawLastDicePlayerHand(scene, bowlX, bowlY, progress);
+        else if (dice.State == LastDiceTableState.Preparing)
+            DrawLastDiceDealerHands(scene, bowlX, bowlY, preparation);
+    }
+
+    private void DrawLastDiceBowl(Rectangle bounds, float progress)
+    {
+        Color shadow = new(20, 16, 14, 190);
+        Color iron = new(65, 63, 59);
+        Color rim = new(118, 105, 79);
+        Color glint = new(151, 132, 91);
+        int tilt = (int)MathF.Round(SmoothStep(.15f, 1f, progress) * 7f);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 8, bounds.Bottom - 4, bounds.Width, 10), shadow);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 8, bounds.Y + 32 - tilt,
+                bounds.Width - 16, bounds.Height - 30 + tilt), iron);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 30, bounds.Y + 15 - tilt,
+                bounds.Width - 60, 25), iron);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 74, bounds.Y + 4 - tilt,
+                bounds.Width - 148, 15), iron);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X, bounds.Bottom - 10,
+                bounds.Width, 12), rim);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 56, bounds.Y + 18 - tilt,
+                bounds.Width - 112, 4), glint);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.Center.X - 20, bounds.Y - 4 - tilt,
+                40, 9), rim);
+    }
+
+    private void DrawLastDicePlayerHand(
+        Rectangle scene, int bowlX, int bowlY, float progress)
+    {
+        Vector2 grip = new(bowlX + 302f, bowlY + 58f);
+        Vector2 elbow = new(
+            MathHelper.Lerp(scene.Right - 48f, scene.Right - 112f, progress),
+            MathHelper.Lerp(scene.Bottom - 22f, scene.Center.Y + 12f, progress));
+        Color sleeve = new(57, 67, 78);
+        Color cuff = new(121, 101, 75);
+        Color skin = new(188, 139, 103);
+        DrawLastDiceLimb(elbow, grip + new Vector2(13f, 2f), 22f, sleeve);
+        DrawLastDiceLimb(grip + new Vector2(6f, 1f), grip, 17f, cuff);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)grip.X - 8, (int)grip.Y - 10, 27, 20), skin);
+        for (int finger = 0; finger < 4; finger++)
+        {
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)grip.X - 7 + finger * 6,
+                    (int)grip.Y + 7, 4, 15), skin);
+        }
+    }
+
+    private void DrawLastDiceDealerHands(
+        Rectangle scene, int bowlX, int bowlY, float preparation)
+    {
+        float withdraw = SmoothStep(.78f, 1f, preparation);
+        Color sleeve = new(43, 42, 45);
+        Color skin = new(151, 112, 86);
+        Vector2 left = new(bowlX + 38f - withdraw * 70f, bowlY + 57f);
+        Vector2 right = new(bowlX + 290f + withdraw * 70f, bowlY + 57f);
+        DrawLastDiceLimb(new Vector2(scene.X + 34f, scene.Y + 26f), left, 17f, sleeve);
+        DrawLastDiceLimb(new Vector2(scene.Right - 34f, scene.Y + 26f), right, 17f, sleeve);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)left.X - 7, (int)left.Y - 8, 20, 16), skin);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)right.X - 13, (int)right.Y - 8, 20, 16), skin);
+    }
+
+    private void DrawLastDiceLimb(
+        Vector2 from, Vector2 to, float width, Color color)
+    {
+        Vector2 delta = to - from;
+        float length = delta.Length();
+        if (length <= .01f)
+            return;
+        _spriteBatch.Draw(
+            _pixel,
+            from,
+            null,
+            color,
+            MathF.Atan2(delta.Y, delta.X),
+            new Vector2(0f, .5f),
+            new Vector2(length, width),
+            SpriteEffects.None,
+            0f);
+    }
+
+    private void DrawLastDie(Rectangle bounds, int value)
+    {
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(bounds.X + 4, bounds.Y + 6, bounds.Width, bounds.Height),
+            new Color(25, 21, 19, 170));
+        _spriteBatch.Draw(_pixel, bounds, new Color(221, 207, 172));
+        DrawRectangleOutline(bounds, 3, new Color(112, 80, 51));
+        if (value <= 0)
+            return;
+
+        bool[,] pips = new bool[3, 3];
+        if (value is 1 or 3 or 5) pips[1, 1] = true;
+        if (value >= 2)
+        {
+            pips[0, 0] = true;
+            pips[2, 2] = true;
+        }
+        if (value >= 4)
+        {
+            pips[2, 0] = true;
+            pips[0, 2] = true;
+        }
+        if (value == 6)
+        {
+            pips[0, 1] = true;
+            pips[2, 1] = true;
+        }
+        for (int x = 0; x < 3; x++)
+        for (int y = 0; y < 3; y++)
+        {
+            if (!pips[x, y]) continue;
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(bounds.X + 9 + x * 15,
+                    bounds.Y + 9 + y * 15, 7, 7),
+                value == 1 ? new Color(145, 45, 38) : new Color(38, 34, 31));
+        }
+    }
+
+    private void DrawLastDiceChoice(string text, Rectangle bounds, bool selected)
+    {
+        _spriteBatch.Draw(_pixel, bounds,
+            selected ? new Color(92, 65, 36) : new Color(34, 31, 29));
+        DrawRectangleOutline(bounds, selected ? 3 : 1,
+            selected ? new Color(225, 180, 91) : new Color(88, 78, 67));
+        DrawCenteredDebugText(text, bounds.Center.X, bounds.Y + 10,
+            selected ? new Color(246, 219, 151) : new Color(151, 145, 133), 1);
+    }
+
+    private void DrawLastDiceResult(
+        LastDiceTableSystem dice, int centerX, int y)
+    {
+        DrawCenteredDebugText(
+            Loc.Format("dice.result_line",
+                dice.Dice[0], dice.Dice[1], dice.Dice[2], dice.Total),
+            centerX, y,
+            new Color(230, 205, 139), 2);
+        string outcomeKey = dice.Outcome switch
+        {
+            LastDiceOutcome.Triple => "dice.outcome.triple",
+            LastDiceOutcome.Tai => "dice.outcome.tai",
+            _ => "dice.outcome.xiu"
+        };
+        string result = Loc.Get(outcomeKey) + "  " +
+            Loc.Get(dice.PlayerWonRound ? "dice.win" : "dice.loss");
+        DrawCenteredDebugText(result, centerX, y + 25,
+            dice.PlayerWonRound
+                ? new Color(139, 218, 159)
+                : new Color(219, 133, 111), 1);
+    }
+
+    private static float SmoothStep(float start, float end, float value)
+    {
+        if (end <= start)
+            return value >= end ? 1f : 0f;
+        float t = Math.Clamp((value - start) / (end - start), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
     private void DrawAncientScholarQuiz(GameSession session)
