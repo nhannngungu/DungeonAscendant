@@ -27,6 +27,7 @@ public sealed class LoreNoteDefinition
     public string TitleKey { get; }
     public string SourceKey { get; }
     public string ContentKey { get; }
+    public string ImageAssetKey { get; }
 
     private readonly int _wrapWidth;
     private Language? _cachedLanguage;
@@ -37,12 +38,14 @@ public sealed class LoreNoteDefinition
         string titleKey,
         string sourceKey,
         string contentKey,
-        int wrapWidth = 48)
+        int wrapWidth = 48,
+        string imageAssetKey = null)
     {
         Id = string.IsNullOrWhiteSpace(id) ? "lore-note" : id;
         TitleKey = titleKey ?? string.Empty;
         SourceKey = sourceKey ?? string.Empty;
         ContentKey = contentKey ?? string.Empty;
+        ImageAssetKey = imageAssetKey ?? string.Empty;
         _wrapWidth = Math.Max(20, wrapWidth);
     }
 
@@ -100,6 +103,7 @@ public sealed class LoreNote
     public string Source => Definition.Source;
     public string Content => Definition.Content;
     public IReadOnlyList<string> ContentLines => Definition.ContentLines;
+    public string ImageAssetKey => Definition.ImageAssetKey;
     public bool IsRead { get; private set; }
 
     public LoreNote(LoreNoteDefinition definition)
@@ -144,10 +148,28 @@ public sealed class LoreCollection
         _notes.Add(note);
         return true;
     }
+
+    public bool Remove(string noteId)
+    {
+        if (string.IsNullOrWhiteSpace(noteId))
+            return false;
+
+        for (int index = 0; index < _notes.Count; index++)
+        {
+            if (_notes[index].Id != noteId)
+                continue;
+            _notes.RemoveAt(index);
+            return true;
+        }
+
+        return false;
+    }
 }
 
 public static class LoreCatalog
 {
+    public const string PigPhotoImageAssetKey = "EasterEggs/pig_photo";
+
     public static readonly LoreNoteDefinition StarBornHero = new(
         "star-born-hero",
         "notes.star_born_hero.title",
@@ -161,11 +183,20 @@ public static class LoreCatalog
         "Yet after victory,\n" +
         "the hero's name slowly disappeared from history..." */);
 
+    public static readonly LoreNoteDefinition MysteriousPhotograph = new(
+        "mysterious-photograph",
+        "notes.pig_photo.title",
+        string.Empty,
+        "notes.pig_photo.content",
+        wrapWidth: 42,
+        imageAssetKey: PigPhotoImageAssetKey);
+
     public static LoreNoteDefinition Resolve(string id)
     {
         return id switch
         {
             "star-born-hero" => StarBornHero,
+            "mysterious-photograph" => MysteriousPhotograph,
             _ => null
         };
     }

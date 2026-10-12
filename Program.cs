@@ -98,6 +98,13 @@ static bool RunRequestedValidation(string[] arguments, out string name)
         name = "catacombs";
         System.Console.WriteLine("Ancient Catacombs validation passed.");
     }
+    else if (Has("--validate-pig-photo"))
+    {
+        DungeonAscendant.Core.PigPhotoEasterEggValidation.ValidateOrThrow();
+        name = "pig-photo";
+        System.Console.WriteLine(
+            "Map 2 Mysterious Photograph validation passed.");
+    }
     else if (Has("--validate-fallen-city"))
     {
         DungeonAscendant.Dungeon.FallenCityMapValidation.ValidateOrThrow();

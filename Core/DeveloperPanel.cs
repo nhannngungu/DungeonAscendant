@@ -18,6 +18,8 @@ public enum DeveloperCommand
     ResetScholarChallenge,
     ResetLastDiceChallenge,
     KillActiveEnemies,
+    ForcePigPhotoDrop,
+    ResetPigPhotoCollected,
     ToggleMap01Cleared,
     ToggleMap02Cleared,
     ToggleMap03Cleared,
@@ -45,6 +47,8 @@ public sealed class DeveloperPanel
         DeveloperCommand.ResetScholarChallenge,
         DeveloperCommand.ResetLastDiceChallenge,
         DeveloperCommand.KillActiveEnemies,
+        DeveloperCommand.ForcePigPhotoDrop,
+        DeveloperCommand.ResetPigPhotoCollected,
         DeveloperCommand.ToggleMap01Cleared,
         DeveloperCommand.ToggleMap02Cleared,
         DeveloperCommand.ToggleMap03Cleared,
@@ -162,7 +166,7 @@ public sealed class DeveloperPanel
     public static string GetSection(DeveloperCommand command) => command switch
     {
         <= DeveloperCommand.ResetPlayerCombat => "PLAYER",
-        <= DeveloperCommand.KillActiveEnemies => "WORLD",
+        <= DeveloperCommand.ResetPigPhotoCollected => "WORLD",
         <= DeveloperCommand.ResetEnemyIntroductions => "PROGRESSION",
         _ => "DEBUG"
     };
@@ -181,6 +185,8 @@ public sealed class DeveloperPanel
         DeveloperCommand.ResetScholarChallenge => "RESET SCHOLAR CHALLENGE",
         DeveloperCommand.ResetLastDiceChallenge => "RESET LAST DICE TABLE",
         DeveloperCommand.KillActiveEnemies => "KILL ACTIVE ENEMIES",
+        DeveloperCommand.ForcePigPhotoDrop => "FORCE FALLEN KNIGHT PHOTO",
+        DeveloperCommand.ResetPigPhotoCollected => "RESET PIG PHOTO",
         DeveloperCommand.ToggleMap01Cleared => "MAP 1 CLEARED",
         DeveloperCommand.ToggleMap02Cleared => "MAP 2 CLEARED",
         DeveloperCommand.ToggleMap03Cleared => "MAP 3 CLEARED",
@@ -203,6 +209,8 @@ public sealed class DeveloperPanel
             DeveloperCommand.ToggleMap02Cleared => YesNo(session.Map02Cleared),
             DeveloperCommand.ToggleMap03Cleared => YesNo(session.Map03Cleared),
             DeveloperCommand.ResetCitySystems => $"ALARM {session.CityAlarm.Level} / 3",
+            DeveloperCommand.ResetPigPhotoCollected =>
+                session.Map2PigPhotoCollected ? "COLLECTED" : "AVAILABLE",
             DeveloperCommand.ToggleMapDebug => OnOff(session.ShowMapDebug),
             DeveloperCommand.ToggleCombatDebug => OnOff(session.ShowCombatDebug),
             _ => string.Empty

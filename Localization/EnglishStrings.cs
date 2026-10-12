@@ -168,6 +168,10 @@ internal static class EnglishStrings
             ["notes.star_born_hero.title"] = "THE STAR-BORN HERO",
             ["notes.star_born_hero.source"] = "Corrupted Wilderness — Ancient Treant",
             ["notes.star_born_hero.content"] = "Five hundred years ago,\na star fell from the heavens.\n\nFrom that light, a warrior was born into this world on\n01/01/2004.\n\nThe warrior defeated the Demon King\nand protected the world from an age of darkness.\n\nYet after victory,\nthe hero's name slowly disappeared from history...",
+            ["notes.pig_photo.title"] = "Mysterious Photograph",
+            ["notes.pig_photo.content"] = "Just a pig.",
+            ["hud.pickup_photograph"] = "[E] PICK UP PHOTOGRAPH",
+            ["photo.close"] = "ESC / ENTER  CLOSE",
 
             ["hud.curse"] = "CURSE",
             ["hud.level"] = "LEVEL {0}",

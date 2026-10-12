@@ -86,7 +86,18 @@ public class Game1 : Game
     protected override void LoadContent()
     {
         StartupLog.Write("LoadContent started.");
-        _renderer = new GameRenderer(GraphicsDevice);
+        Texture2D pigPhoto = null;
+        try
+        {
+            pigPhoto = Content.Load<Texture2D>("EasterEggs/pig_photo");
+        }
+        catch (System.Exception exception)
+        {
+            StartupLog.Exception(
+                "Mysterious Photograph asset could not be loaded; using code-rendered fallback",
+                exception);
+        }
+        _renderer = new GameRenderer(GraphicsDevice, pigPhoto);
         try
         {
             _audioManager = new AudioManager(Content);

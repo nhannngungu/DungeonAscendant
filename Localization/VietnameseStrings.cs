@@ -168,6 +168,10 @@ internal static class VietnameseStrings
             ["notes.star_born_hero.title"] = "ANH HÙNG SINH TỪ TINH TÚ",
             ["notes.star_born_hero.source"] = "Hoang Dã Suy Đồi — Thụ Nhân Cổ Đại",
             ["notes.star_born_hero.content"] = "Năm trăm năm trước,\nmột vì sao đã rơi xuống từ thiên đường.\n\nTừ ánh sáng ấy, một chiến binh được sinh ra trên thế giới này vào\n01/01/2004.\n\nChiến binh đã đánh bại Ma Vương\nvà bảo vệ thế giới khỏi kỷ nguyên bóng tối.\n\nNhưng sau chiến thắng,\ntên của người anh hùng dần biến mất khỏi lịch sử...",
+            ["notes.pig_photo.title"] = "Bức Ảnh Kỳ Lạ",
+            ["notes.pig_photo.content"] = "Chỉ là một con heo mà thôi.",
+            ["hud.pickup_photograph"] = "[E] NHẶT BỨC ẢNH",
+            ["photo.close"] = "ESC / ENTER  ĐÓNG",
 
             ["hud.curse"] = "NGUYỀN RỦA",
             ["hud.level"] = "CẤP {0}",

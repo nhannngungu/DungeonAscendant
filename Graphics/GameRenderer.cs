@@ -140,6 +140,7 @@ public sealed class GameRenderer : IDisposable
     private readonly GraphicsDevice _graphicsDevice;
     private readonly SpriteBatch _spriteBatch;
     private readonly Texture2D _pixel;
+    private readonly Texture2D _pigPhoto;
     private readonly PlayerSpriteRenderer _playerSpriteRenderer;
     private readonly GoblinFamilySpriteRenderer _goblinFamilySpriteRenderer;
     private readonly CorruptedBeastSpriteRenderer _corruptedBeastSpriteRenderer;
@@ -173,9 +174,12 @@ public sealed class GameRenderer : IDisposable
     private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
     private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
 
-    public GameRenderer(GraphicsDevice graphicsDevice)
+    public GameRenderer(
+        GraphicsDevice graphicsDevice,
+        Texture2D pigPhoto = null)
     {
         _graphicsDevice = graphicsDevice;
+        _pigPhoto = pigPhoto;
         _spriteBatch = new SpriteBatch(graphicsDevice);
         _pixel = new Texture2D(graphicsDevice, 1, 1);
         _pixel.SetData(new[] { Color.White });
@@ -504,7 +508,11 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.LoreNotePickup?.CanInteract(
             gameSession.Player.Position) == true)
         {
-            string recordPrompt = Loc.Get("hud.read_record");
+            bool photograph = gameSession.LoreNotePickup.Definition.Id ==
+                LoreCatalog.MysteriousPhotograph.Id;
+            string recordPrompt = Loc.Get(photograph
+                ? "hud.pickup_photograph"
+                : "hud.read_record");
             int promptWidth = recordPrompt.Length * 12;
             DrawDebugLabel(
                 recordPrompt,
@@ -532,7 +540,9 @@ public sealed class GameRenderer : IDisposable
         if (gameSession.WorldTierTransitionProgress > 0f)
             DrawWorldTierTransition(gameSession);
 
-        if (gameSession.LastDiceTable.IsModalActive)
+        if (gameSession.IsPigPhotoPopupOpen)
+            DrawPigPhotoPopup();
+        else if (gameSession.LastDiceTable.IsModalActive)
             DrawLastDiceTable(gameSession);
         else if (gameSession.ScholarTomb.IsModalActive)
             DrawAncientScholarQuiz(gameSession);
@@ -4110,6 +4120,12 @@ public sealed class GameRenderer : IDisposable
         Rectangle bounds = pickup.Bounds;
         float pulse = .5f + .5f * MathF.Sin(
             (float)gameTime.TotalGameTime.TotalSeconds * 2.4f);
+        if (pickup.Definition.Id == LoreCatalog.MysteriousPhotograph.Id)
+        {
+            DrawPhotographPickup(bounds, pulse);
+            return;
+        }
+
         Rectangle glow = bounds;
         glow.Inflate(7 + (int)(pulse * 2f), 5 + (int)(pulse * 2f));
         _spriteBatch.Draw(
@@ -4134,6 +4150,139 @@ public sealed class GameRenderer : IDisposable
             _pixel,
             new Rectangle(bounds.Right - 7, bounds.Bottom - 7, 5, 5),
             new Color(113, 42, 37));
+    }
+
+    private void DrawPhotographPickup(Rectangle bounds, float pulse)
+    {
+        Rectangle glow = bounds;
+        glow.Inflate(8 + (int)(pulse * 3f), 7 + (int)(pulse * 2f));
+        _spriteBatch.Draw(
+            _pixel,
+            glow,
+            new Color(174, 207, 203, (int)(38 + pulse * 34)));
+        _spriteBatch.Draw(_pixel, bounds, new Color(229, 221, 195));
+        DrawRectangleOutline(bounds, 2, new Color(73, 80, 78));
+        var image = new Rectangle(
+            bounds.X + 4,
+            bounds.Y + 4,
+            bounds.Width - 8,
+            Math.Max(5, bounds.Height - 11));
+        _spriteBatch.Draw(_pixel, image, new Color(65, 86, 82));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(image.X + 3, image.Bottom - 5, image.Width - 6, 3),
+            new Color(191, 128, 116));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.X + 7, bounds.Bottom - 4, bounds.Width - 14, 2),
+            new Color(126, 112, 91));
+    }
+
+    private void DrawPigPhotoPopup()
+    {
+        Viewport viewport = _graphicsDevice.Viewport;
+        var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
+        int panelWidth = Math.Min(viewport.Width - 48, 980);
+        int panelHeight = Math.Min(viewport.Height - 48, 920);
+        var panel = new Rectangle(
+            screen.Center.X - panelWidth / 2,
+            screen.Center.Y - panelHeight / 2,
+            panelWidth,
+            panelHeight);
+
+        _spriteBatch.Draw(_pixel, screen, new Color(4, 5, 7, 224));
+        _spriteBatch.Draw(_pixel, panel, new Color(19, 21, 24, 252));
+        DrawRectangleOutline(panel, 3, new Color(174, 158, 117));
+
+        string title = Loc.Get("notes.pig_photo.title");
+        DrawDebugText(
+            title,
+            panel.X + 20,
+            panel.Y + 18,
+            new Color(237, 224, 184),
+            FitDebugTextScale(title, panel.Width - 210, 2));
+        string close = Loc.Get("photo.close");
+        DrawDebugText(
+            close,
+            panel.Right - 20 - close.Length * 6,
+            panel.Y + 20,
+            new Color(145, 153, 155),
+            1);
+
+        var imageArea = new Rectangle(
+            panel.X + 22,
+            panel.Y + 54,
+            panel.Width - 44,
+            panel.Height - 112);
+        int sourceWidth = _pigPhoto?.Width ?? 2;
+        int sourceHeight = _pigPhoto?.Height ?? 3;
+        Rectangle imageBounds = CalculateAspectFitBounds(
+            sourceWidth,
+            sourceHeight,
+            imageArea);
+        _spriteBatch.Draw(_pixel, imageBounds, new Color(11, 12, 13));
+        if (_pigPhoto != null)
+        {
+            _spriteBatch.Draw(_pigPhoto, imageBounds, Color.White);
+        }
+        else
+        {
+            DrawMissingPhotograph(imageBounds);
+        }
+        DrawRectangleOutline(imageBounds, 2, new Color(207, 199, 176));
+
+        string caption = Loc.Get("notes.pig_photo.content");
+        DrawCenteredDebugText(
+            caption,
+            panel.Center.X,
+            imageBounds.Bottom + 18,
+            new Color(231, 226, 207),
+            FitDebugTextScale(caption, panel.Width - 40, 2));
+    }
+
+    private void DrawMissingPhotograph(Rectangle bounds)
+    {
+        var paper = new Rectangle(
+            bounds.Center.X - Math.Min(90, bounds.Width / 3),
+            bounds.Center.Y - Math.Min(70, bounds.Height / 3),
+            Math.Min(180, bounds.Width * 2 / 3),
+            Math.Min(140, bounds.Height * 2 / 3));
+        _spriteBatch.Draw(_pixel, paper, new Color(221, 216, 199));
+        DrawRectangleOutline(paper, 3, new Color(89, 91, 86));
+        var image = new Rectangle(
+            paper.X + 14,
+            paper.Y + 14,
+            Math.Max(1, paper.Width - 28),
+            Math.Max(1, paper.Height - 45));
+        _spriteBatch.Draw(_pixel, image, new Color(63, 76, 72));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(image.X + 12, image.Bottom - 18,
+                Math.Max(1, image.Width - 24), 8),
+            new Color(184, 127, 116));
+    }
+
+    internal static Rectangle CalculateAspectFitBounds(
+        int sourceWidth,
+        int sourceHeight,
+        Rectangle destination)
+    {
+        if (sourceWidth <= 0 || sourceHeight <= 0 ||
+            destination.Width <= 0 || destination.Height <= 0)
+        {
+            return Rectangle.Empty;
+        }
+
+        float scale = MathF.Min(
+            destination.Width / (float)sourceWidth,
+            destination.Height / (float)sourceHeight);
+        int width = Math.Max(1, (int)MathF.Floor(sourceWidth * scale));
+        int height = Math.Max(1, (int)MathF.Floor(sourceHeight * scale));
+        return new Rectangle(
+            destination.Center.X - width / 2,
+            destination.Center.Y - height / 2,
+            width,
+            height);
     }
 
     private void DrawInventoryOverlay(GameSession gameSession)
@@ -4358,24 +4507,78 @@ public sealed class GameRenderer : IDisposable
             y,
             new Color(232, 213, 151),
             FitDebugTextScale(note.Title, availableWidth, 2));
-        DrawDebugText(
-            Loc.Get("notes.source"),
-            x,
-            y + 27,
-            new Color(124, 141, 147),
-            1);
-        DrawDebugText(
-            note.Source,
-            x,
-            y + 40,
-            new Color(174, 181, 174),
-            FitDebugTextScale(note.Source, availableWidth, 1));
-        _spriteBatch.Draw(
-            _pixel,
-            new Rectangle(x, y + 56, availableWidth, 1),
-            new Color(76, 72, 59));
+        bool imageBacked = !string.IsNullOrWhiteSpace(note.ImageAssetKey);
+        int contentY;
+        if (imageBacked)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, y + 28, availableWidth, 1),
+                new Color(76, 72, 59));
 
-        int contentY = y + 69;
+            const int captionLineHeight = 14;
+            int captionLineCount = Math.Min(note.ContentLines.Count, 5);
+            int captionHeight = Math.Max(
+                captionLineHeight,
+                captionLineCount * captionLineHeight);
+            int imageTop = y + 40;
+            int imageBottom = panel.Bottom - 10 - captionHeight - 10;
+            var imageArea = new Rectangle(
+                x,
+                imageTop,
+                availableWidth,
+                Math.Max(1, imageBottom - imageTop));
+            Texture2D imageTexture = ResolveLoreNoteImage(note.ImageAssetKey);
+            int sourceWidth = imageTexture?.Width ?? 2;
+            int sourceHeight = imageTexture?.Height ?? 3;
+            Rectangle imageBounds = CalculateAspectFitBounds(
+                sourceWidth,
+                sourceHeight,
+                imageArea);
+
+            _spriteBatch.Draw(_pixel, imageBounds, new Color(11, 12, 13));
+            if (imageTexture != null)
+                _spriteBatch.Draw(imageTexture, imageBounds, Color.White);
+            else
+                DrawMissingPhotograph(imageBounds);
+            DrawRectangleOutline(imageBounds, 2, new Color(207, 199, 176));
+
+            contentY = imageArea.Bottom + 10;
+            for (int index = 0; index < captionLineCount; index++)
+            {
+                string line = note.ContentLines[index];
+                DrawCenteredDebugText(
+                    line,
+                    panel.Center.X,
+                    contentY,
+                    new Color(202, 201, 184),
+                    FitDebugTextScale(line, availableWidth, 1));
+                contentY += captionLineHeight;
+            }
+
+            return;
+        }
+        else
+        {
+            DrawDebugText(
+                Loc.Get("notes.source"),
+                x,
+                y + 27,
+                new Color(124, 141, 147),
+                1);
+            DrawDebugText(
+                note.Source,
+                x,
+                y + 40,
+                new Color(174, 181, 174),
+                FitDebugTextScale(note.Source, availableWidth, 1));
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(x, y + 56, availableWidth, 1),
+                new Color(76, 72, 59));
+            contentY = y + 69;
+        }
+
         const int lineHeight = 14;
         foreach (string line in note.ContentLines)
         {
@@ -4389,6 +4592,16 @@ public sealed class GameRenderer : IDisposable
                 1);
             contentY += lineHeight;
         }
+    }
+
+    private Texture2D ResolveLoreNoteImage(string imageAssetKey)
+    {
+        return string.Equals(
+            imageAssetKey,
+            LoreCatalog.PigPhotoImageAssetKey,
+            StringComparison.Ordinal)
+                ? _pigPhoto
+                : null;
     }
 
     private void DrawInventoryTab(

@@ -1009,3 +1009,13 @@
 #begin Audio/epic_music_manifest.json
 /copy:Audio/epic_music_manifest.json
 
+#begin EasterEggs/pig_photo.jpg
+/importer:TextureImporter
+/processor:TextureProcessor
+/processorParam:ColorKeyEnabled=False
+/processorParam:GenerateMipmaps=False
+/processorParam:PremultiplyAlpha=True
+/processorParam:ResizeToPowerOfTwo=False
+/processorParam:MakeSquare=False
+/build:EasterEggs/pig_photo.jpg
+

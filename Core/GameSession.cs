@@ -178,6 +178,8 @@ public sealed class GameSession
     public bool Map03ExitPrepared { get; private set; }
     public bool Map04Cleared { get; private set; }
     public bool Map04ExitPrepared { get; private set; }
+    public bool Map2PigPhotoCollected { get; private set; }
+    public bool IsPigPhotoPopupOpen { get; private set; }
     public CityAlarmSystem CityAlarm { get; }
     public CollapsingCitySystem CollapsingCity { get; }
     public DemonicCorruptionSystem Corruption { get; }
@@ -394,6 +396,15 @@ public sealed class GameSession
         if (State == GameState.Playing && LastDiceTable.IsModalActive)
         {
             UpdateLastDiceTableModal(gameTime, keyboardState);
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
+
+        if (State == GameState.Playing && IsPigPhotoPopupOpen)
+        {
+            if (startPressed || pausePressed)
+                IsPigPhotoPopupOpen = false;
+            Player.Combat.CancelActions(restoreStamina: false);
             StoreInputStates(keyboardState, mouseState);
             return;
         }
@@ -896,6 +907,7 @@ public sealed class GameSession
 
         foreach (Enemy enemy in _defeatedEnemies)
         {
+            bool spawnFallenKnightPhotograph = false;
             RootHazards.RemoveOwnedBy(enemy);
 
             if (CurrentDungeon.IsAncientCatacombs)
@@ -915,6 +927,7 @@ public sealed class GameSession
                     Map02Cleared = true;
                     BossDefeated = true;
                     Curse.Reduce(100f);
+                    spawnFallenKnightPhotograph = true;
                 }
             }
 
@@ -958,9 +971,152 @@ public sealed class GameSession
                     CurrentRegion,
                     CurrentDungeon);
             }
+
+            if (spawnFallenKnightPhotograph)
+                TrySpawnFallenKnightPigPhotoDrop(enemy);
         }
 
         KillCount += defeatedCount;
+    }
+
+    internal bool TrySpawnFallenKnightPigPhotoDrop(Enemy enemy)
+    {
+        if (enemy == null || enemy.Type != EnemyType.FallenKnight ||
+            CurrentDungeon?.IsAncientCatacombs != true ||
+            Map2PigPhotoCollected || LoreNotePickup != null)
+        {
+            return false;
+        }
+
+        return SpawnPigPhotoPickup(new Vector2(
+            enemy.Position.X,
+            enemy.Bounds.Bottom),
+            GetFallenKnightArenaBounds());
+    }
+
+    private bool SpawnPigPhotoPickup(
+        Vector2 footPosition,
+        Rectangle allowedBounds)
+    {
+        if (CurrentDungeon?.IsAncientCatacombs != true ||
+            Map2PigPhotoCollected || LoreNotePickup != null)
+        {
+            return false;
+        }
+
+        Vector2 size = DungeonAscendant.World.LoreNotePickup.Size;
+        if (!TryResolveSafePigPhotoPosition(
+                footPosition,
+                size,
+                allowedBounds,
+                out Vector2 position))
+        {
+            return false;
+        }
+
+        LoreNotePickup = new LoreNotePickup(
+            LoreCatalog.MysteriousPhotograph,
+            position);
+        return true;
+    }
+
+    private bool TryResolveSafePigPhotoPosition(
+        Vector2 preferredFootPosition,
+        Vector2 size,
+        Rectangle allowedBounds,
+        out Vector2 position)
+    {
+        position = Vector2.Zero;
+        float halfWidth = size.X / 2f;
+        float minimumX = allowedBounds.Left + halfWidth + 2f;
+        float maximumX = allowedBounds.Right - halfWidth - 2f;
+        if (minimumX > maximumX)
+            return false;
+
+        float preferredX = MathHelper.Clamp(
+            preferredFootPosition.X,
+            minimumX,
+            maximumX);
+        float maximumSearchRadius = MathF.Max(
+            120f,
+            MathF.Max(preferredX - minimumX, maximumX - preferredX));
+        int searchSteps = (int)MathF.Ceiling(maximumSearchRadius / 16f);
+        for (int step = 0; step <= searchSteps; step++)
+        {
+            float distance = MathF.Min(maximumSearchRadius, step * 16f);
+            if (TryResolveSafePigPhotoAtX(
+                    MathF.Min(maximumX, preferredX + distance),
+                    preferredFootPosition.Y,
+                    size,
+                    allowedBounds,
+                    out position))
+            {
+                return true;
+            }
+
+            if (step > 0 && TryResolveSafePigPhotoAtX(
+                    MathF.Max(minimumX, preferredX - distance),
+                    preferredFootPosition.Y,
+                    size,
+                    allowedBounds,
+                    out position))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryResolveSafePigPhotoAtX(
+        float x,
+        float preferredFootY,
+        Vector2 size,
+        Rectangle allowedBounds,
+        out Vector2 position)
+    {
+        position = Vector2.Zero;
+        float halfWidth = size.X / 2f;
+        float bestDistance = float.MaxValue;
+        foreach (Platform platform in CurrentDungeon.Platforms)
+        {
+            if (x - halfWidth < platform.Bounds.Left ||
+                x + halfWidth > platform.Bounds.Right)
+            {
+                continue;
+            }
+
+            Vector2 candidate = new(
+                x,
+                platform.Bounds.Top - size.Y / 2f);
+            Rectangle candidateBounds = DungeonCollision.CreateBounds(
+                candidate,
+                size);
+            if (!allowedBounds.Contains(candidateBounds) ||
+                !SideScrollingCollision.IsPositionFree(
+                    candidate, size, CurrentDungeon) ||
+                !SideScrollingCollision.IsSupported(
+                    candidate, size, CurrentDungeon))
+            {
+                continue;
+            }
+
+            float distance = MathF.Abs(platform.Bounds.Top - preferredFootY);
+            if (distance >= bestDistance)
+                continue;
+            bestDistance = distance;
+            position = candidate;
+        }
+
+        return bestDistance < float.MaxValue;
+    }
+
+    private Rectangle GetFallenKnightArenaBounds()
+    {
+        foreach (EncounterZone zone in CurrentDungeon.EncounterZones)
+            if (zone.ZoneId == "fallen-knight")
+                return zone.ActivationBounds;
+        return CurrentDungeon.BossRoom.Bounds;
     }
 
     private void UpdatePauseMenu(
@@ -1121,6 +1277,8 @@ public sealed class GameSession
         ClearFusionState();
         ClearSequentialEnemyTestState();
         LoreNotePickup = null;
+        Map2PigPhotoCollected = false;
+        IsPigPhotoPopupOpen = false;
         Chest = null;
         Boss = null;
         CurrentDungeon = null;
@@ -1202,6 +1360,7 @@ public sealed class GameSession
 
     private void ResetRun()
     {
+        bool preservePigPhoto = Map2PigPhotoCollected;
         ScholarTomb.ResetForNewRun();
         LastDiceTable.ResetForNewRun();
         DungeonDepth = 1;
@@ -1211,6 +1370,7 @@ public sealed class GameSession
         Map03ExitPrepared = false;
         Map04Cleared = false;
         Map04ExitPrepared = false;
+        IsPigPhotoPopupOpen = false;
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
@@ -1220,6 +1380,13 @@ public sealed class GameSession
         Player = new PlayerCharacter(
             GetRoomEntranceSpawn(CurrentDungeon.StartRoom),
             appearance: RunAppearance);
+        Map2PigPhotoCollected = preservePigPhoto;
+        if (preservePigPhoto && Player.Notes.TryCollect(
+                LoreCatalog.MysteriousPhotograph,
+                out LoreNote preservedPhotograph))
+        {
+            preservedPhotograph.MarkRead();
+        }
         _lastSafePlayerPosition = Player.Position;
         KillCount = 0;
         IsInventoryOpen = false;
@@ -1367,6 +1534,17 @@ public sealed class GameSession
             if (savedNote.IsRead)
                 note.MarkRead();
         }
+        Map2PigPhotoCollected = slot.Map2PigPhotoCollected ||
+            Player.Notes.Contains(LoreCatalog.MysteriousPhotograph.Id);
+        if (Map2PigPhotoCollected &&
+            !Player.Notes.Contains(LoreCatalog.MysteriousPhotograph.Id) &&
+            Player.Notes.TryCollect(
+                LoreCatalog.MysteriousPhotograph,
+                out LoreNote restoredPhotograph))
+        {
+            restoredPhotograph.MarkRead();
+        }
+        IsPigPhotoPopupOpen = false;
         KillCount = slot.KillCount;
         IsInventoryOpen = false;
         ShowCombatDebug = DebugCombatHitboxes;
@@ -1484,6 +1662,7 @@ public sealed class GameSession
             Map02Cleared = Map02Cleared,
             Map03Cleared = Map03Cleared,
             Map04Cleared = Map04Cleared,
+            Map2PigPhotoCollected = Map2PigPhotoCollected,
             BossDefeated = BossDefeated,
             LastDiceStarted = LastDiceTable.Started,
             LastDiceCompleted = LastDiceTable.IsCompleted,
@@ -1585,6 +1764,7 @@ public sealed class GameSession
         RootHazards.Clear();
         Loot.Reset();
         LoreNotePickup = null;
+        IsPigPhotoPopupOpen = false;
         int enemyLevel = WorldProgression.GetEnemyLevel(
             Player.Level,
             DungeonDepth,
@@ -1806,7 +1986,10 @@ public sealed class GameSession
             Player.Notes,
             out LoreNote collectedNote) == true)
         {
-            OpenLoreNote(collectedNote);
+            if (collectedNote.Id == LoreCatalog.MysteriousPhotograph.Id)
+                OpenPigPhoto(collectedNote);
+            else
+                OpenLoreNote(collectedNote);
             return true;
         }
 
@@ -1843,6 +2026,20 @@ public sealed class GameSession
 
         Loot.TryCollectNearest(Player.Position, Player.Inventory);
         return false;
+    }
+
+    private void OpenPigPhoto(LoreNote note)
+    {
+        if (note == null)
+            return;
+
+        Map2PigPhotoCollected = true;
+        IsPigPhotoPopupOpen = true;
+        note.MarkRead();
+        _lastAcquiredLoreNote = note;
+        _loreNoteFeedbackTimeRemaining = 0f;
+        Player.Combat.CancelActions(restoreStamina: false);
+        SaveActiveSlot();
     }
 
     private void OpenLoreNote(LoreNote note)
@@ -2087,6 +2284,12 @@ public sealed class GameSession
             case DeveloperCommand.KillActiveEnemies:
                 DeveloperKillActiveEnemies();
                 break;
+            case DeveloperCommand.ForcePigPhotoDrop:
+                DeveloperForcePigPhotoDrop();
+                break;
+            case DeveloperCommand.ResetPigPhotoCollected:
+                DeveloperResetPigPhoto();
+                break;
             case DeveloperCommand.ToggleMap01Cleared:
                 Map01Cleared = !Map01Cleared;
                 break;
@@ -2268,8 +2471,66 @@ public sealed class GameSession
         ProcessBossDefeat();
     }
 
+    private void DeveloperForcePigPhotoDrop()
+    {
+        if (CurrentDungeon?.IsAncientCatacombs != true ||
+            Map2PigPhotoCollected || LoreNotePickup != null)
+        {
+            return;
+        }
+
+        Rectangle arenaBounds = GetFallenKnightArenaBounds();
+        Vector2 footPosition = arenaBounds.Contains(Player.Bounds)
+            ? new Vector2(Player.Position.X, Player.Bounds.Bottom)
+            : new Vector2(
+                arenaBounds.Center.X,
+                CurrentDungeon.BossRoom.GroundY);
+        SpawnPigPhotoPickup(footPosition, arenaBounds);
+    }
+
+    private void DeveloperResetPigPhoto()
+    {
+        Map2PigPhotoCollected = false;
+        IsPigPhotoPopupOpen = false;
+        if (LoreNotePickup?.Definition.Id ==
+            LoreCatalog.MysteriousPhotograph.Id)
+        {
+            LoreNotePickup = null;
+        }
+        Player.Notes.Remove(LoreCatalog.MysteriousPhotograph.Id);
+        _lastAcquiredLoreNote = null;
+        _loreNoteFeedbackTimeRemaining = 0f;
+        RefreshInventoryView();
+        SaveActiveSlot();
+    }
+
+    private void DeveloperResetFallenKnightEncounter()
+    {
+        if (CurrentDungeon?.IsAncientCatacombs != true ||
+            !WildForestEncounters.ResetZone("fallen-knight", Enemies))
+        {
+            return;
+        }
+
+        if (LoreNotePickup?.Definition.Id ==
+            LoreCatalog.MysteriousPhotograph.Id)
+        {
+            LoreNotePickup = null;
+        }
+        Map02Cleared = false;
+        BossDefeated = false;
+        ClearDeveloperTransientState();
+        SaveActiveSlot();
+    }
+
     private void DeveloperResetCurrentBoss()
     {
+        if (CurrentDungeon.IsAncientCatacombs)
+        {
+            DeveloperResetFallenKnightEncounter();
+            return;
+        }
+
         int zoneIndex = GetCurrentZoneIndex();
         if (CurrentDungeon.IsAuthoredWildForest &&
             zoneIndex == CurrentDungeon.WildForestSections.Count - 1)
@@ -2285,12 +2546,7 @@ public sealed class GameSession
         if (string.IsNullOrEmpty(zoneId))
             return;
         WildForestEncounters.ResetZone(zoneId, Enemies);
-        if (zoneId == "fallen-knight")
-        {
-            Map02Cleared = false;
-            BossDefeated = false;
-        }
-        else if (zoneId == "broken-king")
+        if (zoneId == "broken-king")
         {
             Map03Cleared = false;
             BossDefeated = false;
