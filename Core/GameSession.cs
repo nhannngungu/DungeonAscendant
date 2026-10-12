@@ -23,7 +23,7 @@ namespace DungeonAscendant.Core;
 /// </summary>
 public sealed class GameSession
 {
-#if DEBUG
+#if DEBUG || PLAYTEST_BUILD
     public const bool DeveloperModeEnabled = true;
 #else
     public const bool DeveloperModeEnabled = false;
@@ -96,6 +96,7 @@ public sealed class GameSession
     private readonly DungeonGenerator _dungeonGenerator;
     private readonly CatacombMapGenerator _catacombGenerator;
     private readonly FallenCityMapGenerator _fallenCityGenerator;
+    private readonly DemonLandsMapGenerator _demonLandsGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
     private readonly List<RottenCorpseBurst> _rottenCorpseBursts = new();
     private readonly HashSet<Enemy> _playerAttackHits = new();
@@ -175,8 +176,12 @@ public sealed class GameSession
     public bool Map02Cleared { get; private set; }
     public bool Map03Cleared { get; private set; }
     public bool Map03ExitPrepared { get; private set; }
+    public bool Map04Cleared { get; private set; }
+    public bool Map04ExitPrepared { get; private set; }
     public CityAlarmSystem CityAlarm { get; }
     public CollapsingCitySystem CollapsingCity { get; }
+    public DemonicCorruptionSystem Corruption { get; }
+    public CorruptionAnchorSystem CorruptionAnchors { get; }
     public ProjectileManager Projectiles { get; }
     public GroundRuneManager GroundRunes { get; }
     public IReadOnlyList<BreakerShockwave> BreakerShockwaves =>
@@ -251,15 +256,18 @@ public sealed class GameSession
         DungeonDepth == 1;
     public bool IsSequentialEnemyTestMode => IsWildForestShowcaseMode;
     public bool IsMapEntryFallActive => _mapEntryFallActive;
-    public string CurrentMapName => CurrentDungeon?.IsFallenCity == true
-        ? Loc.Get("hud.map_fallen_city")
+    public string CurrentMapName => CurrentDungeon?.IsDemonLands == true
+        ? Loc.Get("hud.map_demon_lands")
+        : CurrentDungeon?.IsFallenCity == true
+            ? Loc.Get("hud.map_fallen_city")
         : CurrentDungeon?.IsAncientCatacombs == true
             ? Loc.Get("hud.map_catacombs")
             : Loc.Get("hud.map_wilderness");
     public string CurrentZoneName => GetCurrentZoneName();
     public int ActiveEnemyCount => CountActiveEnemies();
     public bool ShouldRenderBoss => CurrentDungeon != null &&
-        !CurrentDungeon.IsAncientCatacombs && !CurrentDungeon.IsFallenCity;
+        !CurrentDungeon.IsAncientCatacombs && !CurrentDungeon.IsFallenCity &&
+        !CurrentDungeon.IsDemonLands;
     public IReadOnlyList<Enemy> WildForestShowcaseEnemies =>
         _wildForestShowcaseEnemies;
     public bool IsSequentialEnemyTestComplete => _sequentialTestComplete;
@@ -310,6 +318,7 @@ public sealed class GameSession
         _dungeonGenerator = new DungeonGenerator(randomSeed);
         _catacombGenerator = new CatacombMapGenerator();
         _fallenCityGenerator = new FallenCityMapGenerator();
+        _demonLandsGenerator = new DemonLandsMapGenerator();
         Enemies = new EnemyManager(randomSeed);
         WildForestEncounters = new WildForestEncounterDirector();
         EnemyIntroductions = new EnemyIntroductionManager();
@@ -319,6 +328,8 @@ public sealed class GameSession
         LastDiceTable = new LastDiceTableSystem(randomSeed);
         CityAlarm = new CityAlarmSystem();
         CollapsingCity = new CollapsingCitySystem();
+        Corruption = new DemonicCorruptionSystem();
+        CorruptionAnchors = new CorruptionAnchorSystem();
         Projectiles = new ProjectileManager();
         GroundRunes = new GroundRuneManager();
         RootHazards = new RootHazardManager();
@@ -540,6 +551,7 @@ public sealed class GameSession
             Projectiles.Clear();
             ClearBreakerEffects();
             RootHazards.Clear();
+            ClearDemonRitualEffects();
             Player.ClearTemporaryStatus();
             State = GameState.GameOver;
             StoreInputStates(keyboardState, mouseState);
@@ -642,6 +654,19 @@ public sealed class GameSession
             activeEnemyLevel,
             WorldTier,
             suppressActivation: insideScholarSafeZone);
+        CorruptionAnchors.Update(
+            gameTime,
+            CurrentDungeon,
+            Player,
+            Enemies,
+            Corruption,
+            activeEnemyLevel,
+            WorldTier);
+        Corruption.Update(
+            gameTime,
+            Player,
+            CurrentDungeon,
+            CorruptionAnchors);
         CityAlarm.Update(
             gameTime,
             CurrentDungeon,
@@ -691,7 +716,8 @@ public sealed class GameSession
             }
         }
         if (CurrentDungeon.IsAuthoredWildForest ||
-            CurrentDungeon.IsAncientCatacombs || CurrentDungeon.IsFallenCity)
+            CurrentDungeon.IsAncientCatacombs || CurrentDungeon.IsFallenCity ||
+            CurrentDungeon.IsDemonLands)
         {
             EnemyIntroductions.Update(
                 gameTime,
@@ -712,6 +738,14 @@ public sealed class GameSession
         if (!EnemyIntroductions.IsPresenting)
         {
             ProcessPlayerAttack();
+            if (CurrentDungeon.IsDemonLands && Player.Combat.IsAttackActive)
+            {
+                CorruptionAnchors.TryDamage(
+                    PlayerAttackArea,
+                    Player.Combat.AttackId,
+                    70,
+                    Corruption);
+            }
             if (!insideScholarSafeZone)
             {
                 Enemies.UpdateCombatAndAi(
@@ -720,6 +754,7 @@ public sealed class GameSession
                     CurrentDungeon,
                     Projectiles,
                     RootHazards);
+                ApplyDemonCorruptionPressure();
                 CollapsingCity.UpdateEliteAttacks(
                     CurrentDungeon,
                     Enemies.Enemies);
@@ -754,6 +789,7 @@ public sealed class GameSession
             GroundRunes.Clear();
             ClearBreakerEffects();
             RootHazards.Clear();
+            ClearDemonRitualEffects();
             Player.ClearTemporaryStatus();
             IsInventoryOpen = false;
             State = GameState.GameOver;
@@ -799,6 +835,43 @@ public sealed class GameSession
         {
             if (enemy is CatacombEnemy catacomb)
                 Curse.Add(catacomb.ConsumeCursePressure());
+        }
+    }
+
+    private void ApplyDemonCorruptionPressure()
+    {
+        if (CurrentDungeon?.IsDemonLands != true)
+            return;
+
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (enemy is not DemonLandsEnemy demon)
+                continue;
+            Corruption.Add(demon.ConsumeCorruptionPressure());
+            if (demon.ConsumeAnchorBlessingRequest() &&
+                CorruptionAnchors.TryBlessNearestActive(
+                    demon,
+                    demon.Position,
+                    370f,
+                    out string anchorId,
+                    out Vector2 anchorPosition))
+            {
+                demon.ConfirmAnchorBlessing(anchorId, anchorPosition);
+            }
+            if (demon.HasAnchorTether)
+            {
+                demon.SynchronizeAnchorBlessing(
+                    CorruptionAnchors.IsBlessed(demon.BlessedAnchorId));
+            }
+            if (demon.ConsumeAnchorPulseRequest())
+            {
+                CorruptionAnchors.TrySummonBossAnchor(
+                    demon,
+                    demon.RequestedBossAnchorPosition,
+                    CurrentDungeon,
+                    Player,
+                    out _);
+            }
         }
     }
 
@@ -862,6 +935,17 @@ public sealed class GameSession
             {
                 Map03Cleared = true;
                 BossDefeated = true;
+            }
+
+            if (CurrentDungeon.IsDemonLands &&
+                enemy.Type == EnemyType.HornedGeneral)
+            {
+                Map04Cleared = true;
+                BossDefeated = true;
+                CorruptionAnchors.ClearBossAnchors(
+                    enemy as DemonLandsEnemy,
+                    includeAuthoredBossAnchors: true);
+                Corruption.Reduce(100f);
             }
 
             if (enemy.CanDropLoot)
@@ -1006,6 +1090,9 @@ public sealed class GameSession
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
+        ClearDemonRitualEffects();
+        Corruption.Reset();
+        CorruptionAnchors.Reset(null);
         ClearBreakerEffects();
         Loot.Reset();
         Enemies.Reset(
@@ -1122,6 +1209,8 @@ public sealed class GameSession
         Map02Cleared = false;
         Map03Cleared = false;
         Map03ExitPrepared = false;
+        Map04Cleared = false;
+        Map04ExitPrepared = false;
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
         _worldTierTransitionTimeRemaining = 0f;
@@ -1240,15 +1329,17 @@ public sealed class GameSession
 
         ScholarTomb.ResetForNewRun();
         LastDiceTable.ResetForNewRun();
-        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 3);
+        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 4);
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
         _worldTierTransitionTimeRemaining = 0f;
-        CurrentDungeon = DungeonDepth == 1
-            ? _dungeonGenerator.GenerateWildForest()
-            : DungeonDepth == 2
-                ? _catacombGenerator.Generate()
-                : _fallenCityGenerator.Generate();
+        CurrentDungeon = DungeonDepth switch
+        {
+            2 => _catacombGenerator.Generate(),
+            3 => _fallenCityGenerator.Generate(),
+            4 => _demonLandsGenerator.Generate(),
+            _ => _dungeonGenerator.GenerateWildForest()
+        };
         Player = new PlayerCharacter(
             GetRoomEntranceSpawn(CurrentDungeon.StartRoom),
             appearance: RunAppearance);
@@ -1312,10 +1403,13 @@ public sealed class GameSession
         Map01Cleared = slot.Map01Cleared;
         Map02Cleared = slot.Map02Cleared;
         Map03Cleared = slot.Map03Cleared;
+        Map04Cleared = slot.Map04Cleared;
         if (CurrentDungeon.IsAncientCatacombs && Map02Cleared)
             WildForestEncounters.MarkCleared("fallen-knight");
         if (CurrentDungeon.IsFallenCity && Map03Cleared)
             WildForestEncounters.MarkCleared("broken-king");
+        if (CurrentDungeon.IsDemonLands && Map04Cleared)
+            WildForestEncounters.MarkCleared("horned-general");
         if (slot.BossDefeated)
         {
             BossDefeated = true;
@@ -1336,7 +1430,8 @@ public sealed class GameSession
                 CurrentDungeon.WorldBounds,
                 CurrentDungeon.IsAuthoredWildForest ? .54f :
                     CurrentDungeon.IsAncientCatacombs ? .55f :
-                    CurrentDungeon.IsFallenCity ? .56f : .57f);
+                    CurrentDungeon.IsFallenCity ? .56f :
+                    CurrentDungeon.IsDemonLands ? .57f : .58f);
         }
     }
 
@@ -1388,6 +1483,7 @@ public sealed class GameSession
             Map01Cleared = Map01Cleared,
             Map02Cleared = Map02Cleared,
             Map03Cleared = Map03Cleared,
+            Map04Cleared = Map04Cleared,
             BossDefeated = BossDefeated,
             LastDiceStarted = LastDiceTable.Started,
             LastDiceCompleted = LastDiceTable.IsCompleted,
@@ -1450,9 +1546,14 @@ public sealed class GameSession
                 WorldTierTransitionDurationSeconds;
         }
 
-        CurrentDungeon = DungeonDepth == 2
-            ? _catacombGenerator.Generate()
-            : _fallenCityGenerator.Generate();
+        CurrentDungeon = DungeonDepth switch
+        {
+            2 => _catacombGenerator.Generate(),
+            3 => _fallenCityGenerator.Generate(),
+            4 => _demonLandsGenerator.Generate(),
+            _ => throw new InvalidOperationException(
+                $"Map {DungeonDepth} is not implemented.")
+        };
         Region = GetRegionForDepth(DungeonDepth);
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
         IsInventoryOpen = false;
@@ -1497,7 +1598,8 @@ public sealed class GameSession
             suppressProceduralSpawns: IsWildForestShowcaseMode ||
                 CurrentDungeon.IsAuthoredWildForest ||
                 CurrentDungeon.IsAncientCatacombs ||
-                CurrentDungeon.IsFallenCity);
+                CurrentDungeon.IsFallenCity ||
+                CurrentDungeon.IsDemonLands);
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom, avoidEnemies: true);
         WildForestEncounters.Reset(CurrentDungeon);
         EnemyIntroductions.Reset();
@@ -1508,6 +1610,9 @@ public sealed class GameSession
         CityAlarm.Reset();
         CollapsingCity.Reset(CurrentDungeon);
         Map03ExitPrepared = false;
+        Corruption.Reset();
+        CorruptionAnchors.Reset(CurrentDungeon);
+        Map04ExitPrepared = false;
         _rottenCorpseBursts.Clear();
         Chest = new TreasureChest(
             SideScrollingCollision.PlaceOnGround(
@@ -1530,7 +1635,8 @@ public sealed class GameSession
             CurrentDungeon.WorldBounds,
             CurrentDungeon.IsAuthoredWildForest ? .54f :
                 CurrentDungeon.IsAncientCatacombs ? .55f :
-                CurrentDungeon.IsFallenCity ? .56f : .57f);
+                CurrentDungeon.IsFallenCity ? .56f :
+                CurrentDungeon.IsDemonLands ? .57f : .58f);
     }
 
     private AncientTreant CreateRegionBoss()
@@ -1720,9 +1826,15 @@ public sealed class GameSession
 
         if (IsExitUnlocked && IsPlayerNearExit())
         {
+            if (CurrentDungeon.IsDemonLands)
+            {
+                Map04ExitPrepared = true;
+                return true;
+            }
             if (CurrentDungeon.IsFallenCity)
             {
                 Map03ExitPrepared = true;
+                CompleteDungeon();
                 return true;
             }
             CompleteDungeon();
@@ -1922,7 +2034,8 @@ public sealed class GameSession
             elapsedSeconds,
             CurrentDungeon.IsAuthoredWildForest ? .54f :
                 CurrentDungeon.IsAncientCatacombs ? .55f :
-                CurrentDungeon.IsFallenCity ? .56f : .57f);
+                CurrentDungeon.IsFallenCity ? .56f :
+                CurrentDungeon.IsDemonLands ? .57f : .58f);
     }
 
     internal void ExecuteDeveloperCommand(
@@ -1946,6 +2059,9 @@ public sealed class GameSession
                 break;
             case DeveloperCommand.ClearCurse:
                 Curse.Reset();
+                break;
+            case DeveloperCommand.ClearCorruption:
+                Corruption.Reset();
                 break;
             case DeveloperCommand.ResetPlayerCombat:
                 Player.ClearTemporaryStatus();
@@ -1984,6 +2100,10 @@ public sealed class GameSession
                 CityAlarm.Reset();
                 CollapsingCity.Reset(CurrentDungeon);
                 break;
+            case DeveloperCommand.ResetCorruptionAnchors:
+                CorruptionAnchors.Reset(CurrentDungeon);
+                Corruption.Reset();
+                break;
             case DeveloperCommand.ResetCurrentBoss:
                 DeveloperResetCurrentBoss();
                 break;
@@ -2021,6 +2141,15 @@ public sealed class GameSession
             return FindNearestFallenCityZone();
         }
 
+        if (CurrentDungeon.IsDemonLands)
+        {
+            for (int index = 0; index < CurrentDungeon.DemonLandsZones.Count; index++)
+                if (CurrentDungeon.DemonLandsZones[index].Bounds.Contains(
+                    Player.Position.ToPoint()))
+                    return index;
+            return FindNearestDemonLandsZone();
+        }
+
         for (int index = 0; index < CurrentDungeon.WildForestSections.Count; index++)
             if (CurrentDungeon.WildForestSections[index].Bounds.Contains(Player.Position.ToPoint()))
                 return index;
@@ -2029,7 +2158,7 @@ public sealed class GameSession
 
     private void DeveloperLoadMap(int mapNumber)
     {
-        mapNumber = System.Math.Clamp(mapNumber, 1, 3);
+        mapNumber = System.Math.Clamp(mapNumber, 1, 4);
         DungeonDepth = mapNumber;
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
@@ -2038,6 +2167,7 @@ public sealed class GameSession
         {
             2 => _catacombGenerator.Generate(),
             3 => _fallenCityGenerator.Generate(),
+            4 => _demonLandsGenerator.Generate(),
             _ => _dungeonGenerator.GenerateWildForest()
         };
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
@@ -2073,8 +2203,10 @@ public sealed class GameSession
             return;
         }
 
-        int count = CurrentDungeon.IsFallenCity
-            ? CurrentDungeon.FallenCityZones.Count
+        int count = CurrentDungeon.IsDemonLands
+            ? CurrentDungeon.DemonLandsZones.Count
+            : CurrentDungeon.IsFallenCity
+                ? CurrentDungeon.FallenCityZones.Count
             : CurrentDungeon.IsAncientCatacombs
                 ? CurrentDungeon.CatacombZones.Count
                 : CurrentDungeon.WildForestSections.Count;
@@ -2082,8 +2214,10 @@ public sealed class GameSession
             return;
 
         zoneIndex = System.Math.Clamp(zoneIndex, 0, count - 1);
-        Rectangle bounds = CurrentDungeon.IsFallenCity
-            ? CurrentDungeon.FallenCityZones[zoneIndex].Bounds
+        Rectangle bounds = CurrentDungeon.IsDemonLands
+            ? CurrentDungeon.DemonLandsZones[zoneIndex].Bounds
+            : CurrentDungeon.IsFallenCity
+                ? CurrentDungeon.FallenCityZones[zoneIndex].Bounds
             : CurrentDungeon.IsAncientCatacombs
                 ? CurrentDungeon.CatacombZones[zoneIndex].Bounds
                 : CurrentDungeon.WildForestSections[zoneIndex].Bounds;
@@ -2104,7 +2238,8 @@ public sealed class GameSession
             Player.Position,
             Player.Facing,
             CurrentDungeon.WorldBounds,
-            CurrentDungeon.IsAuthoredWildForest ? .54f : .55f);
+            CurrentDungeon.IsAuthoredWildForest ? .54f :
+            CurrentDungeon.IsDemonLands ? .57f : .55f);
     }
 
     private void DeveloperResetCurrentEncounter()
@@ -2161,6 +2296,13 @@ public sealed class GameSession
             BossDefeated = false;
             Map03ExitPrepared = false;
         }
+        else if (zoneId == "horned-general")
+        {
+            Map04Cleared = false;
+            BossDefeated = false;
+            Map04ExitPrepared = false;
+            CorruptionAnchors.Reset(CurrentDungeon);
+        }
         ClearDeveloperTransientState();
     }
 
@@ -2177,8 +2319,10 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return string.Empty;
-        string sectionId = CurrentDungeon.IsFallenCity
-            ? CurrentDungeon.FallenCityZones[index].ZoneId
+        string sectionId = CurrentDungeon.IsDemonLands
+            ? CurrentDungeon.DemonLandsZones[index].ZoneId
+            : CurrentDungeon.IsFallenCity
+                ? CurrentDungeon.FallenCityZones[index].ZoneId
             : CurrentDungeon.IsAncientCatacombs
                 ? CurrentDungeon.CatacombZones[index].ZoneId
                 : CurrentDungeon.WildForestSections[index].SectionId;
@@ -2198,12 +2342,22 @@ public sealed class GameSession
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
+        ClearDemonRitualEffects();
         ClearBreakerEffects();
         _rottenCorpseBursts.Clear();
         Enemies.ClearTemporaryBuffs();
         CityAlarm.Reset();
         CollapsingCity.Reset(CurrentDungeon);
         Player.ClearTemporaryStatus();
+    }
+
+    private void ClearDemonRitualEffects()
+    {
+        CorruptionAnchors.ClearPriestBlessings();
+        CorruptionAnchors.ClearBossAnchors();
+        foreach (Enemy enemy in Enemies.Enemies)
+            if (enemy is DemonLandsEnemy demon)
+                demon.ClearEncounterTransientEffects();
     }
 
     private List<Rectangle> GetAliveEnemyBounds()
@@ -2220,8 +2374,10 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return "UNKNOWN";
-        return CurrentDungeon.IsFallenCity
-            ? Loc.Get(CurrentDungeon.FallenCityZones[index].NameKey)
+        return CurrentDungeon.IsDemonLands
+            ? Loc.Get(CurrentDungeon.DemonLandsZones[index].NameKey)
+            : CurrentDungeon.IsFallenCity
+                ? Loc.Get(CurrentDungeon.FallenCityZones[index].NameKey)
             : CurrentDungeon.IsAncientCatacombs
                 ? CurrentDungeon.CatacombZones[index].Name
                 : CurrentDungeon.WildForestSections[index].Name;
@@ -2284,11 +2440,30 @@ public sealed class GameSession
         return result;
     }
 
+    private int FindNearestDemonLandsZone()
+    {
+        int result = 0;
+        float distance = float.MaxValue;
+        for (int index = 0; index < CurrentDungeon.DemonLandsZones.Count; index++)
+        {
+            float candidate = MathF.Abs(
+                CurrentDungeon.DemonLandsZones[index].Bounds.Center.X -
+                Player.Position.X);
+            if (candidate < distance)
+            {
+                distance = candidate;
+                result = index;
+            }
+        }
+        return result;
+    }
+
     private static RegionDefinition GetRegionForDepth(int dungeonDepth) =>
         dungeonDepth switch
         {
             2 => RegionDefinition.AncientCatacombs,
-            >= 3 => RegionDefinition.FallenCity,
+            3 => RegionDefinition.FallenCity,
+            >= 4 => RegionDefinition.DemonLands,
             _ => RegionDefinition.WildForest
         };
 
@@ -4234,6 +4409,19 @@ public sealed class GameSession
         {
             if (!projectile.IsPlayerOwned || projectile.LifetimeRemaining <= 0f)
                 continue;
+
+            if (CurrentDungeon.IsDemonLands &&
+                CorruptionAnchors.TryDamage(
+                    projectile.SweptBounds,
+                    projectile.SourceAttackId >= 0
+                        ? projectile.SourceAttackId
+                        : Player.Combat.AttackId,
+                    Math.Max(35, projectile.Damage),
+                    Corruption))
+            {
+                projectile.LifetimeRemaining = 0f;
+                continue;
+            }
 
             bool consumed = false;
             foreach (Enemy enemy in Enemies.Enemies)

@@ -352,13 +352,9 @@ public static class FallenCityMapValidation
             "Broken King defeat did not complete Map 3.");
         session.Player.MoveTo(session.ExitPosition);
         session.Update(Frame, new KeyboardState(Keys.E), new MouseState());
-        Need(session.DungeonDepth == 3 && session.Map03ExitPrepared,
-            "Map 3 exit did not stop at the future Map 4 hook.");
-        session.ExecuteDeveloperCommand(
-            DeveloperCommand.ResetCurrentBoss, 3, 9);
-        Need(!session.Map03Cleared && !session.BossDefeated &&
-            !session.Map03ExitPrepared,
-            "Admin reset did not restore the Broken King foundation.");
+        Need(session.DungeonDepth == 4 && session.CurrentDungeon.IsDemonLands &&
+            session.CurrentRegion == RegionType.DemonLands,
+            "Map 3 exit did not load Demon Lands while preserving completion.");
     }
 
     private static void ValidateDeathRestartCleanup()

@@ -50,6 +50,14 @@ public enum EnemyTheme
     ,CityRoyal
     ,CityExecution
     ,BrokenKing
+    ,DemonFrontier
+    ,DemonWastes
+    ,DemonRift
+    ,DemonBone
+    ,DemonQuarry
+    ,DemonShrine
+    ,DemonLegion
+    ,HornedGeneral
 }
 
 public enum EncounterDifficulty

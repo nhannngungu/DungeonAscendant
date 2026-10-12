@@ -31,5 +31,15 @@ public enum EnemyType
     RoyalGuard,
     AshKnight,
     WarBishop,
-    BrokenKing
+    BrokenKing,
+    ImpRaider,
+    HellArcher,
+    SpineHound,
+    RiftStalker,
+    BoneHarvester,
+    Hellbrute,
+    CorruptionPriest,
+    RiftWarden,
+    DemonLegionnaire,
+    HornedGeneral
 }

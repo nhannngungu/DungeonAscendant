@@ -23,7 +23,9 @@ public enum WildForestEnemyIdentity
     CursedKnight, GraveBat, DeathKnight, SoulCollector, FallenKnight,
     FallenMilitiaman, RuinedCrossbowman, RabidHound, PlagueCarrier,
     BellWatcher, StreetExecutioner, RoyalGuard, AshKnight, WarBishop,
-    BrokenKing
+    BrokenKing, ImpRaider, HellArcher, SpineHound, RiftStalker,
+    BoneHarvester, Hellbrute, CorruptionPriest, RiftWarden,
+    DemonLegionnaire, HornedGeneral
 }
 
 public sealed class EnemyIntroductionDefinition
@@ -69,6 +71,16 @@ public sealed class EnemyIntroductionDefinition
         WildForestEnemyIdentity.AshKnight => "ash_knight",
         WildForestEnemyIdentity.WarBishop => "war_bishop",
         WildForestEnemyIdentity.BrokenKing => "broken_king",
+        WildForestEnemyIdentity.ImpRaider => "imp_raider",
+        WildForestEnemyIdentity.HellArcher => "hell_archer",
+        WildForestEnemyIdentity.SpineHound => "spine_hound",
+        WildForestEnemyIdentity.RiftStalker => "rift_stalker",
+        WildForestEnemyIdentity.BoneHarvester => "bone_harvester",
+        WildForestEnemyIdentity.Hellbrute => "hellbrute",
+        WildForestEnemyIdentity.CorruptionPriest => "corruption_priest",
+        WildForestEnemyIdentity.RiftWarden => "rift_warden",
+        WildForestEnemyIdentity.DemonLegionnaire => "demon_legionnaire",
+        WildForestEnemyIdentity.HornedGeneral => "horned_general",
         _ => "unknown"
     };
 
@@ -123,7 +135,17 @@ public sealed class EnemyIntroductionManager
         new(WildForestEnemyIdentity.RoyalGuard,"ROYAL GUARD","SHIELD OF A DEAD KINGDOM","A final formation guards a crown already lost.",2),
         new(WildForestEnemyIdentity.AshKnight,"ASH KNIGHT","KNIGHT OF THE BURNING QUARTER","Embers still breathe beneath the blackened plate.",2),
         new(WildForestEnemyIdentity.WarBishop,"WAR BISHOP","PREACHER OF THE FINAL WAR","His last sermon turns nearby survivors into soldiers.",2),
-        new(WildForestEnemyIdentity.BrokenKing,"THE BROKEN KING","LAST SOVEREIGN OF THE FALLEN CITY","A wounded king still holds the ruined throne plaza.",3)
+        new(WildForestEnemyIdentity.BrokenKing,"THE BROKEN KING","LAST SOVEREIGN OF THE FALLEN CITY","A wounded king still holds the ruined throne plaza.",3),
+        new(WildForestEnemyIdentity.ImpRaider,"IMP RAIDER","SCAVENGER OF THE INFERNAL FRONTIER","A wiry pack hunter armed with stolen steel and reckless hunger.",1),
+        new(WildForestEnemyIdentity.HellArcher,"HELL ARCHER","BOW OF THE BURNING WASTES","A mobile demon marksman whose ember arrows follow the open path.",1),
+        new(WildForestEnemyIdentity.SpineHound,"SPINE HOUND","HUNTER OF THE ASH WASTES","A low infernal predator that turns speed and bone spines into pack pressure.",1),
+        new(WildForestEnemyIdentity.RiftStalker,"RIFT STALKER","CLAW BETWEEN WORLDS","A patient ambusher that crosses the rift before its claws appear.",1),
+        new(WildForestEnemyIdentity.BoneHarvester,"BONE HARVESTER","REAPER OF THE BONE FOREST","A towering collector whose hooked polearm controls the path around it.",2),
+        new(WildForestEnemyIdentity.Hellbrute,"HELLBRUTE","BREAKER OF THE INFERNAL QUARRY","A quarry-born siege demon that answers resistance with weight and fire.",2),
+        new(WildForestEnemyIdentity.CorruptionPriest,"CORRUPTION PRIEST","VOICE OF THE TAINTED GODS","A ritual support demon that empowers corruption, anchors, and nearby allies.",2),
+        new(WildForestEnemyIdentity.RiftWarden,"RIFT WARDEN","KEEPER OF THE FRACTURED GATE","An armored sentinel that shapes rifts into weapons and guarded passages.",2),
+        new(WildForestEnemyIdentity.DemonLegionnaire,"DEMON LEGIONNAIRE","SOLDIER OF THE INFERNAL LEGION","A disciplined shield bearer that commands the legion line.",2),
+        new(WildForestEnemyIdentity.HornedGeneral,"THE HORNED GENERAL","WARLORD OF THE INFERNAL FRONTIER","The commander of the Demon Lands makes his final stand in the Infernal Heart.",3)
     };
 
     private readonly HashSet<WildForestEnemyIdentity> _discovered = new();
@@ -169,7 +191,8 @@ public sealed class EnemyIntroductionManager
             if (!enemy.IsAlive || enemy.Type == EnemyType.Spiderling ||
                 Vector2.DistanceSquared(playerPosition, enemy.Position) > limitSquared)
                 continue;
-            WildForestEnemyIdentity identity = ToIdentity(enemy.Type);
+            if (!TryToIdentity(enemy.Type, out WildForestEnemyIdentity identity))
+                continue;
             if (!_discovered.Contains(identity))
             {
                 Begin(identity);
@@ -210,8 +233,11 @@ public sealed class EnemyIntroductionManager
         throw new ArgumentOutOfRangeException(nameof(identity));
     }
 
-    private static WildForestEnemyIdentity ToIdentity(EnemyType type) =>
-        type switch
+    private static bool TryToIdentity(
+        EnemyType type,
+        out WildForestEnemyIdentity identity)
+    {
+        identity = type switch
         {
             EnemyType.DireWolf => WildForestEnemyIdentity.DireWolf,
             EnemyType.GiantSpider => WildForestEnemyIdentity.GiantSpider,
@@ -242,6 +268,37 @@ public sealed class EnemyIntroductionManager
             EnemyType.AshKnight => WildForestEnemyIdentity.AshKnight,
             EnemyType.WarBishop => WildForestEnemyIdentity.WarBishop,
             EnemyType.BrokenKing => WildForestEnemyIdentity.BrokenKing,
-            _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
+            EnemyType.ImpRaider => WildForestEnemyIdentity.ImpRaider,
+            EnemyType.HellArcher => WildForestEnemyIdentity.HellArcher,
+            EnemyType.SpineHound => WildForestEnemyIdentity.SpineHound,
+            EnemyType.RiftStalker => WildForestEnemyIdentity.RiftStalker,
+            EnemyType.BoneHarvester => WildForestEnemyIdentity.BoneHarvester,
+            EnemyType.Hellbrute => WildForestEnemyIdentity.Hellbrute,
+            EnemyType.CorruptionPriest => WildForestEnemyIdentity.CorruptionPriest,
+            EnemyType.RiftWarden => WildForestEnemyIdentity.RiftWarden,
+            EnemyType.DemonLegionnaire => WildForestEnemyIdentity.DemonLegionnaire,
+            EnemyType.HornedGeneral => WildForestEnemyIdentity.HornedGeneral,
+            _ => default
         };
+        return type is
+            EnemyType.DireWolf or EnemyType.GiantSpider or EnemyType.Goblin or
+            EnemyType.GoblinHunter or EnemyType.ThornCrawler or
+            EnemyType.CorruptedTreant or EnemyType.BloodBat or
+            EnemyType.GoblinChief or EnemyType.MotherSpider or
+            EnemyType.Skeleton or EnemyType.SkeletonArcher or
+            EnemyType.RottenCorpse or EnemyType.Wraith or
+            EnemyType.UndeadGuard or EnemyType.CursedKnight or
+            EnemyType.GraveBat or EnemyType.DeathKnight or
+            EnemyType.SoulCollector or EnemyType.FallenKnight or
+            EnemyType.FallenMilitiaman or EnemyType.RuinedCrossbowman or
+            EnemyType.RabidHound or EnemyType.PlagueCarrier or
+            EnemyType.BellWatcher or EnemyType.StreetExecutioner or
+            EnemyType.RoyalGuard or EnemyType.AshKnight or
+            EnemyType.WarBishop or EnemyType.BrokenKing or
+            EnemyType.ImpRaider or EnemyType.HellArcher or
+            EnemyType.SpineHound or EnemyType.RiftStalker or
+            EnemyType.BoneHarvester or EnemyType.Hellbrute or
+            EnemyType.CorruptionPriest or EnemyType.RiftWarden or
+            EnemyType.DemonLegionnaire or EnemyType.HornedGeneral;
+    }
 }

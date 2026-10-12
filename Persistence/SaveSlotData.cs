@@ -45,6 +45,7 @@ public sealed class SaveSlotData
     public bool Map01Cleared { get; set; }
     public bool Map02Cleared { get; set; }
     public bool Map03Cleared { get; set; }
+    public bool Map04Cleared { get; set; }
     public bool BossDefeated { get; set; }
     public bool LastDiceStarted { get; set; }
     public bool LastDiceCompleted { get; set; }

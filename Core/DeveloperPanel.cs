@@ -10,6 +10,7 @@ public enum DeveloperCommand
     HealPlayer,
     RefillStamina,
     ClearCurse,
+    ClearCorruption,
     ResetPlayerCombat,
     TeleportMap,
     TeleportZone,
@@ -21,6 +22,7 @@ public enum DeveloperCommand
     ToggleMap02Cleared,
     ToggleMap03Cleared,
     ResetCitySystems,
+    ResetCorruptionAnchors,
     ResetCurrentBoss,
     ResetEnemyIntroductions,
     ToggleMapDebug,
@@ -35,6 +37,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.HealPlayer,
         DeveloperCommand.RefillStamina,
         DeveloperCommand.ClearCurse,
+        DeveloperCommand.ClearCorruption,
         DeveloperCommand.ResetPlayerCombat,
         DeveloperCommand.TeleportMap,
         DeveloperCommand.TeleportZone,
@@ -46,6 +49,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.ToggleMap02Cleared,
         DeveloperCommand.ToggleMap03Cleared,
         DeveloperCommand.ResetCitySystems,
+        DeveloperCommand.ResetCorruptionAnchors,
         DeveloperCommand.ResetCurrentBoss,
         DeveloperCommand.ResetEnemyIntroductions,
         DeveloperCommand.ToggleMapDebug,
@@ -56,7 +60,8 @@ public sealed class DeveloperPanel
     {
         "MAP 1 - CORRUPTED WILDERNESS",
         "MAP 2 - ANCIENT CATACOMBS",
-        "MAP 3 - FALLEN CITY"
+        "MAP 3 - FALLEN CITY",
+        "MAP 4 - DEMON LANDS"
     };
 
     private static readonly string[][] ZoneNames =
@@ -82,6 +87,14 @@ public sealed class DeveloperPanel
             "city.zone.burned_quarter", "city.zone.noble_avenue",
             "city.zone.execution_square", "city.zone.royal_guard_barracks",
             "city.zone.palace_approach", "city.zone.ruined_throne_plaza"
+        },
+        new[]
+        {
+            "demon.zone.blackened_frontier", "demon.zone.ash_wastes",
+            "demon.zone.flesh_ravine", "demon.zone.rift_fields",
+            "demon.zone.bone_forest", "demon.zone.infernal_quarry",
+            "demon.zone.blood_shrine", "demon.zone.legion_camp",
+            "demon.zone.gate_of_horns", "demon.zone.infernal_heart"
         }
     };
 
@@ -102,7 +115,7 @@ public sealed class DeveloperPanel
             if (toggle && session.State == GameState.Playing)
             {
                 IsOpen = true;
-                TargetMap = Math.Clamp(session.DungeonDepth, 1, 3);
+                TargetMap = Math.Clamp(session.DungeonDepth, 1, 4);
                 TargetZone = Math.Max(0, session.GetCurrentZoneIndex());
                 Feedback = "GAMEPLAY PAUSED";
                 session.Player.Combat.CancelActions(restoreStamina: false);
@@ -141,8 +154,8 @@ public sealed class DeveloperPanel
     }
 
     public string GetMapName() => MapNames[TargetMap - 1];
-    public string GetZoneName() => TargetMap == 3
-        ? Loc.Get(ZoneNames[2][TargetZone])
+    public string GetZoneName() => TargetMap >= 3
+        ? Loc.Get(ZoneNames[TargetMap - 1][TargetZone])
         : ZoneNames[TargetMap - 1][TargetZone];
     public int GetZoneCount() => ZoneNames[TargetMap - 1].Length;
 
@@ -160,6 +173,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.HealPlayer => "HEAL PLAYER",
         DeveloperCommand.RefillStamina => "REFILL STAMINA",
         DeveloperCommand.ClearCurse => "CLEAR CURSE",
+        DeveloperCommand.ClearCorruption => "RESET CORRUPTION",
         DeveloperCommand.ResetPlayerCombat => "RESET COMBAT STATE",
         DeveloperCommand.TeleportMap => "TELEPORT MAP",
         DeveloperCommand.TeleportZone => "TELEPORT ZONE",
@@ -171,6 +185,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.ToggleMap02Cleared => "MAP 2 CLEARED",
         DeveloperCommand.ToggleMap03Cleared => "MAP 3 CLEARED",
         DeveloperCommand.ResetCitySystems => "RESET CITY ALARM / COLLAPSE",
+        DeveloperCommand.ResetCorruptionAnchors => "RESET CORRUPTION ANCHORS",
         DeveloperCommand.ResetCurrentBoss => "RESET CURRENT BOSS",
         DeveloperCommand.ResetEnemyIntroductions => "RESET ENEMY INTRODUCTIONS",
         DeveloperCommand.ToggleMapDebug => "MAP DEBUG",
@@ -221,7 +236,7 @@ public sealed class DeveloperPanel
         Feedback = GetLabel(SelectedCommand) + " COMPLETE";
         if (SelectedCommand is DeveloperCommand.TeleportMap or DeveloperCommand.TeleportZone)
         {
-            TargetMap = Math.Clamp(session.DungeonDepth, 1, 3);
+            TargetMap = Math.Clamp(session.DungeonDepth, 1, 4);
             TargetZone = Math.Max(0, session.GetCurrentZoneIndex());
         }
     }

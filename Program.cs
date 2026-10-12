@@ -105,6 +105,13 @@ static bool RunRequestedValidation(string[] arguments, out string name)
         System.Console.WriteLine(
             "Fallen City map and progression validation passed.");
     }
+    else if (Has("--validate-demon-lands"))
+    {
+        DungeonAscendant.Dungeon.DemonLandsMapValidation.ValidateOrThrow();
+        name = "demon-lands";
+        System.Console.WriteLine(
+            "Demon Lands map, corruption, anchors, enemies, boss, and admin validation passed.");
+    }
     else if (Has("--validate-last-dice"))
     {
         DungeonAscendant.Core.LastDiceTableValidation.ValidateOrThrow();

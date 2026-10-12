@@ -25,6 +25,7 @@ public sealed class CombatAudioDirector
         public bool GuardBlockReacting;
         public CatacombCombatState? CatacombState;
         public FallenCityCombatState? FallenCityState;
+        public DemonFrontierCombatState? DemonState;
     }
 
     private readonly AudioManager _audio;
@@ -51,6 +52,11 @@ public sealed class CombatAudioDirector
     private bool _bossAttackActive;
     private bool _bossTransitioning;
     private bool _insideShrine;
+    private bool _map4AudioInitialized;
+    private bool _map4AnchorDestroyedFeedback;
+    private DemonicCorruptionState _map4CorruptionState;
+    private float _map4RiftClock = 3f;
+    private int _map4AmbientSerial;
 
     public CombatAudioDirector(AudioManager audio)
     {
@@ -89,10 +95,11 @@ public sealed class CombatAudioDirector
             return;
         }
         if (session.State != GameState.Playing && session.State != GameState.Paused) return;
-        if (session.CurrentDungeon.IsFallenCity)
+        if (session.CurrentDungeon.IsFallenCity ||
+            session.CurrentDungeon.IsDemonLands)
         {
-            // Map 3 has semantic enemy hooks, but no dedicated music/ambience
-            // pack yet. Silence is preferable to playing another map's identity.
+            // Maps 3 and 4 have semantic hooks, but no dedicated music or
+            // ambience packs yet. Silence avoids borrowing another map's identity.
             _audio.SetMusic(MusicState.None);
             _audio.SetAmbience(AmbienceState.None);
             return;
@@ -142,6 +149,11 @@ public sealed class CombatAudioDirector
 
     private void ObserveWorld(GameSession session, GameTime gameTime)
     {
+        if (session.CurrentDungeon.IsDemonLands)
+        {
+            ObserveDemonLandsWorld(session, gameTime);
+            return;
+        }
         if (session.CurrentDungeon.IsFallenCity)
             return;
         float dt=MathF.Min((float)gameTime.ElapsedGameTime.TotalSeconds,.1f);
@@ -180,6 +192,132 @@ public sealed class CombatAudioDirector
             _audio.PlayWorld(WorldSoundEvent.Map2ScholarCoffin,session.ScholarTomb.Position,session.Player.Position);
         _lastScholarState=session.ScholarTomb.State;
     }
+
+    private void ObserveDemonLandsWorld(GameSession session, GameTime gameTime)
+    {
+        float dt = MathF.Min((float)gameTime.ElapsedGameTime.TotalSeconds, .1f);
+        _worldOneShotClock -= dt;
+        _map4RiftClock -= dt;
+
+        if (!_map4AudioInitialized)
+        {
+            _map4AudioInitialized = true;
+            _map4CorruptionState = session.Corruption.State;
+            _map4AnchorDestroyedFeedback =
+                session.CorruptionAnchors.DestroyedFeedbackTimeRemaining > 0f;
+        }
+
+        if (session.Corruption.State != _map4CorruptionState)
+        {
+            _audio.PlayWorld(WorldSoundEvent.Map4Corruption,
+                session.Player.Position, session.Player.Position);
+            _map4CorruptionState = session.Corruption.State;
+        }
+
+        bool destroyedFeedback =
+            session.CorruptionAnchors.DestroyedFeedbackTimeRemaining > 0f;
+        if (destroyedFeedback && !_map4AnchorDestroyedFeedback)
+        {
+            Vector2 source = session.Player.Position;
+            string destroyedId = session.CorruptionAnchors.LastDestroyedAnchorId;
+            if (destroyedId.Length > 0 &&
+                session.CorruptionAnchors.States.TryGetValue(
+                    destroyedId, out CorruptionAnchorRuntime destroyed))
+                source = destroyed.Definition.Position;
+            _audio.PlayWorld(WorldSoundEvent.Map4AnchorDestroyed,
+                source, session.Player.Position);
+        }
+        _map4AnchorDestroyedFeedback = destroyedFeedback;
+
+        DemonLandsZoneDefinition currentZone = null;
+        foreach (DemonLandsZoneDefinition zone in
+            session.CurrentDungeon.DemonLandsZones)
+        {
+            if (zone.Bounds.Contains(session.Player.Position.ToPoint()))
+            {
+                currentZone = zone;
+                break;
+            }
+        }
+
+        if (_worldOneShotClock <= 0f)
+        {
+            WorldSoundEvent ambient = GetDemonLandsAmbientEvent(
+                currentZone?.Kind ?? DemonLandsZoneKind.BlackenedFrontier,
+                _map4AmbientSerial++);
+            foreach (CorruptionAnchorRuntime anchor in
+                session.CorruptionAnchors.States.Values)
+            {
+                if (anchor.IsActive && Vector2.DistanceSquared(
+                    anchor.Definition.Position, session.Player.Position) <=
+                    210f * 210f)
+                {
+                    ambient = WorldSoundEvent.Map4AnchorActive;
+                    break;
+                }
+            }
+            float direction = session.Player.Facing == FacingDirection.Left ? -1f : 1f;
+            Vector2 source = session.Player.Position +
+                new Vector2(direction * 250f, -70f);
+            _audio.PlayWorld(ambient, source, session.Player.Position);
+            _worldOneShotClock = currentZone?.Kind is
+                DemonLandsZoneKind.AshWastes or DemonLandsZoneKind.RiftFields
+                    ? 7f
+                    : 10f;
+        }
+
+        bool nearRift = false;
+        foreach (CorruptionFieldDefinition field in
+            session.CurrentDungeon.CorruptionFields)
+        {
+            if (!field.IsRift ||
+                (field.AnchorId.Length > 0 &&
+                 !session.CorruptionAnchors.IsActive(field.AnchorId)))
+                continue;
+            Rectangle proximity = field.Bounds;
+            proximity.Inflate(130, 100);
+            if (proximity.Contains(session.Player.Position.ToPoint()))
+            {
+                nearRift = true;
+                if (_map4RiftClock <= 0f)
+                    _audio.PlayWorld(WorldSoundEvent.Map4Rift,
+                        field.Bounds.Center.ToVector2(), session.Player.Position);
+                break;
+            }
+        }
+        if (nearRift && _map4RiftClock <= 0f)
+            _map4RiftClock = 6f;
+        else if (!nearRift)
+            _map4RiftClock = MathF.Min(_map4RiftClock, 2f);
+    }
+
+    private static WorldSoundEvent GetDemonLandsAmbientEvent(
+        DemonLandsZoneKind zone,
+        int serial) => zone switch
+    {
+        DemonLandsZoneKind.BlackenedFrontier =>
+            (serial & 1) == 0
+                ? WorldSoundEvent.Map4DemonicAmbience
+                : WorldSoundEvent.Map4DistantDemonCry,
+        DemonLandsZoneKind.AshWastes => WorldSoundEvent.Map4AshWind,
+        DemonLandsZoneKind.FleshRavine => WorldSoundEvent.Map4Corruption,
+        DemonLandsZoneKind.RiftFields => WorldSoundEvent.Map4Rift,
+        DemonLandsZoneKind.BoneForest => WorldSoundEvent.Map4BoneCreak,
+        DemonLandsZoneKind.InfernalQuarry => (serial & 1) == 0
+            ? WorldSoundEvent.Map4QuarryChains
+            : WorldSoundEvent.Map4LavaFire,
+        DemonLandsZoneKind.BloodShrine => WorldSoundEvent.Map4RitualChant,
+        DemonLandsZoneKind.LegionCamp => (serial & 1) == 0
+            ? WorldSoundEvent.Map4Campfire
+            : WorldSoundEvent.Map4DistantWar,
+        DemonLandsZoneKind.GateOfHorns => (serial & 1) == 0
+            ? WorldSoundEvent.Map4GateChains
+            : WorldSoundEvent.Map4LavaFire,
+        DemonLandsZoneKind.InfernalHeart => (serial & 1) == 0
+            ? WorldSoundEvent.Map4InfernalHeart
+            : WorldSoundEvent.Map4LavaFire,
+        _ => WorldSoundEvent.Map4DemonicAmbience
+    };
 
     private void ObserveBoss(GameSession session)
     {
@@ -356,7 +494,30 @@ public sealed class CombatAudioDirector
             _audio.PlayEnemy(enemy.Type, EnemySoundEvent.AttackWindup, enemy.Position, listener);
         if (enemy.IsCombatAttackActive && !previous.Active)
             _audio.PlayEnemy(enemy.Type, EnemySoundEvent.AttackRelease, enemy.Position, listener);
+        if (enemy is DemonLandsEnemy demon &&
+            previous.DemonState != demon.FrontierCombatState &&
+            IsDemonSpecialState(demon.FrontierCombatState))
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
     }
+
+    private static bool IsDemonSpecialState(DemonFrontierCombatState state) =>
+        state is DemonFrontierCombatState.LegionCommandGuard or
+            DemonFrontierCombatState.LegionGuardBroken or
+            DemonFrontierCombatState.GeneralPhaseTransition or
+            DemonFrontierCombatState.GeneralGuard or
+            DemonFrontierCombatState.GeneralGuardBroken or
+            DemonFrontierCombatState.GeneralPulseActive or
+            DemonFrontierCombatState.GeneralAnchorActive or
+            DemonFrontierCombatState.GeneralChargeActive or
+            DemonFrontierCombatState.GeneralLegionsEndRaise or
+            DemonFrontierCombatState.GeneralLegionsEndCharge or
+            DemonFrontierCombatState.GeneralLegionsEndCleave;
 
     private void ObserveFallenCityAttack(
         FallenCityEnemy enemy,
@@ -512,6 +673,9 @@ public sealed class CombatAudioDirector
             : null,
         FallenCityState = enemy is FallenCityEnemy fallenCity
             ? fallenCity.CombatState
+            : null,
+        DemonState = enemy is DemonLandsEnemy demon
+            ? demon.FrontierCombatState
             : null
     };
 
@@ -528,5 +692,10 @@ public sealed class CombatAudioDirector
         _bossAttackActive=false;
         _bossTransitioning=false;
         _insideShrine=false;
+        _map4AudioInitialized=false;
+        _map4AnchorDestroyedFeedback=false;
+        _map4CorruptionState=DemonicCorruptionState.Stable;
+        _map4RiftClock=3f;
+        _map4AmbientSerial=0;
     }
 }

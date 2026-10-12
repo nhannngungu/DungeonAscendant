@@ -163,9 +163,15 @@ public sealed class GameRenderer : IDisposable
         _fallenCityRoyalAshSpriteRenderer;
     private readonly FallenCityBishopKingSpriteRenderer
         _fallenCityBishopKingSpriteRenderer;
+    private readonly DemonFrontierSpriteRenderer _demonFrontierSpriteRenderer;
+    private readonly DemonPredatorSpriteRenderer _demonPredatorSpriteRenderer;
+    private readonly DemonHeavySpriteRenderer _demonHeavySpriteRenderer;
+    private readonly DemonRitualSpriteRenderer _demonRitualSpriteRenderer;
+    private readonly DemonLegionSpriteRenderer _demonLegionSpriteRenderer;
     private readonly CatacombEnvironmentRenderer _catacombEnvironmentRenderer;
     private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
     private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
+    private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
 
     public GameRenderer(GraphicsDevice graphicsDevice)
     {
@@ -216,6 +222,21 @@ public sealed class GameRenderer : IDisposable
             new FallenCityRoyalAshSpriteRenderer(_spriteBatch, _pixel);
         _fallenCityBishopKingSpriteRenderer =
             new FallenCityBishopKingSpriteRenderer(_spriteBatch, _pixel);
+        _demonFrontierSpriteRenderer = new DemonFrontierSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonPredatorSpriteRenderer = new DemonPredatorSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonHeavySpriteRenderer = new DemonHeavySpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonRitualSpriteRenderer = new DemonRitualSpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonLegionSpriteRenderer = new DemonLegionSpriteRenderer(
+            _spriteBatch,
+            _pixel);
         _catacombEnvironmentRenderer = new CatacombEnvironmentRenderer(
             _spriteBatch,
             _pixel);
@@ -223,6 +244,9 @@ public sealed class GameRenderer : IDisposable
             _spriteBatch,
             _pixel);
         _fallenCityEnvironmentRenderer = new FallenCityEnvironmentRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonLandsEnvironmentRenderer = new DemonLandsEnvironmentRenderer(
             _spriteBatch,
             _pixel);
     }
@@ -435,12 +459,20 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.End();
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        _demonLandsEnvironmentRenderer.DrawCorruptionOverlay(
+            gameSession,
+            new Rectangle(0, 0,
+                _graphicsDevice.Viewport.Width,
+                _graphicsDevice.Viewport.Height),
+            gameTime);
         DrawHudPanel();
         DrawPlayerHealth(gameSession.Player);
         DrawPlayerStamina(gameSession.Player);
         DrawCurseMeter(gameSession);
         DrawCityAlarm(gameSession);
+        DrawDemonicCorruptionMeter(gameSession);
         DrawBrokenKingBossBar(gameSession);
+        DrawHornedGeneralBossBar(gameSession);
         DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
         DrawWeaponResource(gameSession.Player);
         DrawTechniqueFeedback(gameSession.Player);
@@ -1281,6 +1313,59 @@ public sealed class GameRenderer : IDisposable
                 new Color(190, 151, 104), 1);
     }
 
+    private void DrawDemonicCorruptionMeter(GameSession session)
+    {
+        if (session.CurrentDungeon?.IsDemonLands != true)
+            return;
+        Rectangle bar = new(270, 58, 170, 8);
+        _spriteBatch.Draw(_pixel, bar, new Color(39, 18, 29));
+        int fill = (int)MathF.Round((bar.Width - 2) * session.Corruption.Ratio);
+        if (fill > 0)
+        {
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(bar.X + 1, bar.Y + 1, fill, bar.Height - 2),
+                session.Corruption.State == DemonicCorruptionState.Overrun
+                    ? new Color(216, 48, 50)
+                    : new Color(157, 48, 112));
+        }
+        DrawRectangleOutline(bar, 1, new Color(184, 103, 137));
+        string stateKey = session.Corruption.State switch
+        {
+            DemonicCorruptionState.Tainted => "hud.corruption.tainted",
+            DemonicCorruptionState.Corrupted => "hud.corruption.corrupted",
+            DemonicCorruptionState.Overrun => "hud.corruption.overrun",
+            _ => "hud.corruption.stable"
+        };
+        DrawDebugText(
+            Loc.Format(
+                "hud.corruption",
+                (int)session.Corruption.Value,
+                Loc.Get(stateKey)),
+            270,
+            46,
+            new Color(208, 155, 176),
+            1);
+        if (session.CorruptionAnchors.DestroyedFeedbackTimeRemaining > 0f)
+        {
+            DrawCenteredDebugText(
+                Loc.Get("hud.anchor_destroyed"),
+                _graphicsDevice.Viewport.Width / 2,
+                88,
+                new Color(126, 226, 187),
+                1);
+        }
+        if (session.Map04ExitPrepared)
+        {
+            DrawCenteredDebugText(
+                Loc.Get("hud.future_map_5"),
+                _graphicsDevice.Viewport.Width / 2,
+                112,
+                new Color(213, 151, 91),
+                1);
+        }
+    }
+
     private void DrawBrokenKingBossBar(GameSession session)
     {
         if (session.CurrentDungeon?.IsFallenCity != true)
@@ -1348,6 +1433,84 @@ public sealed class GameRenderer : IDisposable
             new Color(218, 188, 126, 190));
     }
 
+    private void DrawHornedGeneralBossBar(GameSession session)
+    {
+        if (session.CurrentDungeon?.IsDemonLands != true)
+            return;
+        DemonLandsEnemy general = null;
+        foreach (Enemy enemy in session.Enemies.Enemies)
+        {
+            if (enemy is DemonLandsEnemy candidate &&
+                candidate.Type == EnemyType.HornedGeneral && candidate.IsAlive)
+            {
+                general = candidate;
+                break;
+            }
+        }
+        if (general == null || !general.IsHealthBarVisible)
+            return;
+
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int viewportHeight = _graphicsDevice.Viewport.Height;
+        int width = Math.Clamp(viewportWidth * 7 / 16, 360, 680);
+        int x = (viewportWidth - width) / 2;
+        int y = viewportHeight - 104;
+        DrawCenteredDebugText(
+            Loc.Get("enemy.horned_general.name"),
+            viewportWidth / 2,
+            y - 30,
+            new Color(232, 177, 121),
+            1);
+        DrawCenteredDebugText(
+            Loc.Get("enemy.horned_general.title"),
+            viewportWidth / 2,
+            y - 17,
+            new Color(188, 111, 92),
+            1);
+        var frame = new Rectangle(x, y + 4, width, 16);
+        _spriteBatch.Draw(_pixel, frame, new Color(22, 12, 16, 235));
+        DrawRectangleOutline(frame, 2, new Color(157, 67, 55, 235));
+        var track = new Rectangle(x + 3, y + 7, width - 6, 10);
+        _spriteBatch.Draw(_pixel, track, new Color(62, 18, 27, 240));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(
+            general.CurrentHealth / (float)general.MaxHealth,
+            0f,
+            1f));
+        if (fill > 0)
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle(track.X, track.Y, fill, track.Height),
+                general.CombatPhase == 3
+                    ? new Color(224, 60, 33)
+                    : general.CombatPhase == 2
+                        ? new Color(181, 47, 78)
+                        : new Color(142, 54, 50));
+        int phaseTwoMarker = track.X +
+            (int)MathF.Round(track.Width * .60f);
+        int phaseThreeMarker = track.X +
+            (int)MathF.Round(track.Width * .25f);
+        Color markerColor = new(232, 184, 112, 200);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(phaseTwoMarker, track.Y - 2, 2, track.Height + 4),
+            markerColor);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(phaseThreeMarker, track.Y - 2, 2, track.Height + 4),
+            markerColor);
+    }
+
+    private void DrawDemonLands(
+        GameSession session,
+        Rectangle visibleBounds,
+        GameTime gameTime)
+    {
+        _demonLandsEnvironmentRenderer.DrawWorld(
+            session,
+            visibleBounds,
+            gameTime);
+    }
+
     private void DrawDungeon(
         GameSession gameSession,
         Rectangle cameraBounds,
@@ -1357,6 +1520,16 @@ public sealed class GameRenderer : IDisposable
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         Rectangle visibleBounds = cameraBounds;
         visibleBounds.Inflate(80, 80);
+
+        if (dungeon.IsDemonLands)
+        {
+            DrawDemonLands(gameSession, visibleBounds, gameTime);
+            if (dungeon.BossRoom.Bounds.Intersects(visibleBounds))
+                DrawExitMarker(
+                    gameSession.ExitPosition,
+                    gameSession.IsExitUnlocked);
+            return;
+        }
 
         if (dungeon.IsFallenCity)
         {
@@ -2134,6 +2307,32 @@ public sealed class GameRenderer : IDisposable
                     DrawFallenCityEnemy(city);
                 }
                 break;
+            case DemonLandsEnemy demon:
+                if (demon.Type is EnemyType.ImpRaider or EnemyType.HellArcher)
+                    _demonFrontierSpriteRenderer.Draw(demon, gameTime);
+                else if (demon.Type is EnemyType.SpineHound or
+                    EnemyType.RiftStalker)
+                {
+                    _demonPredatorSpriteRenderer.Draw(demon, gameTime);
+                }
+                else if (demon.Type is EnemyType.BoneHarvester or
+                    EnemyType.Hellbrute)
+                {
+                    _demonHeavySpriteRenderer.Draw(demon, gameTime);
+                }
+                else if (demon.Type is EnemyType.CorruptionPriest or
+                    EnemyType.RiftWarden)
+                {
+                    _demonRitualSpriteRenderer.Draw(demon, gameTime);
+                }
+                else if (demon.Type is EnemyType.DemonLegionnaire or
+                    EnemyType.HornedGeneral)
+                {
+                    _demonLegionSpriteRenderer.Draw(demon, gameTime);
+                }
+                else
+                    DrawDemonLandsEnemy(demon);
+                break;
         }
 
         if (enemy.IsBuffed)
@@ -2186,6 +2385,51 @@ public sealed class GameRenderer : IDisposable
             _spriteBatch.Draw(_pixel,
                 new Rectangle(bounds.Center.X - 15, bounds.Y - 8, 30, 8),
                 new Color(178, 133, 56));
+    }
+
+    private void DrawDemonLandsEnemy(DemonLandsEnemy enemy)
+    {
+        Rectangle bounds = enemy.Bounds;
+        Color body = enemy.IsHitFlashing ? new Color(244, 226, 211) : enemy.Type switch
+        {
+            EnemyType.ImpRaider => new Color(151, 58, 46),
+            EnemyType.HellArcher => new Color(112, 48, 55),
+            EnemyType.SpineHound => new Color(104, 55, 47),
+            EnemyType.RiftStalker => new Color(92, 48, 117),
+            EnemyType.BoneHarvester => new Color(165, 151, 126),
+            EnemyType.Hellbrute => new Color(119, 46, 34),
+            EnemyType.CorruptionPriest => new Color(119, 47, 105),
+            EnemyType.RiftWarden => new Color(84, 50, 124),
+            EnemyType.DemonLegionnaire => new Color(91, 57, 55),
+            EnemyType.HornedGeneral => enemy.CombatPhase switch
+            {
+                3 => new Color(205, 62, 35),
+                2 => new Color(157, 48, 74),
+                _ => new Color(105, 57, 58)
+            },
+            _ => new Color(125, 54, 48)
+        };
+        _spriteBatch.Draw(_pixel, bounds, body);
+        DrawRectangleOutline(bounds, 2, new Color(47, 22, 24));
+        int hornWidth = Math.Max(5, bounds.Width / 5);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.Left + 4, bounds.Top - 9, hornWidth, 11),
+            new Color(191, 166, 126));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(bounds.Right - hornWidth - 4, bounds.Top - 9, hornWidth, 11),
+            new Color(191, 166, 126));
+        if (enemy.IsLegionsEndTelegraphing)
+        {
+            var warning = new Rectangle(
+                bounds.Center.X - 125,
+                bounds.Bottom - 18,
+                250,
+                18);
+            _spriteBatch.Draw(_pixel, warning, new Color(224, 62, 34, 85));
+            DrawRectangleOutline(warning, 2, new Color(246, 105, 53, 210));
+        }
     }
 
     private void DrawDireWolf(DireWolf wolf)
@@ -2481,6 +2725,7 @@ public sealed class GameRenderer : IDisposable
             !enemy.IsHealthBarVisible ||
             enemy.Type == EnemyType.FallenKnight ||
             enemy.Type == EnemyType.BrokenKing ||
+            enemy.Type == EnemyType.HornedGeneral ||
             enemy.MaxHealth <= 0)
         {
             return;
@@ -2719,11 +2964,27 @@ public sealed class GameRenderer : IDisposable
         }
 
         Vector2 direction = projectile.Velocity;
-        direction.Normalize();
+        if (direction.LengthSquared() > .01f)
+            direction.Normalize();
+        else
+            direction = Vector2.UnitX;
         float rotation = MathF.Atan2(direction.Y, direction.X);
         float shaftLength = MathF.Max(projectile.Size.X, projectile.Size.Y);
         Vector2 shaftStart = projectile.Position - direction * (shaftLength / 2f);
-        if (!projectile.IsPlayerOwned && projectile.EmpoweredVisual &&
+        if (projectile.IsEmberArrow)
+        {
+            DrawWorldLine(
+                projectile.PreviousPosition,
+                projectile.Position,
+                4f,
+                new Color(154, 48, 28, 75));
+            DrawWorldLine(
+                projectile.PreviousPosition,
+                projectile.Position,
+                2f,
+                new Color(235, 104, 42, 165));
+        }
+        else if (!projectile.IsPlayerOwned && projectile.EmpoweredVisual &&
             projectile.Type != ProjectileType.CrossbowBolt)
         {
             DrawWorldLine(
@@ -2766,7 +3027,9 @@ public sealed class GameRenderer : IDisposable
             _pixel,
             shaftStart,
             sourceRectangle: null,
-            new Color(105, 74, 42),
+            projectile.IsEmberArrow
+                ? new Color(78, 44, 31)
+                : new Color(105, 74, 42),
             rotation,
             new Vector2(0f, 0.5f),
             new Vector2(shaftLength, 3f),
@@ -2776,7 +3039,9 @@ public sealed class GameRenderer : IDisposable
             _pixel,
             projectile.Position + direction * (shaftLength / 2f),
             sourceRectangle: null,
-            new Color(67, 73, 68),
+            projectile.IsEmberArrow
+                ? new Color(239, 116, 49)
+                : new Color(67, 73, 68),
             rotation,
             new Vector2(0.5f, 0.5f),
             new Vector2(6f, 7f),
@@ -3173,6 +3438,19 @@ public sealed class GameRenderer : IDisposable
     private void DrawEnemyArrowImpact(ProjectileImpact impact)
     {
         Vector2 center = impact.Position;
+        if (impact.Projectile.IsEmberArrow)
+        {
+            DrawWorldLine(center + new Vector2(-8f, -5f),
+                center + new Vector2(5f, 4f), 3f,
+                new Color(230, 91, 39, 210));
+            DrawWorldLine(center + new Vector2(-4f, 6f),
+                center + new Vector2(6f, -5f), 2f,
+                new Color(247, 167, 68, 220));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)center.X - 8, (int)center.Y + 2, 4, 3),
+                new Color(115, 72, 53, 150));
+            return;
+        }
         bool crossbowBolt =
             impact.Projectile.Type == ProjectileType.CrossbowBolt;
         Color spark = crossbowBolt
@@ -4819,6 +5097,36 @@ public sealed class GameRenderer : IDisposable
             FallenCityEnemy city when
                 city.Type == EnemyType.BrokenKing =>
                 FallenCityBishopKingSpriteRenderer.BrokenKingVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.ImpRaider =>
+                DemonFrontierSpriteRenderer.ImpVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.HellArcher =>
+                DemonFrontierSpriteRenderer.ArcherVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.SpineHound =>
+                DemonPredatorSpriteRenderer.SpineHoundVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.RiftStalker =>
+                DemonPredatorSpriteRenderer.RiftStalkerVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.BoneHarvester =>
+                DemonHeavySpriteRenderer.BoneHarvesterVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.Hellbrute =>
+                DemonHeavySpriteRenderer.HellbruteVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.CorruptionPriest =>
+                DemonRitualSpriteRenderer.PriestVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.RiftWarden =>
+                DemonRitualSpriteRenderer.WardenVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.DemonLegionnaire =>
+                DemonLegionSpriteRenderer.LegionnaireVisualSize,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.HornedGeneral =>
+                DemonLegionSpriteRenderer.GeneralVisualSize,
             _ => enemy.Size
         };
         return new Rectangle(
@@ -5781,7 +6089,9 @@ public sealed class GameRenderer : IDisposable
             $"POSITION: {(int)session.Player.Position.X}/{(int)session.Player.Position.Y}  " +
             $"HP: {session.Player.CurrentHealth}/{session.Player.MaxHealth}  " +
             $"STAMINA: {(int)session.Player.CurrentStamina}/{(int)session.Player.MaxStamina}  " +
-            $"CURSE: {(int)session.Curse.Value}  ENEMIES: {session.ActiveEnemyCount}",
+            $"CURSE: {(int)session.Curse.Value}  " +
+            $"CORRUPTION: {(int)session.Corruption.Value}  " +
+            $"ENEMIES: {session.ActiveEnemyCount}",
             x,
             y,
             new Color(145, 158, 151),

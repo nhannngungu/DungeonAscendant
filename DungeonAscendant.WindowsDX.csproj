@@ -8,13 +8,17 @@
     <RollForward>Major</RollForward>
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
-    <DefineConstants>$(DefineConstants);WINDOWS_DX</DefineConstants>
+    <DefineConstants>$(DefineConstants);WINDOWS_DX;PLAYTEST_BUILD</DefineConstants>
     <OutputPath>bin\WindowsDX\$(Configuration)\</OutputPath>
     <DefaultItemExcludes>$(DefaultItemExcludes);obj\**;bin\**;publish\**</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>None</DebugType>
+    <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Icon.ico" />

@@ -84,6 +84,55 @@ public sealed class ProjectileManager
             empoweredVisual: heavy));
     }
 
+    public void SpawnHellArrow(
+        Vector2 position,
+        Vector2 target,
+        int damage,
+        int roomId,
+        bool highArc)
+    {
+        const float gravity = 535f;
+        Vector2 delta = target - position;
+        Vector2 velocity;
+        ProjectileTrajectoryType trajectory;
+        float projectileGravity;
+
+        if (highArc)
+        {
+            float flightSeconds = Math.Clamp(
+                MathF.Abs(delta.X) / 315f,
+                .76f,
+                1.08f);
+            velocity = new Vector2(
+                delta.X / flightSeconds,
+                delta.Y / flightSeconds - gravity * flightSeconds * .5f);
+            trajectory = ProjectileTrajectoryType.Ballistic;
+            projectileGravity = gravity;
+        }
+        else
+        {
+            velocity = NormalizeOrDefault(delta) * 348f;
+            trajectory = ProjectileTrajectoryType.Straight;
+            projectileGravity = 0f;
+        }
+
+        _projectiles.Add(new Projectile(
+            ProjectileType.Arrow,
+            position,
+            velocity,
+            new Vector2(18f, 7f),
+            lifetimeSeconds: highArc ? 2.9f : 2.45f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            trajectory: trajectory,
+            gravity: projectileGravity,
+            isEmberArrow: true));
+    }
+
     public void SpawnPlagueFlask(
         Vector2 position,
         Vector2 landingPosition,

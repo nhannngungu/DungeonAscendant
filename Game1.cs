@@ -11,7 +11,7 @@ namespace DungeonAscendant;
 public class Game1 : Game
 {
     private const int UpdateDiagnosticFrameLimit = 5;
-    private const int DrawDiagnosticFrameLimit = 5;
+    private const int DrawDiagnosticFrameLimit = 1;
     private const double ControllerQuitGuardSeconds = 3d;
     private readonly GraphicsDeviceManager _graphicsDeviceManager;
     private GameSession _gameSession;

@@ -28,7 +28,8 @@ public sealed class WildForestEncounterDirector
         WarningZoneId = string.Empty;
         ActiveZoneId = string.Empty;
         if (map == null || (!map.IsAuthoredWildForest &&
-            !map.IsAncientCatacombs && !map.IsFallenCity))
+            !map.IsAncientCatacombs && !map.IsFallenCity &&
+            !map.IsDemonLands))
             return;
         foreach (EncounterZone zone in map.EncounterZones)
             _states[zone.ZoneId] = new ZoneState(zone);
@@ -44,7 +45,8 @@ public sealed class WildForestEncounterDirector
         bool suppressActivation = false)
     {
         if (map == null || (!map.IsAuthoredWildForest &&
-            !map.IsAncientCatacombs && !map.IsFallenCity))
+            !map.IsAncientCatacombs && !map.IsFallenCity &&
+            !map.IsDemonLands))
             return;
 
         WarningZoneId = string.Empty;

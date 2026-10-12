@@ -82,7 +82,17 @@ public static class EnemyFactory
             [EnemyType.RoyalGuard] = context => City(context, EnemyType.RoyalGuard),
             [EnemyType.AshKnight] = context => City(context, EnemyType.AshKnight),
             [EnemyType.WarBishop] = context => City(context, EnemyType.WarBishop),
-            [EnemyType.BrokenKing] = context => City(context, EnemyType.BrokenKing)
+            [EnemyType.BrokenKing] = context => City(context, EnemyType.BrokenKing),
+            [EnemyType.ImpRaider] = context => Demon(context, EnemyType.ImpRaider),
+            [EnemyType.HellArcher] = context => Demon(context, EnemyType.HellArcher),
+            [EnemyType.SpineHound] = context => Demon(context, EnemyType.SpineHound),
+            [EnemyType.RiftStalker] = context => Demon(context, EnemyType.RiftStalker),
+            [EnemyType.BoneHarvester] = context => Demon(context, EnemyType.BoneHarvester),
+            [EnemyType.Hellbrute] = context => Demon(context, EnemyType.Hellbrute),
+            [EnemyType.CorruptionPriest] = context => Demon(context, EnemyType.CorruptionPriest),
+            [EnemyType.RiftWarden] = context => Demon(context, EnemyType.RiftWarden),
+            [EnemyType.DemonLegionnaire] = context => Demon(context, EnemyType.DemonLegionnaire),
+            [EnemyType.HornedGeneral] = context => Demon(context, EnemyType.HornedGeneral)
         };
 
     private static Enemy Catacomb(EnemySpawnContext context,EnemyType type)=>
@@ -99,6 +109,16 @@ public static class EnemyFactory
             context.IsElite || type is EnemyType.StreetExecutioner or
                 EnemyType.RoyalGuard or EnemyType.AshKnight or
                 EnemyType.WarBishop or EnemyType.BrokenKing);
+
+    private static Enemy Demon(EnemySpawnContext context, EnemyType type) =>
+        new DemonLandsEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId,
+            context.IsElite || type is EnemyType.RiftWarden or
+                EnemyType.DemonLegionnaire or EnemyType.HornedGeneral);
 
     public static Enemy Create(EnemyType type, EnemySpawnContext context)
     {

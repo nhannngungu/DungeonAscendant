@@ -95,7 +95,11 @@ public abstract class Enemy
         EnemyType.SoulCollector or EnemyType.FallenKnight or
         EnemyType.PlagueCarrier or EnemyType.StreetExecutioner or
         EnemyType.RoyalGuard or EnemyType.AshKnight or
-        EnemyType.WarBishop or EnemyType.BrokenKing;
+        EnemyType.WarBishop or EnemyType.BrokenKing or
+        EnemyType.BoneHarvester or EnemyType.Hellbrute or
+        EnemyType.RiftWarden or EnemyType.DemonLegionnaire or
+        EnemyType.HornedGeneral;
+
     public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
         MaxPoise,
         IsFlying);
@@ -947,6 +951,16 @@ public abstract class Enemy
             EnemyType.AshKnight => 170f,
             EnemyType.WarBishop => 150f,
             EnemyType.BrokenKing => 330f,
+            EnemyType.ImpRaider => 32f,
+            EnemyType.HellArcher => 40f,
+            EnemyType.SpineHound => 62f,
+            EnemyType.RiftStalker => 46f,
+            EnemyType.BoneHarvester => 118f,
+            EnemyType.Hellbrute => 210f,
+            EnemyType.CorruptionPriest => 54f,
+            EnemyType.RiftWarden => 175f,
+            EnemyType.DemonLegionnaire => 190f,
+            EnemyType.HornedGeneral => 360f,
             _ => 60f
         };
     }
@@ -1007,6 +1021,16 @@ public abstract class Enemy
             EnemyType.BrokenKing => 0.54f,
             EnemyType.RoyalGuard or EnemyType.AshKnight => 0.74f,
             EnemyType.StreetExecutioner or EnemyType.WarBishop => 0.66f,
+            EnemyType.ImpRaider => 0.78f,
+            EnemyType.HellArcher => 0.68f,
+            EnemyType.SpineHound => 0.64f,
+            EnemyType.RiftStalker => 0.76f,
+            EnemyType.BoneHarvester => 0.82f,
+            EnemyType.Hellbrute => 0.58f,
+            EnemyType.CorruptionPriest => 0.78f,
+            EnemyType.RiftWarden => 0.62f,
+            EnemyType.DemonLegionnaire => 0.68f,
+            EnemyType.HornedGeneral => 0.54f,
             _ => 0.68f
         };
     }

@@ -22,6 +22,12 @@ public sealed class RegionDefinition
         isImplemented: true,
         bossWeaponReward: null);
 
+    public static RegionDefinition DemonLands { get; } = new(
+        RegionType.DemonLands,
+        RegionBossType.AncientTreant,
+        isImplemented: true,
+        bossWeaponReward: null);
+
     public RegionType Type { get; }
     public RegionBossType BossType { get; }
     public bool IsImplemented { get; }
@@ -46,6 +52,7 @@ public sealed class RegionDefinition
             RegionType.WildForest => WildForest,
             RegionType.AncientCatacombs => AncientCatacombs,
             RegionType.RuinedCity => FallenCity,
+            RegionType.DemonLands => DemonLands,
             _ => new RegionDefinition(
                 type,
                 RegionBossType.AncientTreant,

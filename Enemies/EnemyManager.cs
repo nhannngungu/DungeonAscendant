@@ -247,7 +247,9 @@ public sealed class EnemyManager
             EnemyType.CursedKnight or EnemyType.SoulCollector or
             EnemyType.DeathKnight or EnemyType.FallenKnight or
             EnemyType.StreetExecutioner or EnemyType.RoyalGuard or
-            EnemyType.AshKnight or EnemyType.WarBishop or EnemyType.BrokenKing;
+            EnemyType.AshKnight or EnemyType.WarBishop or EnemyType.BrokenKing or
+            EnemyType.RiftWarden or EnemyType.DemonLegionnaire or
+            EnemyType.HornedGeneral;
         var context = new EnemySpawnContext(
             socket.Position,
             enemyLevel,
@@ -471,7 +473,9 @@ public sealed class EnemyManager
                  enemy.Type == EnemyType.RoyalGuard ||
                  enemy.Type == EnemyType.AshKnight ||
                  enemy.Type == EnemyType.WarBishop ||
-                 enemy.Type == EnemyType.BrokenKing)
+                 enemy.Type == EnemyType.BrokenKing ||
+                 enemy.Type == EnemyType.DemonLegionnaire ||
+                 enemy.Type == EnemyType.HornedGeneral)
             {
                 _defeatPresentations.Add(enemy);
             }

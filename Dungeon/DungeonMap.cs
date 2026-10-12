@@ -19,6 +19,7 @@ public sealed class DungeonMap
     public bool IsAuthoredWildForest { get; }
     public bool IsAncientCatacombs { get; }
     public bool IsFallenCity { get; }
+    public bool IsDemonLands { get; }
     public IReadOnlyList<WildForestSection> WildForestSections { get; }
     public IReadOnlyList<EncounterZone> EncounterZones { get; }
     public IReadOnlyList<SpawnSocket> SpawnSockets { get; }
@@ -34,6 +35,10 @@ public sealed class DungeonMap
     public IReadOnlyList<CityAlarmObjectDefinition> CityAlarmObjects { get; }
     public IReadOnlyList<CollapsingStructureDefinition> CollapsingStructures { get; }
     public IReadOnlyList<CityReinforcementDefinition> CityReinforcements { get; }
+    public IReadOnlyList<DemonLandsZoneDefinition> DemonLandsZones { get; }
+    public IReadOnlyList<CorruptionFieldDefinition> CorruptionFields { get; }
+    public IReadOnlyList<PurificationShrineDefinition> PurificationShrines { get; }
+    public IReadOnlyList<CorruptionAnchorDefinition> CorruptionAnchors { get; }
 
     public DungeonMap(
         IReadOnlyList<DungeonRoom> rooms,
@@ -42,6 +47,7 @@ public sealed class DungeonMap
         bool isAuthoredWildForest = false,
         bool isAncientCatacombs = false,
         bool isFallenCity = false,
+        bool isDemonLands = false,
         IReadOnlyList<WildForestSection> wildForestSections = null,
         IReadOnlyList<EncounterZone> encounterZones = null,
         IReadOnlyList<SpawnSocket> spawnSockets = null,
@@ -56,6 +62,10 @@ public sealed class DungeonMap
         IReadOnlyList<CityAlarmObjectDefinition> cityAlarmObjects = null,
         IReadOnlyList<CollapsingStructureDefinition> collapsingStructures = null,
         IReadOnlyList<CityReinforcementDefinition> cityReinforcements = null,
+        IReadOnlyList<DemonLandsZoneDefinition> demonLandsZones = null,
+        IReadOnlyList<CorruptionFieldDefinition> corruptionFields = null,
+        IReadOnlyList<PurificationShrineDefinition> purificationShrines = null,
+        IReadOnlyList<CorruptionAnchorDefinition> corruptionAnchors = null,
         DungeonRoom exitRoomOverride = null,
         Vector2? authoredExitPosition = null)
     {
@@ -65,6 +75,7 @@ public sealed class DungeonMap
         IsAuthoredWildForest = isAuthoredWildForest;
         IsAncientCatacombs = isAncientCatacombs;
         IsFallenCity = isFallenCity;
+        IsDemonLands = isDemonLands;
         WildForestSections = new List<WildForestSection>(
             wildForestSections ?? Array.Empty<WildForestSection>());
         EncounterZones = new List<EncounterZone>(
@@ -89,6 +100,14 @@ public sealed class DungeonMap
             collapsingStructures ?? Array.Empty<CollapsingStructureDefinition>());
         CityReinforcements = new List<CityReinforcementDefinition>(
             cityReinforcements ?? Array.Empty<CityReinforcementDefinition>());
+        DemonLandsZones = new List<DemonLandsZoneDefinition>(
+            demonLandsZones ?? Array.Empty<DemonLandsZoneDefinition>());
+        CorruptionFields = new List<CorruptionFieldDefinition>(
+            corruptionFields ?? Array.Empty<CorruptionFieldDefinition>());
+        PurificationShrines = new List<PurificationShrineDefinition>(
+            purificationShrines ?? Array.Empty<PurificationShrineDefinition>());
+        CorruptionAnchors = new List<CorruptionAnchorDefinition>(
+            corruptionAnchors ?? Array.Empty<CorruptionAnchorDefinition>());
         AuthoredExitPosition = authoredExitPosition;
         var platforms = new List<Platform>();
 

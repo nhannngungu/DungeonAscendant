@@ -53,6 +53,7 @@ public sealed class Projectile
     public float CursePressure { get; }
     public Vector2 TelegraphPosition { get; }
     public bool HasTelegraphPosition { get; }
+    public bool IsEmberArrow { get; }
     public bool IsSpellbladeProjectile => TechniqueEffect is
         WeaponTechniqueEffect.SpellbladeRuneBrand or
         WeaponTechniqueEffect.SpellbladeRunicSpear;
@@ -107,7 +108,8 @@ public sealed class Projectile
         bool isRangerProjectile = false,
         float placementDistance = 0f,
         float cursePressure = 0f,
-        Vector2? telegraphPosition = null)
+        Vector2? telegraphPosition = null,
+        bool isEmberArrow = false)
     {
         Type = type;
         SourcePosition = position;
@@ -147,5 +149,6 @@ public sealed class Projectile
         CursePressure = MathF.Max(0f, cursePressure);
         TelegraphPosition = telegraphPosition ?? Vector2.Zero;
         HasTelegraphPosition = telegraphPosition.HasValue;
+        IsEmberArrow = isEmberArrow;
     }
 }
