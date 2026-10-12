@@ -2090,26 +2090,36 @@ public sealed class CatacombEnemy : Enemy
                 if (Vector2.DistanceSquared(Position, player.Position) <=
                     360f * 360f)
                 {
-                    player.ReceiveMeleeAttack(new AttackContact(
+                    AttackResolution result = player.ReceiveMeleeAttack(
+                        new AttackContact(
                         Math.Max(1, EffectiveAttackDamage / 3),
                         Position,
                         blockable: false,
                         unblockable: false,
                         ActiveAttackArea));
-                    player.PullToward(Position, 30f, dungeon);
+                    if (result is AttackResolution.Damaged or
+                        AttackResolution.GuardBroken)
+                    {
+                        player.PullToward(Position, 30f, dungeon);
+                    }
                     _pendingCursePressure += 5f;
                 }
                 break;
             case SoulCollectorAttackKind.SoulBurst:
                 if (ActiveAttackArea.Intersects(player.Bounds))
                 {
-                    player.ReceiveMeleeAttack(new AttackContact(
+                    AttackResolution result = player.ReceiveMeleeAttack(
+                        new AttackContact(
                         Math.Max(1, EffectiveAttackDamage * 2 / 3),
                         Position,
                         blockable: true,
                         unblockable: false,
                         ActiveAttackArea));
-                    player.PushAwayFrom(Position, 30f, dungeon);
+                    if (result is AttackResolution.Damaged or
+                        AttackResolution.GuardBroken)
+                    {
+                        player.PushAwayFrom(Position, 30f, dungeon);
+                    }
                     _pendingCursePressure += 3f;
                 }
                 break;

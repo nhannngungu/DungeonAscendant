@@ -67,6 +67,103 @@ public static class EquipmentRebuildValidation
         ValidateSpellbladeCombat();
         ValidateBreakerCombat();
         ValidateReckonerCombat();
+        ValidateCommittedActionFlow();
+    }
+
+    private static void ValidateCommittedActionFlow()
+    {
+        WeaponDefinition[] weapons =
+        {
+            EquipmentCatalog.KnightLongSword,
+            EquipmentCatalog.DuelistDualSwords,
+            EquipmentCatalog.HunterBow,
+            EquipmentCatalog.RaiderWarAxe,
+            EquipmentCatalog.ArcaneWarStaff,
+            EquipmentCatalog.BreakerSpikedMace,
+            EquipmentCatalog.ReckonerChainFlail
+        };
+        WeaponTechniqueInput[] actions =
+        {
+            WeaponTechniqueInput.Skill1,
+            WeaponTechniqueInput.Skill2,
+            WeaponTechniqueInput.Skill3
+        };
+
+        foreach (WeaponDefinition weapon in weapons)
+        {
+            foreach (WeaponTechniqueInput action in actions)
+            {
+                var combat = new PlayerCombat();
+                combat.ApplyLoadout(
+                    weapon,
+                    EquipmentCatalog.CreateStartingArmor());
+                if (weapon.Family == WeaponFamily.ArcaneWarStaff)
+                    combat.SetSpellbladeRuneCount(2);
+                StartInput(combat, weapon, action);
+                Require(combat.HasCommittedAction,
+                    $"{weapon.Name} {action} did not enter a committed action.");
+
+                AttackDefinition attack = combat.CurrentAttack;
+                WeaponTechnique technique = combat.CurrentTechnique;
+                CombatState state = combat.State;
+                int attackId = combat.AttackId;
+                combat.OnDamaged(isAlive: true, damage: 10);
+                Require(combat.State == state &&
+                    ReferenceEquals(combat.CurrentAttack, attack) &&
+                    ReferenceEquals(combat.CurrentTechnique, technique) &&
+                    combat.AttackId == attackId,
+                    $"{weapon.Name} {action} was cancelled by normal damage.");
+
+                combat.Update(
+                    Frame(.016f),
+                    new CombatInput(
+                        false, false, false, false, false, false, -1f,
+                        movementCancelPressed: true),
+                    isGrounded: true,
+                    FacingDirection.Right);
+                Require(combat.State == CombatState.Moving &&
+                    !combat.HasCommittedAction &&
+                    combat.CurrentAttack == null &&
+                    combat.CurrentTechnique == null &&
+                    !combat.IsAttackActive &&
+                    combat.AttackId == attackId,
+                    $"{weapon.Name} {action} did not cancel cleanly into movement.");
+                combat.Update(
+                    Frame(.05f),
+                    EmptyInput(),
+                    isGrounded: true,
+                    FacingDirection.Left);
+                Require(combat.CurrentAttack == null &&
+                    combat.CurrentTechnique == null,
+                    $"{weapon.Name} {action} resumed after movement cancel.");
+            }
+
+            var hardInterrupt = new PlayerCombat();
+            hardInterrupt.ApplyLoadout(
+                weapon,
+                EquipmentCatalog.CreateStartingArmor());
+            StartInput(
+                hardInterrupt,
+                weapon,
+                WeaponTechniqueInput.Skill1);
+            hardInterrupt.OnDamaged(
+                isAlive: true,
+                damage: 30,
+                hardInterrupt: true);
+            Require(hardInterrupt.State == CombatState.Hurt &&
+                !hardInterrupt.HasCommittedAction,
+                $"{weapon.Name} ignored a hard interrupt.");
+
+            var death = new PlayerCombat();
+            death.ApplyLoadout(
+                weapon,
+                EquipmentCatalog.CreateStartingArmor());
+            StartInput(death, weapon, WeaponTechniqueInput.Skill1);
+            death.OnDamaged(isAlive: false, damage: int.MaxValue);
+            Require(death.State == CombatState.Dead &&
+                !death.HasCommittedAction,
+                $"{weapon.Name} attack overrode death.");
+        }
     }
 
     private static void ValidateReckonerCombat()

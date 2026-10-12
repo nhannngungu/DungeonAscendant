@@ -737,7 +737,8 @@ public sealed class GameSession
                 Boss,
                 allowBossIntroduction: CurrentDungeon.IsAuthoredWildForest);
         }
-        if (EnemyIntroductions.JustTriggered)
+        if (EnemyIntroductions.JustTriggered &&
+            EnemyIntroductions.BlocksCombat)
         {
             Projectiles.Clear();
             RootHazards.Clear();
@@ -746,7 +747,7 @@ public sealed class GameSession
         UpdatePlayerAttackArea();
         ProcessDefeatedEnemies();
         ProcessBossDefeat();
-        if (!EnemyIntroductions.IsPresenting)
+        if (!EnemyIntroductions.BlocksCombat)
         {
             ProcessPlayerAttack();
             if (CurrentDungeon.IsDemonLands && Player.Combat.IsAttackActive)
@@ -5182,6 +5183,15 @@ public sealed class GameSession
         bool dashHeld = keyboardState.IsKeyDown(Keys.LeftShift) ||
             keyboardState.IsKeyDown(Keys.RightShift);
         bool blockHeld = keyboardState.IsKeyDown(Keys.LeftControl);
+        bool movementCancelPressed =
+            (keyboardState.IsKeyDown(Keys.A) &&
+                !_previousKeyboardState.IsKeyDown(Keys.A)) ||
+            (keyboardState.IsKeyDown(Keys.D) &&
+                !_previousKeyboardState.IsKeyDown(Keys.D)) ||
+            (keyboardState.IsKeyDown(Keys.Left) &&
+                !_previousKeyboardState.IsKeyDown(Keys.Left)) ||
+            (keyboardState.IsKeyDown(Keys.Right) &&
+                !_previousKeyboardState.IsKeyDown(Keys.Right));
         float horizontalDirection = 0f;
 
         if (keyboardState.IsKeyDown(Keys.A) || keyboardState.IsKeyDown(Keys.Left))
@@ -5204,7 +5214,8 @@ public sealed class GameSession
             skill3Held,
             skill3Released,
             skill2Held,
-            skill2Released);
+            skill2Released,
+            movementCancelPressed);
     }
 
     private bool HasImmediateDuelistThreat()

@@ -16,6 +16,7 @@ public readonly struct CombatInput
     public bool Skill3Released { get; }
     public bool Skill2Held { get; }
     public bool Skill2Released { get; }
+    public bool MovementCancelPressed { get; }
 
     public CombatInput(
         bool skill1Pressed,
@@ -31,7 +32,8 @@ public readonly struct CombatInput
         bool skill3Held = false,
         bool skill3Released = false,
         bool skill2Held = false,
-        bool skill2Released = false)
+        bool skill2Released = false,
+        bool movementCancelPressed = false)
     {
         Skill1Pressed = skill1Pressed;
         Skill2Pressed = skill2Pressed;
@@ -47,5 +49,6 @@ public readonly struct CombatInput
         Skill3Released = skill3Released;
         Skill2Held = skill2Held;
         Skill2Released = skill2Released;
+        MovementCancelPressed = movementCancelPressed;
     }
 }

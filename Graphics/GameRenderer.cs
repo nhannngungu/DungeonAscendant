@@ -5175,6 +5175,7 @@ public sealed class GameRenderer : IDisposable
         EnemyIntroductionDefinition intro = introductions.Active;
         if (intro == null)
             return;
+        float opacity = introductions.PresentationOpacity;
 
         Viewport viewport = _graphicsDevice.Viewport;
         int width = intro.PresentationStrength == 3 ? 520 : 450;
@@ -5190,8 +5191,14 @@ public sealed class GameRenderer : IDisposable
             2 => new Color(156, 91, 76),
             _ => new Color(113, 142, 121)
         };
-        _spriteBatch.Draw(_pixel, panel, new Color(12, 16, 17, 232));
-        DrawRectangleOutline(panel, intro.PresentationStrength + 1, border);
+        _spriteBatch.Draw(
+            _pixel,
+            panel,
+            new Color(12, 16, 17, 232) * opacity);
+        DrawRectangleOutline(
+            panel,
+            intro.PresentationStrength + 1,
+            border * opacity);
 
         string name = intro.LocalizedName;
         string title = intro.LocalizedTitle;
@@ -5202,21 +5209,21 @@ public sealed class GameRenderer : IDisposable
             name,
             panel.Center.X - nameWidth / 2,
             panel.Y + 10,
-            new Color(237, 226, 190),
+            new Color(237, 226, 190) * opacity,
             scale: nameScale);
         int titleWidth = title.Length * 6;
         DrawDebugText(
             title,
             panel.Center.X - titleWidth / 2,
             panel.Y + 38,
-            border,
+            border * opacity,
             scale: 1);
         int descriptionWidth = description.Length * 6;
         DrawDebugText(
             description,
             Math.Max(panel.X + 10, panel.Center.X - descriptionWidth / 2),
             panel.Y + 57,
-            new Color(183, 190, 184),
+            new Color(183, 190, 184) * opacity,
             scale: 1);
     }
 

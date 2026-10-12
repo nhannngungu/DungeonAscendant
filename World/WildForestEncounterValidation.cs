@@ -98,6 +98,8 @@ public static class WildForestEncounterValidation
                 Frame(.05f), Vector2.Zero, new[] { enemy }, null, false);
             Require(introductions.IsPresenting,
                 $"First {type} sighting did not trigger an introduction.");
+            Require(!introductions.BlocksCombat,
+                $"Normal or elite {type} introduction blocked combat.");
             Expire(introductions, enemy, null);
             introductions.Update(
                 Frame(.05f), Vector2.Zero, new[] { enemy }, null, false);
@@ -111,6 +113,7 @@ public static class WildForestEncounterValidation
         introductions.Update(
             Frame(.05f), Vector2.Zero, Array.Empty<Enemy>(), boss, true);
         Require(introductions.IsPresenting &&
+            introductions.BlocksCombat &&
             introductions.Active.Identity ==
                 WildForestEnemyIdentity.AncientTreant,
             "Ancient Treant introduction did not trigger.");

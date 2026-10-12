@@ -199,6 +199,10 @@ public sealed class PlayerCombat
         (State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
         _stateElapsed < CurrentAttack.StartupTime;
     public bool IsChargingHeavy => State == CombatState.ChargingHeavy;
+    public bool HasCommittedAction =>
+        State == CombatState.ChargingHeavy ||
+        CurrentAttack != null &&
+            State is CombatState.LightAttack or CombatState.HeavyAttack;
     public float HeavyChargeProgress => _weapon.Family == WeaponFamily.HunterBow
         ? CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerHeavensFury
             ? Math.Clamp(
@@ -306,6 +310,17 @@ public sealed class PlayerCombat
             1f / 20f);
         _currentFacing = facing;
         _currentHorizontalDirection = input.HorizontalDirection;
+
+        if (input.MovementCancelPressed &&
+            MathF.Abs(input.HorizontalDirection) > .1f &&
+            HasCommittedAction)
+        {
+            ClearActionState();
+            StartTimedState(isGrounded
+                ? CombatState.Moving
+                : CombatState.Jumping);
+            return;
+        }
 
         if (_weapon.Family == WeaponFamily.WarAxe &&
             CurrentTechnique?.Effect == WeaponTechniqueEffect.RaiderCrowdCrusher &&
@@ -647,30 +662,43 @@ public sealed class PlayerCombat
         return AttackResolution.Damaged;
     }
 
-    public void OnDamaged(bool isAlive, int damage = int.MaxValue)
+    public void OnDamaged(
+        bool isAlive,
+        int damage = int.MaxValue,
+        bool hardInterrupt = false)
     {
-        CurrentAttack = null;
-        _attackPowerMultiplier = 1f;
-        _projectileSpeedMultiplier = 1f;
-        CurrentTechnique = null;
-        _techniqueStageIndex = 0;
-        _effectiveTechniqueStageCount = 0;
-        _techniqueSequenceIndex = 0;
-        _techniqueStageBuffered = false;
-        _inputBuffer.Clear();
-        _dodgeBuffered = false;
-        ResetRangerActionState();
-        ResetRaiderActionState();
-        ResetSpellbladeActionState();
-        ResetBreakerActionState();
-        ResetReckonerActionState();
         Resources.OnOwnerDamaged(damage >= 20);
-        IsBlockInputHeld = false;
+
+        if (isAlive && !hardInterrupt && HasCommittedAction)
+            return;
+
+        ClearActionState();
         StartTimedState(isAlive ? CombatState.Hurt : CombatState.Dead);
+    }
+
+    public void HardInterrupt()
+    {
+        if (State is CombatState.Dead or CombatState.Staggered or
+            CombatState.Hurt)
+        {
+            return;
+        }
+
+        ClearActionState();
+        StartTimedState(CombatState.Hurt);
     }
 
     public void CancelActions(bool restoreStamina = false)
     {
+        ClearActionState();
+        StartTimedState(CombatState.Idle);
+
+        if (restoreStamina)
+            Stamina.Restore();
+    }
+
+    private void ClearActionState()
+    {
         CurrentAttack = null;
         _attackPowerMultiplier = 1f;
         _projectileSpeedMultiplier = 1f;
@@ -687,10 +715,7 @@ public sealed class PlayerCombat
         ResetBreakerActionState();
         ResetReckonerActionState();
         IsBlockInputHeld = false;
-        StartTimedState(CombatState.Idle);
-
-        if (restoreStamina)
-            Stamina.Restore();
+        _hitstopRemaining = 0f;
     }
 
     private void CompleteExpiredAction(bool isGrounded)

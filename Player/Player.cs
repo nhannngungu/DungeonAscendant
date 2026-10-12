@@ -313,6 +313,7 @@ public sealed class Player
         if (!IsAlive || dungeon == null || distance <= 0f)
             return;
 
+        Combat.HardInterrupt();
         float horizontal = target.X - Position.X;
         if (MathF.Abs(horizontal) <= 1f)
             return;
@@ -334,6 +335,7 @@ public sealed class Player
         if (!IsAlive || dungeon == null || distance <= 0f)
             return;
 
+        Combat.HardInterrupt();
         float horizontal = Position.X - source.X;
         if (MathF.Abs(horizontal) <= 1f)
             horizontal = Facing == FacingDirection.Left ? -1f : 1f;
@@ -434,7 +436,9 @@ public sealed class Player
             if (IsInvulnerable)
                 return AttackResolution.Ignored;
 
-            ApplyHealthDamage(ApplyArmorDefense(contact.Damage));
+            ApplyHealthDamage(
+                ApplyArmorDefense(contact.Damage),
+                hardInterrupt: contact.Unblockable);
         }
         else if (resolution == AttackResolution.GuardBroken)
         {
@@ -495,7 +499,10 @@ public sealed class Player
         }
     }
 
-    private void ApplyHealthDamage(int damage, bool triggerHurt = true)
+    private void ApplyHealthDamage(
+        int damage,
+        bool triggerHurt = true,
+        bool hardInterrupt = false)
     {
         int minimumHealth = DebugGodMode ? 1 : 0;
         CurrentHealth = Math.Max(minimumHealth, CurrentHealth - damage);
@@ -503,7 +510,7 @@ public sealed class Player
         _hitFeedbackTimeRemaining = HitFeedbackDurationSeconds;
 
         if (triggerHurt || !IsAlive)
-            Combat.OnDamaged(IsAlive, damage);
+            Combat.OnDamaged(IsAlive, damage, hardInterrupt);
     }
 
     private int ApplyArmorDefense(int damage)

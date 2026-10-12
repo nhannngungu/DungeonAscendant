@@ -1910,6 +1910,10 @@ public sealed class DemonLandsEnemy : Enemy
             {
                 _pendingCorruptionPressure += BoneHarvesterAttack ==
                     BoneHarvesterAttackKind.GraveReap ? 5f : 3f;
+            }
+            if (resolution is AttackResolution.Damaged or
+                AttackResolution.GuardBroken)
+            {
                 if (BoneHarvesterAttack == BoneHarvesterAttackKind.HarvesterHook)
                 {
                     player.PullToward(
@@ -2107,8 +2111,10 @@ public sealed class DemonLandsEnemy : Enemy
                     unblockable: false,
                     ActiveAttackArea));
             if (resolution != AttackResolution.Ignored)
-            {
                 _pendingCorruptionPressure += 6f;
+            if (resolution is AttackResolution.Damaged or
+                AttackResolution.GuardBroken)
+            {
                 if (HellbruteAttack is HellbruteAttackKind.BruteSlam or
                     HellbruteAttackKind.InfernalCharge or
                     HellbruteAttackKind.CrushingBackhand)

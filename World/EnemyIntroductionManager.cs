@@ -154,6 +154,19 @@ public sealed class EnemyIntroductionManager
     public float TimeRemaining { get; private set; }
     public float Duration { get; private set; }
     public bool IsPresenting => Active != null && TimeRemaining > 0f;
+    public bool BlocksCombat => IsPresenting && Active.PresentationStrength == 3;
+    public float PresentationOpacity
+    {
+        get
+        {
+            if (!IsPresenting || Duration <= 0f)
+                return 0f;
+            float elapsed = Duration - TimeRemaining;
+            float fadeIn = MathHelper.Clamp(elapsed / .18f, 0f, 1f);
+            float fadeOut = MathHelper.Clamp(TimeRemaining / .35f, 0f, 1f);
+            return MathF.Min(fadeIn, fadeOut);
+        }
+    }
     public bool JustTriggered { get; private set; }
     public int DiscoveryCount => _discovered.Count;
     public event Action<WildForestEnemyIdentity> EnemyDiscovered;
