@@ -44,6 +44,7 @@ static bool RunRequestedValidation(string[] arguments, out string name)
     {
         DungeonAscendant.UI.InventoryGridNavigation.ValidateOrThrow();
         DungeonAscendant.UI.InventoryTabRules.ValidateOrThrow();
+        DungeonAscendant.Items.WeaponIdentityValidation.ValidateOrThrow();
         DungeonAscendant.Core.InventorySessionValidation.ValidateOrThrow();
         name = "inventory";
         System.Console.WriteLine("Inventory tab and grid validation passed.");
@@ -129,9 +130,10 @@ static bool RunRequestedValidation(string[] arguments, out string name)
     {
         DungeonAscendant.Combat.WeaponArchetypeValidation.ValidateOrThrow();
         DungeonAscendant.Combat.EquipmentRebuildValidation.ValidateOrThrow();
+        DungeonAscendant.Items.WeaponIdentityValidation.ValidateOrThrow();
         name = "equipment";
         System.Console.WriteLine(
-            "Equipment and all seven weapon combat validations passed.");
+            "Equipment and all weapon combat validations passed.");
     }
     else if (Has("--validate-save-slots"))
     {

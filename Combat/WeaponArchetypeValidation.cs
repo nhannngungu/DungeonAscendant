@@ -17,11 +17,13 @@ public static class WeaponArchetypeValidation
         {
             EquipmentCatalog.KnightLongSword,
             EquipmentCatalog.DuelistDualSwords,
-            EquipmentCatalog.HunterBow,
+            EquipmentCatalog.IronVanguardGreatsword,
             EquipmentCatalog.RaiderWarAxe,
-            EquipmentCatalog.ArcaneWarStaff,
+            EquipmentCatalog.HunterBow,
             EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.ReckonerChainFlail
+            EquipmentCatalog.ReckonerChainFlail,
+            EquipmentCatalog.ArcaneWarStaff,
+            EquipmentCatalog.ForbiddenSovereignAbyssRing
         };
         var families = new HashSet<WeaponFamily>();
 
@@ -41,17 +43,49 @@ public static class WeaponArchetypeValidation
 
             WeaponTechnique ultimate = weapon.CombatProfile.Get(
                 WeaponTechniqueInput.Ultimate);
-            Require(ultimate.RequiresFullStamina && ultimate.StaminaCost == 100f,
-                $"{weapon.Name} ultimate must consume full stamina.");
+            if (weapon.Family == WeaponFamily.HunterBow)
+            {
+                Require(ultimate.Effect ==
+                        WeaponTechniqueEffect.RangerPhantomHunt,
+                    "Bow ultimate must remain Phantom Hunt.");
+                Require(ultimate.RequiresFullStamina &&
+                        ultimate.StaminaCost == 100f,
+                    "Phantom Hunt must use and require full stamina.");
+                Require(ultimate.ResourceCost == 0,
+                    "Phantom Hunt must not depend on Flow Focus or the legacy Bow Ultimate Meter.");
+            }
+            else
+            {
+                Require(ultimate.RequiresFullStamina && ultimate.StaminaCost == 100f,
+                    $"{weapon.Name} ultimate must consume full stamina.");
+            }
         }
 
         Require(families.Count == EquipmentCatalog.WeaponSampleCount,
-            "The debug catalog must cover all seven official weapon families.");
+            "The debug catalog must cover all implemented weapon families.");
         Require(EquipmentCatalog.BreakerSpikedMace.CombatProfile
                 .Get(WeaponTechniqueInput.Ultimate).StageCount == 1,
             "Worldbreaker must remain one enormous hit.");
         Require(EquipmentCatalog.KnightLongSword.UsesShield,
             "Knight requires its large shield.");
+        Require(!EquipmentCatalog.IronVanguardGreatsword.UsesShield,
+            "Iron Sovereign must guard with the blade, not a shield.");
+
+        WeaponCombatProfile sovereign =
+            EquipmentCatalog.ForbiddenSovereignAbyssRing.CombatProfile;
+        Require(sovereign.Get(WeaponTechniqueInput.Skill1).StageCount == 8,
+            "Sovereign Martial Arts must retain its eight-hit chain.");
+        Require(sovereign.Get(WeaponTechniqueInput.Skill1Skill2).StageCount == 6 &&
+                sovereign.Get(WeaponTechniqueInput.Skill2Skill3).StageCount == 5,
+            "Abyss Ring portal combinations have lost their bounded stages.");
+        WeaponTechnique cataclysm = sovereign.Get(
+            WeaponTechniqueInput.Ultimate);
+        Require(cataclysm.Effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                cataclysm.RequiresFullStamina &&
+                cataclysm.StaminaCost == 100f &&
+                cataclysm.StageCount == 19,
+            "Golden Sovereign Cataclysm must use full Stamina and its bounded sequence.");
     }
 
     private static void Require(bool condition, string message)

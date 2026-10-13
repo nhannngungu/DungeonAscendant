@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using DungeonAscendant.Core;
 using DungeonAscendant.Combat;
+using DungeonAscendant.Items;
 using DungeonAscendant.Lore;
 using DungeonAscendant.Player;
 using DungeonAscendant.UI;
@@ -103,6 +104,11 @@ public static class SaveSlotValidation
             "Confirmed character did not enter gameplay.");
         Need(new SaveSlotManager(path).GetSlot(0).Occupied,
             "Confirmed character was not persisted.");
+        EquipmentItem greatsword = FindWeapon(
+            session.Player,
+            EquipmentCatalog.IronVanguardGreatsword.WeaponId);
+        Need(greatsword != null && session.Player.EquipItem(greatsword),
+            "Slot zero could not equip Greatsword.");
 
         session.Player.GainExperience(100);
         Need(session.Player.Notes.TryCollect(
@@ -163,6 +169,11 @@ public static class SaveSlotValidation
         Need(session.State == GameState.Playing && session.Player.Level == 1 &&
             session.Player.Notes.Count == 0,
             "New second slot inherited first-slot progression or notes.");
+        EquipmentItem bow = FindWeapon(
+            session.Player,
+            EquipmentCatalog.HunterBow.WeaponId);
+        Need(bow != null && session.Player.EquipItem(bow),
+            "Slot one could not equip Bow.");
         int slotOneInventoryCount = session.Player.Inventory.Count;
 
         ReturnThroughPauseMenu(session);
@@ -173,6 +184,8 @@ public static class SaveSlotValidation
         Need(session.State == GameState.Playing && session.Player.Level == 2 &&
             session.Player.Notes.Count == 1 &&
             session.Player.Inventory.Count == slotZeroInventoryCount &&
+            session.Player.EquippedWeapon.WeaponId ==
+                EquipmentCatalog.IronVanguardGreatsword.WeaponId &&
             session.Player.Appearance.BodyType == CharacterBodyType.Male,
             "Loading slot zero did not restore its independent player state.");
 
@@ -182,6 +195,8 @@ public static class SaveSlotValidation
         Need(session.State == GameState.Playing && session.Player.Level == 1 &&
             session.Player.Notes.Count == 0 &&
             session.Player.Inventory.Count == slotOneInventoryCount &&
+            session.Player.EquippedWeapon.WeaponId ==
+                EquipmentCatalog.HunterBow.WeaponId &&
             session.Player.Appearance.BodyType == CharacterBodyType.Female &&
             session.Player.Appearance.HairStyle == HairStyle.Long,
             "Loading slot one leaked state from slot zero.");
@@ -313,6 +328,20 @@ public static class SaveSlotValidation
         Press(session, Keys.Enter);
         Need(session.State == GameState.CharacterSelect,
             "Pause confirmation did not return to Character Select.");
+    }
+
+    private static EquipmentItem FindWeapon(
+        DungeonAscendant.Player.Player player,
+        string weaponId)
+    {
+        if (player.EquippedItems.Weapon?.WeaponId == weaponId)
+            return player.EquippedItems.Weapon;
+        foreach (EquipmentItem item in player.Inventory.Items)
+        {
+            if (item.WeaponId == weaponId)
+                return item;
+        }
+        return null;
     }
 
     private static void Press(GameSession session, Keys key)

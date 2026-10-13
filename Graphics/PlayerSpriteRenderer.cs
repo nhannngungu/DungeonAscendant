@@ -80,15 +80,19 @@ public sealed class PlayerSpriteRenderer
     public void Draw(
         PlayerCharacter player,
         GameTime gameTime,
-        Vector2? chainHeadWorldPosition = null)
+        Vector2? chainHeadWorldPosition = null,
+        Vector2? visualPosition = null,
+        Vector2? portalTravelDirection = null,
+        float portalTransitionStrength = 0f)
     {
         ResetPartTransform();
         _chainHeadWorldPosition = chainHeadWorldPosition;
         _animation.Update(gameTime, player);
 
         Vector2 anchor = new(
-            MathF.Round(player.Position.X),
-            MathF.Round(player.Position.Y + player.Size.Y / 2f));
+            MathF.Round((visualPosition ?? player.Position).X),
+            MathF.Round((visualPosition ?? player.Position).Y +
+                player.Size.Y / 2f));
         bool flip = player.Facing == FacingDirection.Left;
 
         if (player.IsGrounded || _animation.State == PlayerVisualState.Dead)
@@ -111,12 +115,47 @@ public sealed class PlayerSpriteRenderer
         else
         {
             Pose pose = CreatePose(player);
+            if (player.WeaponFamily == WeaponFamily.AbyssRing &&
+                portalTravelDirection.HasValue &&
+                portalTransitionStrength > 0f)
+            {
+                ApplyPortalTransitPose(
+                    ref pose,
+                    portalTravelDirection.Value,
+                    portalTransitionStrength,
+                    flip);
+            }
             DrawDuelistAfterimages(player, anchor, flip, pose);
+            DrawRangerAfterimages(player, anchor, flip, pose);
+            DrawSovereignAfterimages(player, anchor, flip, pose);
             DrawStanding(player, anchor, flip, pose);
         }
 
         if (player.IsSlowed)
             DrawWebStrands(anchor, flip);
+    }
+
+    private static void ApplyPortalTransitPose(
+        ref Pose pose,
+        Vector2 direction,
+        float strength,
+        bool flip)
+    {
+        strength = Math.Clamp(strength, 0f, 1f);
+        float localX = (flip ? -direction.X : direction.X) * strength;
+        pose.Crouch += 4f * strength;
+        pose.Lean += 8f * localX;
+        pose.Step += 9f * localX;
+        pose.SwordHandX += 11f * localX;
+        pose.SwordHandY += direction.Y * 8f * strength;
+        pose.LeftFootLift = Math.Max(
+            pose.LeftFootLift,
+            Math.Max(0f, -localX) * 11f +
+                Math.Max(0f, -direction.Y) * 7f * strength);
+        pose.RightFootLift = Math.Max(
+            pose.RightFootLift,
+            Math.Max(0f, localX) * 11f +
+                Math.Max(0f, direction.Y) * 7f * strength);
     }
 
     /// <summary>
@@ -151,6 +190,52 @@ public sealed class PlayerSpriteRenderer
         DrawStanding(player, anchor, flip, pose);
     }
 
+    /// <summary>
+    /// Reuses the live combat pose for a screen-space cinematic cut-in. The
+    /// caller owns the SpriteBatch transform, allowing the code-rendered
+    /// player, current bow, and current outfit to remain visually canonical.
+    /// </summary>
+    public void DrawCinematicCutIn(PlayerCharacter player, Vector2 anchor)
+    {
+        ResetPartTransform();
+        _chainHeadWorldPosition = null;
+        bool flip = player.Facing == FacingDirection.Left;
+        Pose pose = CreatePose(player);
+        DrawStanding(player, anchor, flip, pose);
+    }
+
+    public void DrawSovereignCinematicCutIn(
+        PlayerCharacter player,
+        Vector2 anchor)
+    {
+        ResetPartTransform();
+        _chainHeadWorldPosition = null;
+        bool flip = player.Facing == FacingDirection.Left;
+        Pose pose = CreatePose(player);
+        ConfigureSovereignStance(ref pose);
+        pose.Crouch = 2f;
+        pose.Lean = 5f;
+        pose.SwordHandX = 18f;
+        pose.SwordHandY = -55f;
+        pose.FrontElbowX = 30f;
+        pose.FrontElbowY = -48f;
+        pose.OffHandX = -2f;
+        pose.OffHandY = -40f;
+        pose.RearElbowX = -16f;
+        pose.RearElbowY = -44f;
+        DrawStanding(player, anchor, flip, pose);
+
+        Color eyeGlow = new(255, 215, 91, 235);
+        DrawBox(anchor, pose.Lean + 2f, pose.Crouch - 61f,
+            5f, 2f, eyeGlow, flip);
+        DrawLine(anchor,
+            new Vector2(pose.Lean - 7f, pose.Crouch - 60f),
+            new Vector2(pose.Lean + 14f, pose.Crouch - 62f),
+            1f,
+            new Color(255, 198, 57, 105),
+            flip);
+    }
+
     private void DrawStanding(
         PlayerCharacter player,
         Vector2 anchor,
@@ -163,7 +248,8 @@ public sealed class PlayerSpriteRenderer
             GetHeightOffset(player.Appearance.ApparentHeight);
         bool weaponBehindBody = pose.SwordAngle < -1.25f &&
             player.WeaponFamily is not WeaponFamily.Bow and
-            not WeaponFamily.ArcaneStaff;
+            not WeaponFamily.ArcaneStaff and
+            not WeaponFamily.AbyssRing;
 
         if (player.WeaponFamily == WeaponFamily.Bow)
             DrawQuiver(anchor, flip, bodyX, upperBodyY);
@@ -197,13 +283,16 @@ public sealed class PlayerSpriteRenderer
         if (player.UsesShield)
             DrawShield(player, anchor, flip, pose);
 
-        if (!weaponBehindBody)
+        if (!weaponBehindBody && player.WeaponFamily != WeaponFamily.AbyssRing)
             DrawWeapon(player, anchor, flip, pose);
 
         DrawSlashTrail(player, anchor, flip, pose);
         DrawRaiderTechniqueEffects(player, anchor, flip, pose);
         DrawSpellbladeTechniqueEffects(player, anchor, flip, pose);
         DrawBreakerTechniqueEffects(player, anchor, flip, pose);
+        DrawGreatswordTechniqueEffects(player, anchor, flip, pose);
+        DrawSovereignTransformation(player, anchor, flip, pose);
+        DrawSovereignMartialEffects(player, anchor, flip, pose);
 
         if (player.Combat.IsChargingHeavy)
             DrawChargeEffect(player, anchor, flip, pose);
@@ -215,6 +304,13 @@ public sealed class PlayerSpriteRenderer
 
         if (player.Combat.IsPerfectGuardFeedbackActive && player.UsesShield)
             DrawPerfectGuardImpact(anchor, flip, pose);
+
+        if (player.WeaponFamily == WeaponFamily.GreatSword &&
+            (player.Combat.IsBlockFeedbackActive ||
+             player.Combat.IsPerfectGuardFeedbackActive))
+        {
+            DrawGreatswordGuardImpact(player, anchor, flip, pose);
+        }
     }
 
     private Pose CreatePose(PlayerCharacter player)
@@ -388,8 +484,10 @@ public sealed class PlayerSpriteRenderer
         ApplyRangerTechniquePose(player, ref pose);
         ApplyRaiderTechniquePose(player, ref pose);
         ApplySpellbladeTechniquePose(player, ref pose);
+        ApplyGreatswordTechniquePose(player, ref pose);
         ApplyBreakerTechniquePose(player, ref pose);
         ApplyReckonerTechniquePose(player, ref pose);
+        ApplySovereignTechniquePose(player, ref pose);
         return pose;
     }
 
@@ -492,6 +590,185 @@ public sealed class PlayerSpriteRenderer
                     ? LerpByFrame(-1.82f, 1.28f)
                     : -1.45f + time * (stage == 0 ? 3.8f : 7.4f);
                 pose.CloakTail = stage == 7 ? -15f : -10f;
+                break;
+        }
+    }
+
+    private void ApplyGreatswordTechniquePose(
+        PlayerCharacter player,
+        ref Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.GreatSword ||
+            player.Combat.CurrentTechnique == null)
+        {
+            return;
+        }
+
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        int stage = player.Combat.TechniqueStageIndex;
+        float progress = player.Combat.CurrentAttack == null
+            ? 0f
+            : Math.Clamp(
+                player.Combat.StateElapsed /
+                    player.Combat.CurrentAttack.TotalTime,
+                0f,
+                1f);
+        pose.SwordLength = 50f;
+        pose.SwordHandX = 10f;
+        pose.SwordHandY = -35f;
+
+        switch (effect)
+        {
+            case WeaponTechniqueEffect.GreatswordCombo:
+                pose.Crouch = stage >= 2 ? 8f : 5f;
+                pose.Lean = stage switch
+                {
+                    0 => MathHelper.Lerp(-4f, 7f, progress),
+                    1 => MathHelper.Lerp(5f, -4f, progress),
+                    2 => MathHelper.Lerp(7f, -2f, progress),
+                    _ => MathHelper.Lerp(-6f, 10f, progress)
+                };
+                pose.Step = stage < 2 ? 5f : stage == 2 ? 3f : 1f;
+                pose.SwordAngle = stage switch
+                {
+                    0 => MathHelper.Lerp(-1.92f, .62f, progress),
+                    1 => MathHelper.Lerp(.72f, -1.72f, progress),
+                    2 => MathHelper.Lerp(.58f, -1.62f, progress),
+                    _ => MathHelper.Lerp(-2.20f, 1.18f, progress)
+                };
+                pose.CloakTail = stage >= 2 ? -10f : -7f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordIronResolve:
+                pose.Crouch = 8f;
+                pose.Lean = -3f;
+                pose.Step = -4f;
+                pose.SwordHandX = -2f;
+                pose.SwordHandY = -31f;
+                pose.SwordAngle = -.18f;
+                pose.CloakTail = -2f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordCrushingBreaker:
+                pose.Crouch = 10f;
+                pose.Lean = MathHelper.Lerp(-5f, 9f, progress);
+                pose.Step = 5f;
+                pose.SwordAngle = MathHelper.Lerp(-2.05f, .92f, progress);
+                pose.CloakTail = -9f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordReversalCleave:
+                pose.Crouch = 7f;
+                pose.Lean = MathHelper.Lerp(-7f, 8f, progress);
+                pose.Step = 4f;
+                pose.SwordAngle = MathHelper.Lerp(.52f, -1.82f, progress);
+                pose.CloakTail = -11f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordWhirlingJudgment:
+                pose.Crouch = player.Combat.IsGreatswordWhirlStopping
+                    ? MathHelper.Lerp(8f, 3f, progress)
+                    : 8f;
+                float side = (stage & 1) == 0 ? 1f : -1f;
+                pose.Lean = player.Combat.IsGreatswordWhirlStopping
+                    ? MathHelper.Lerp(side * 4f, 0f, progress)
+                    : side * MathF.Sin(progress * MathHelper.Pi) * 5f;
+                pose.Step = -side * 4f;
+                pose.SwordAngle = player.Combat.IsGreatswordWhirlStopping
+                    ? MathHelper.Lerp(side * .65f, -.72f, progress)
+                    : stage == 6
+                        ? MathHelper.Lerp(-2.12f, .92f, progress)
+                        : side > 0f
+                            ? MathHelper.Lerp(-2.12f, .72f, progress)
+                            : MathHelper.Lerp(.78f, -1.98f, progress);
+                pose.CloakTail = player.Combat.IsGreatswordWhirlStopping
+                    ? -3f
+                    : -10f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordVanguardStrike:
+            case WeaponTechniqueEffect.GreatswordVanguardAssault:
+                pose.Crouch = 11f;
+                pose.Lean = 11f;
+                pose.Step = 8f;
+                pose.SwordAngle = MathHelper.Lerp(-2.18f, .96f, progress);
+                pose.CloakTail = -15f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordFallingCleave:
+            case WeaponTechniqueEffect.GreatswordFallingBastion:
+                pose.Crouch = 6f;
+                pose.Lean = 6f;
+                pose.Step = -3f;
+                pose.SwordAngle = MathHelper.Lerp(-2.06f, 1.10f, progress);
+                pose.CloakTail = -9f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordTitanReckoning:
+                pose.Crouch = player.Combat.IsGreatswordCharging ? 11f : 8f;
+                pose.Lean = player.Combat.IsGreatswordCharging
+                    ? -6f
+                    : MathHelper.Lerp(-7f, 10f, progress);
+                pose.Step = player.Combat.IsGreatswordCharging ? -6f : 5f;
+                pose.SwordHandX = player.Combat.IsGreatswordCharging ? -3f : 7f;
+                pose.SwordAngle = player.Combat.IsGreatswordCharging
+                    ? -.18f
+                    : MathHelper.Lerp(.62f, -1.82f, progress);
+                pose.CloakTail = player.Combat.IsGreatswordCharging ? -3f : -12f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordIronDominion:
+                pose.Crouch = stage == 0 ? 12f : 9f;
+                pose.Lean = stage == 0 ? -5f :
+                    ((stage & 1) == 0 ? -4f : 5f);
+                pose.Step = stage == 0 ? -5f : 3f;
+                pose.SwordAngle = stage switch
+                {
+                    0 => MathHelper.Lerp(-.25f, .12f, progress),
+                    1 => MathHelper.Lerp(-2.04f, .72f, progress),
+                    2 => MathHelper.Lerp(.76f, -1.98f, progress),
+                    _ => MathHelper.Lerp(.62f, -1.72f, progress)
+                };
+                pose.CloakTail = stage == 0 ? -2f : -10f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordKingsRupture:
+                pose.Crouch = player.Combat.IsGreatswordCharging ? 12f : 9f;
+                pose.Lean = player.Combat.IsGreatswordCharging
+                    ? -8f
+                    : stage == 0 ? 4f : 10f;
+                pose.Step = player.Combat.IsGreatswordCharging ? -6f : 4f;
+                pose.SwordAngle = player.Combat.IsGreatswordCharging
+                    ? -2.24f
+                    : stage switch
+                    {
+                        0 => MathHelper.Lerp(-2.10f, .72f, progress),
+                        1 => MathHelper.Lerp(-2.28f, 1.12f, progress),
+                        _ => MathHelper.Lerp(.95f, .15f, progress)
+                    };
+                pose.CloakTail = -12f;
+                break;
+
+            case WeaponTechniqueEffect.GreatswordFinalVerdict:
+                pose.Crouch = player.Combat.State == CombatState.ChargingHeavy
+                    ? 8f
+                    : stage >= 4 ? 12f : 9f;
+                pose.Lean = player.Combat.State == CombatState.ChargingHeavy
+                    ? -5f
+                    : stage == 0 ? 7f : MathHelper.Lerp(-8f, 11f, progress);
+                pose.Step = stage == 0 ? 7f : 2f;
+                pose.SwordHandX = 4f;
+                pose.SwordAngle = player.Combat.State == CombatState.ChargingHeavy
+                    ? -2.12f
+                    : stage switch
+                    {
+                        0 => -1.92f,
+                        1 => MathHelper.Lerp(.70f, -1.95f, progress),
+                        2 => MathHelper.Lerp(-2.30f, 1.20f, progress),
+                        3 => MathHelper.Lerp(-2.42f, 1.30f, progress),
+                        _ => .24f
+                    };
+                pose.CloakTail = stage == 0 ? -15f : -8f;
                 break;
         }
     }
@@ -825,12 +1102,105 @@ public sealed class PlayerSpriteRenderer
             return;
 
         float charge = player.Combat.RangerChargeRatio;
-        switch (player.Combat.CurrentTechnique.Effect)
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        bool preservesLocomotion = effect is
+            WeaponTechniqueEffect.RangerMobileShot or
+            WeaponTechniqueEffect.RangerEvasiveShot or
+            WeaponTechniqueEffect.RangerTwinFang or
+            WeaponTechniqueEffect.RangerPhantomRetreat or
+            WeaponTechniqueEffect.RangerPiercingVolley or
+            WeaponTechniqueEffect.RangerBackstepShot or
+            WeaponTechniqueEffect.RangerCounterShot or
+            WeaponTechniqueEffect.RangerAerialShot or
+            WeaponTechniqueEffect.RangerSkyfallVolley or
+            WeaponTechniqueEffect.RangerSkyfallShot;
+        if (preservesLocomotion && player.IsGrounded &&
+            MathF.Abs(player.Velocity.X) > 1f)
+        {
+            pose.Step = MathF.Sin(player.Combat.StateElapsed * 24f) * 8f;
+            pose.Crouch = 1f + MathF.Abs(
+                MathF.Sin(player.Combat.StateElapsed * 24f)) * 2f;
+            pose.CloakTail = -7f - MathF.Abs(pose.Step) * .35f;
+        }
+        switch (effect)
         {
             case WeaponTechniqueEffect.RangerHuntersDraw:
+            case WeaponTechniqueEffect.RangerPiercingDraw:
                 pose.Crouch = 2f + charge * 3f;
                 pose.Lean = -2f - charge * 3f;
                 pose.CloakTail = -3f - charge * 3f;
+                break;
+            case WeaponTechniqueEffect.RangerMobileShot:
+                pose.Lean = player.Combat.TechniqueStageIndex >= 3 ? -1f : 2f;
+                pose.SwordHandX = 21f;
+                pose.SwordHandY = -39f;
+                break;
+            case WeaponTechniqueEffect.RangerEvasiveStep:
+            case WeaponTechniqueEffect.RangerEvasiveShot:
+                pose.Crouch = 10f;
+                pose.Lean = -8f;
+                pose.Step = -8f;
+                pose.CloakTail = 12f;
+                break;
+            case WeaponTechniqueEffect.RangerTwinFang:
+                pose.Crouch = player.Combat.TechniqueStageIndex == 0 ? 8f : 3f;
+                pose.Lean = player.Combat.TechniqueStageIndex == 0 ? -7f : 3f;
+                pose.CloakTail = 11f;
+                break;
+            case WeaponTechniqueEffect.RangerPhantomRetreat:
+                pose.Crouch = player.Combat.TechniqueStageIndex == 0 ? 9f : 3f;
+                pose.Lean = player.Combat.TechniqueStageIndex == 0 ? -8f : 1f;
+                pose.CloakTail = 12f;
+                break;
+            case WeaponTechniqueEffect.RangerPiercingVolley:
+                pose.Crouch = player.Combat.TechniqueStageIndex >= 2 ? 7f : 2f;
+                pose.Lean = player.Combat.TechniqueStageIndex >= 2 ? -6f : 2f;
+                pose.SwordHandX = 24f;
+                break;
+            case WeaponTechniqueEffect.RangerBackstepShot:
+            case WeaponTechniqueEffect.RangerCounterShot:
+                pose.Crouch = 6f;
+                pose.Lean = 6f;
+                pose.SwordHandX = 23f;
+                pose.CloakTail = 10f;
+                break;
+            case WeaponTechniqueEffect.RangerSlidingShot:
+                pose.Crouch = 14f;
+                pose.Lean = 12f;
+                pose.Step = 10f;
+                pose.SwordHandY = -28f;
+                pose.CloakTail = -16f;
+                break;
+            case WeaponTechniqueEffect.RangerPhantomBarrage:
+                pose.Crouch = player.Combat.TechniqueStageIndex is 0 or 3
+                    ? 8f
+                    : 3f;
+                pose.Lean = player.Combat.TechniqueStageIndex is 0 or 3
+                    ? 8f
+                    : -2f;
+                pose.CloakTail = -12f;
+                break;
+            case WeaponTechniqueEffect.RangerArrowStorm:
+                pose.Crouch = 5f;
+                pose.Lean = -7f;
+                pose.SwordHandY = -48f;
+                break;
+            case WeaponTechniqueEffect.RangerAerialShot:
+            case WeaponTechniqueEffect.RangerSkyfallVolley:
+            case WeaponTechniqueEffect.RangerSkyfallShot:
+                pose.Crouch = 4f;
+                pose.Step = -4f;
+                pose.Lean = -1f;
+                pose.SwordHandY = -43f;
+                break;
+            case WeaponTechniqueEffect.RangerPhantomHunt:
+                pose.Crouch = player.Combat.State == CombatState.ChargingHeavy
+                    ? 7f - player.Combat.RangerUltimateCinematicRatio * 3f
+                    : 5f;
+                pose.Lean = -6f;
+                pose.SwordHandX = 24f;
+                pose.SwordHandY = -44f;
+                pose.CloakTail = -12f;
                 break;
             case WeaponTechniqueEffect.RangerWindrunnerShot:
                 pose.Crouch = 9f;
@@ -996,6 +1366,42 @@ public sealed class PlayerSpriteRenderer
         DrawLine(anchor, offHand, offHand + offDirection * (pose.SwordLength - 9f), 2f, blade, flip);
     }
 
+    private void DrawRangerAfterimages(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.HunterBow ||
+            player.Combat.CurrentTechnique == null)
+            return;
+
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        bool movingEcho = player.Combat.TechniqueStageIndex == 0 &&
+            effect is (WeaponTechniqueEffect.RangerEvasiveShot or
+                WeaponTechniqueEffect.RangerTwinFang or
+                WeaponTechniqueEffect.RangerPhantomRetreat or
+                WeaponTechniqueEffect.RangerBackstepShot or
+                WeaponTechniqueEffect.RangerPhantomHunt);
+        if (!movingEcho)
+            return;
+
+        float direction = player.Combat.RangerWindrunnerDirection;
+        if (MathF.Abs(direction) < .1f)
+            direction = flip ? 1f : -1f;
+        Vector2 echo = anchor - new Vector2(direction * 18f, 0f);
+        Color body = new(57, 137, 163, 72);
+        Color bow = new(129, 224, 239, 92);
+        DrawBox(echo, pose.Lean - 10f, -49f + pose.Crouch, 20f, 30f,
+            body, flip);
+        DrawBox(echo, pose.Lean - 7f, -64f + pose.Crouch, 14f, 15f,
+            body, flip);
+        DrawLine(echo, new Vector2(12f, -52f), new Vector2(21f, -39f),
+            3f, bow, flip);
+        DrawLine(echo, new Vector2(21f, -39f), new Vector2(12f, -25f),
+            3f, bow, flip);
+    }
+
     private void ApplyKnightTechniquePose(PlayerCharacter player, ref Pose pose)
     {
         if (player.WeaponFamily != WeaponFamily.LongSword ||
@@ -1092,6 +1498,7 @@ public sealed class PlayerSpriteRenderer
 
         switch (player.WeaponFamily)
         {
+            case WeaponFamily.SpikedMace:
             case WeaponFamily.GreatSword:
                 pose.SwordLength += 14f;
                 pose.SwordHandX -= 3f;
@@ -1168,6 +1575,800 @@ public sealed class PlayerSpriteRenderer
                 pose.SwordAngle = isAttack ? -1.05f : -1.30f;
                 pose.Lean -= 2f;
                 break;
+
+            case WeaponFamily.AbyssRing:
+                pose.SwordLength = 0f;
+                pose.SwordHandX = 16f;
+                pose.SwordHandY = -34f;
+                pose.Crouch += 4f;
+                pose.Lean += 2f;
+                pose.ShieldX = -30f;
+                break;
+        }
+    }
+
+    private void ApplySovereignTechniquePose(
+        PlayerCharacter player,
+        ref Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.AbyssRing)
+            return;
+
+        ConfigureSovereignStance(ref pose);
+        int stage = player.Combat.TechniqueStageIndex;
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (player.Combat.CurrentAttack == null)
+            return;
+
+        GetSovereignMotion(
+            player.Combat.CurrentAttack,
+            player.Combat.StateElapsed,
+            out float drive,
+            out float contact,
+            out float recovery);
+
+        switch (effect)
+        {
+            case WeaponTechniqueEffect.SovereignMartialArts:
+                ApplySovereignComboPose(ref pose, stage, drive, contact,
+                    recovery);
+                break;
+            case WeaponTechniqueEffect.SovereignOmnipresentStep:
+                ApplyOmnipresentStepPose(player, ref pose, drive, recovery);
+                break;
+            case WeaponTechniqueEffect.SovereignParadoxImpact:
+                ApplyParadoxImpactPose(ref pose, stage, drive, contact,
+                    recovery);
+                break;
+            case WeaponTechniqueEffect.SovereignInfiniteRiftTheatre:
+                ApplyRiftTheatrePose(ref pose, stage, drive, contact,
+                    recovery);
+                break;
+            case WeaponTechniqueEffect.SovereignHeavenReversal:
+                ApplyHeavenReversalPose(ref pose, drive, contact, recovery);
+                break;
+            case WeaponTechniqueEffect.SovereignZeroDistanceStrike:
+                ApplyZeroDistancePose(ref pose, stage, drive, contact,
+                    recovery);
+                break;
+            case WeaponTechniqueEffect.SovereignGoldenCataclysm:
+                ApplyGoldenCataclysmPose(ref pose, stage, drive, contact,
+                    recovery);
+                break;
+        }
+
+        if (player.Combat.SovereignPerfectRiftVisualRatio > 0f)
+        {
+            ApplyPerfectRiftCounterPose(
+                ref pose,
+                1f - player.Combat.SovereignPerfectRiftVisualRatio);
+        }
+    }
+
+    private static void ConfigureSovereignStance(ref Pose pose)
+    {
+        pose.UseMartialLimbs = true;
+        pose.Crouch = 4f;
+        pose.Lean = 1f;
+        pose.Step = 2f;
+        pose.SwordHandX = 19f;
+        pose.SwordHandY = -38f;
+        pose.FrontElbowX = 15f;
+        pose.FrontElbowY = -43f;
+        pose.OffHandX = -3f;
+        pose.OffHandY = -39f;
+        pose.RearElbowX = -16f;
+        pose.RearElbowY = -43f;
+        pose.FrontKneeX = 9f;
+        pose.FrontKneeY = -12f;
+        pose.FrontFootX = 14f;
+        pose.FrontFootY = -1f;
+        pose.RearKneeX = -8f;
+        pose.RearKneeY = -12f;
+        pose.RearFootX = -14f;
+        pose.RearFootY = -1f;
+        pose.CloakTail = -3f;
+    }
+
+    private static void GetSovereignMotion(
+        AttackDefinition attack,
+        float elapsed,
+        out float drive,
+        out float contact,
+        out float recovery)
+    {
+        float startup = Math.Max(.01f, attack.StartupTime);
+        float activeEnd = attack.StartupTime + attack.ActiveTime;
+        float startupRatio = Math.Clamp(elapsed / startup, 0f, 1f);
+        recovery = Math.Clamp(
+            (elapsed - activeEnd) / Math.Max(.01f, attack.RecoveryTime),
+            0f,
+            1f);
+        drive = MathHelper.SmoothStep(0f, 1f, startupRatio);
+        if (elapsed >= attack.StartupTime)
+            drive = 1f;
+        drive = MathHelper.Lerp(drive, .18f, recovery);
+        float activeRatio = Math.Clamp(
+            (elapsed - attack.StartupTime) /
+                Math.Max(.01f, attack.ActiveTime),
+            0f,
+            1f);
+        contact = elapsed < attack.StartupTime
+            ? 0f
+            : 1f - Math.Clamp(MathF.Abs(activeRatio - .32f) * 2.1f, 0f, 1f);
+    }
+
+    private static void ApplySovereignComboPose(
+        ref Pose pose,
+        int stage,
+        float drive,
+        float contact,
+        float recovery)
+    {
+        switch (stage)
+        {
+            case 0: // Sovereign Jab
+                pose.Crouch = MathHelper.Lerp(5f, 2f, drive);
+                pose.Lean = MathHelper.Lerp(-2f, 9f, drive);
+                pose.Step = MathHelper.Lerp(-2f, 8f, drive);
+                SetFrontArm(ref pose, drive, 7f, -40f, 3f, -45f,
+                    43f, -39f, 25f, -43f);
+                SetGuardArm(ref pose, -5f, -39f, -17f, -43f);
+                pose.FrontFootX = MathHelper.Lerp(11f, 21f, drive);
+                break;
+            case 1: // Reversal Elbow
+                pose.Crouch = MathHelper.Lerp(4f, 6f, drive);
+                pose.Lean = MathHelper.Lerp(-8f, 11f, drive);
+                pose.Step = MathHelper.Lerp(6f, -5f, drive);
+                pose.SwordHandX = MathHelper.Lerp(-3f, 22f, drive);
+                pose.SwordHandY = MathHelper.Lerp(-31f, -38f, drive);
+                pose.FrontElbowX = MathHelper.Lerp(-8f, 34f, drive);
+                pose.FrontElbowY = MathHelper.Lerp(-30f, -39f, drive);
+                SetGuardArm(ref pose, 0f, -47f, -15f, -46f);
+                pose.RearFootX = MathHelper.Lerp(-13f, -20f, drive);
+                break;
+            case 2: // Rift Palm
+                pose.Crouch = MathHelper.Lerp(7f, 3f, drive);
+                pose.Lean = MathHelper.Lerp(-7f, 10f, drive);
+                pose.Step = MathHelper.Lerp(-4f, 7f, drive);
+                SetFrontArm(ref pose, drive, 1f, -37f, -7f, -42f,
+                    46f, -35f, 24f, -41f);
+                SetGuardArm(ref pose, -2f, -42f, -15f, -45f);
+                break;
+            case 3: // Crescent Kick
+                pose.Crouch = MathHelper.Lerp(7f, 2f, drive);
+                pose.Lean = MathHelper.Lerp(4f, -8f, drive);
+                pose.Step = -5f;
+                pose.FrontKneeX = MathHelper.Lerp(10f, 27f, drive);
+                pose.FrontKneeY = MathHelper.Lerp(-10f, -35f, drive);
+                pose.FrontFootX = MathHelper.Lerp(13f, 53f, drive);
+                pose.FrontFootY = MathHelper.Lerp(-1f, -43f, drive);
+                SetGuardArm(ref pose, -1f, -43f, -15f, -45f);
+                pose.SwordHandX = 12f;
+                pose.SwordHandY = -47f;
+                pose.FrontElbowX = 20f;
+                pose.FrontElbowY = -48f;
+                break;
+            case 4: // Phantom Uppercut
+                pose.Crouch = MathHelper.Lerp(13f, 1f, drive);
+                pose.Lean = MathHelper.Lerp(-6f, 8f, drive);
+                pose.Step = MathHelper.Lerp(-5f, 5f, drive);
+                SetFrontArm(ref pose, drive, 3f, -20f, 8f, -29f,
+                    25f, -63f, 17f, -45f);
+                SetGuardArm(ref pose, -5f, -39f, -17f, -43f);
+                pose.FrontFootX = 17f;
+                pose.RearFootX = -18f;
+                break;
+            case 5: // Falling Knee
+                pose.Crouch = MathHelper.Lerp(5f, -3f, drive);
+                pose.Lean = MathHelper.Lerp(-3f, 9f, drive);
+                pose.FrontKneeX = MathHelper.Lerp(9f, 34f, drive);
+                pose.FrontKneeY = MathHelper.Lerp(-11f, -38f, drive);
+                pose.FrontFootX = MathHelper.Lerp(14f, 20f, drive);
+                pose.FrontFootY = MathHelper.Lerp(-1f, -21f, drive);
+                pose.RearKneeY = MathHelper.Lerp(-12f, -18f, drive);
+                SetGuardArm(ref pose, -2f, -43f, -15f, -46f);
+                pose.SwordHandX = 17f;
+                pose.SwordHandY = -47f;
+                pose.FrontElbowX = 25f;
+                pose.FrontElbowY = -43f;
+                break;
+            case 6: // Spatial Cross
+                pose.Crouch = MathHelper.Lerp(8f, 4f, drive);
+                pose.Lean = MathHelper.Lerp(-5f, 7f, drive);
+                pose.Step = 6f;
+                pose.SwordHandX = MathHelper.Lerp(1f, 43f, drive);
+                pose.SwordHandY = MathHelper.Lerp(-42f, -35f, drive);
+                pose.FrontElbowX = MathHelper.Lerp(9f, 25f, drive);
+                pose.FrontElbowY = -42f;
+                pose.OffHandX = MathHelper.Lerp(-2f, 36f,
+                    Math.Clamp(drive + contact * .22f, 0f, 1f));
+                pose.OffHandY = MathHelper.Lerp(-34f, -47f, drive);
+                pose.RearElbowX = MathHelper.Lerp(-12f, 19f, drive);
+                pose.RearElbowY = MathHelper.Lerp(-46f, -49f, drive);
+                break;
+            default: // Sovereign Break
+                pose.Crouch = MathHelper.Lerp(10f, 3f, drive);
+                pose.Lean = MathHelper.Lerp(-12f, 16f, drive);
+                pose.Step = MathHelper.Lerp(-9f, 12f, drive);
+                SetFrontArm(ref pose, drive, -12f, -29f, -8f, -38f,
+                    55f, -35f, 29f, -41f);
+                SetGuardArm(ref pose, -8f, -45f, -19f, -46f);
+                pose.FrontFootX = MathHelper.Lerp(12f, 25f, drive);
+                pose.RearFootX = MathHelper.Lerp(-16f, -26f, drive);
+                pose.CloakTail = MathHelper.Lerp(-2f, -13f, drive);
+                break;
+        }
+
+        if (recovery > 0f)
+        {
+            pose.Crouch += recovery * (stage == 7 ? 5f : 2f);
+            pose.Lean -= recovery * (stage == 7 ? 5f : 2f);
+        }
+    }
+
+    private static void ApplyOmnipresentStepPose(
+        PlayerCharacter player,
+        ref Pose pose,
+        float drive,
+        float recovery)
+    {
+        Vector2 travel = player.Combat.SovereignTransitDirection;
+        float vertical = Math.Clamp(travel.Y, -1f, 1f);
+        pose.Crouch = MathHelper.Lerp(10f, 5f, drive) + recovery * 3f;
+        pose.Lean = MathHelper.Lerp(-3f, 12f, drive);
+        pose.Step = MathHelper.Lerp(-7f, 11f, drive);
+        pose.FrontKneeY -= Math.Max(0f, -vertical) * 10f * drive;
+        pose.RearKneeY -= Math.Max(0f, vertical) * 8f * drive;
+        pose.FrontFootX += 8f * drive;
+        pose.RearFootX -= 7f * (1f - drive);
+        pose.SwordHandX = MathHelper.Lerp(5f, 28f, drive);
+        pose.SwordHandY = -43f + vertical * 8f;
+        pose.FrontElbowX = MathHelper.Lerp(7f, 22f, drive);
+        pose.FrontElbowY = -46f + vertical * 5f;
+        SetGuardArm(ref pose, -5f, -40f, -16f, -44f);
+
+    }
+
+    private static void ApplyPerfectRiftCounterPose(
+        ref Pose pose,
+        float progress)
+    {
+        float counter = MathHelper.SmoothStep(
+            0f,
+            1f,
+            Math.Clamp((progress - .28f) / .42f, 0f, 1f));
+        float settle = MathHelper.SmoothStep(
+            0f,
+            1f,
+            Math.Clamp((progress - .72f) / .28f, 0f, 1f));
+        counter = MathHelper.Lerp(counter, .22f, settle);
+        pose.Crouch = MathHelper.Lerp(10f, 4f, counter);
+        pose.Lean = MathHelper.Lerp(-7f, 11f, counter);
+        pose.Step = MathHelper.Lerp(-6f, 7f, counter);
+        SetFrontArm(ref pose, counter, 3f, -47f, 16f, -49f,
+            46f, -37f, 25f, -42f);
+        pose.OffHandX = MathHelper.Lerp(9f, -4f, counter);
+        pose.OffHandY = MathHelper.Lerp(-34f, -43f, counter);
+        pose.RearElbowX = MathHelper.Lerp(-6f, -17f, counter);
+        pose.RearElbowY = MathHelper.Lerp(-38f, -46f, counter);
+        pose.FrontFootX = MathHelper.Lerp(12f, 21f, counter);
+        pose.RearFootX = MathHelper.Lerp(-12f, -19f, counter);
+    }
+
+    private static void ApplyParadoxImpactPose(
+        ref Pose pose,
+        int stage,
+        float drive,
+        float contact,
+        float recovery)
+    {
+        if (stage == 0)
+        {
+            pose.Crouch = 6f;
+            pose.Lean = MathHelper.Lerp(-4f, 7f, drive);
+            SetFrontArm(ref pose, drive, 2f, -39f, 2f, -45f,
+                31f, -38f, 23f, -43f);
+            pose.SwordHandX -= contact * 9f;
+            return;
+        }
+        if (stage is >= 1 and <= 3)
+        {
+            bool reverse = stage % 2 == 0;
+            pose.Crouch = 5f + recovery * 2f;
+            pose.Lean = MathHelper.Lerp(reverse ? 5f : -5f,
+                reverse ? -7f : 10f, drive);
+            pose.Step = reverse ? -5f : 7f;
+            if (!reverse)
+            {
+                SetFrontArm(ref pose, drive, 1f, -36f, -4f, -42f,
+                    45f, -37f, 27f, -42f);
+                SetGuardArm(ref pose, -3f, -43f, -16f, -46f);
+            }
+            else
+            {
+                pose.SwordHandX = 2f;
+                pose.SwordHandY = -44f;
+                pose.FrontElbowX = 17f;
+                pose.FrontElbowY = -47f;
+                pose.OffHandX = MathHelper.Lerp(-7f, 42f, drive);
+                pose.OffHandY = MathHelper.Lerp(-35f, -38f, drive);
+                pose.RearElbowX = MathHelper.Lerp(-18f, 21f, drive);
+                pose.RearElbowY = -43f;
+            }
+            return;
+        }
+        if (stage == 4)
+        {
+            pose.Crouch = 10f;
+            pose.Lean = 13f;
+            pose.Step = 12f;
+            pose.FrontFootX = 23f;
+            pose.RearFootX = -22f;
+            pose.CloakTail = -14f;
+            return;
+        }
+
+        pose.Crouch = MathHelper.Lerp(7f, 3f, drive);
+        pose.Lean = MathHelper.Lerp(8f, -10f, drive);
+        pose.Step = -8f;
+        pose.FrontKneeX = MathHelper.Lerp(10f, 25f, drive);
+        pose.FrontKneeY = MathHelper.Lerp(-10f, -31f, drive);
+        pose.FrontFootX = MathHelper.Lerp(13f, 51f, drive);
+        pose.FrontFootY = MathHelper.Lerp(-1f, -24f, drive);
+        pose.CloakTail = -11f;
+    }
+
+    private static void ApplyRiftTheatrePose(
+        ref Pose pose,
+        int stage,
+        float drive,
+        float contact,
+        float recovery)
+    {
+        switch (stage)
+        {
+            case 0: // diagonal punch
+                pose.Crouch = 5f;
+                pose.Lean = MathHelper.Lerp(-5f, 11f, drive);
+                pose.Step = 8f;
+                SetFrontArm(ref pose, drive, 2f, -31f, -4f, -39f,
+                    43f, -49f, 24f, -44f);
+                break;
+            case 1: // horizontal kick
+                pose.Crouch = 3f;
+                pose.Lean = MathHelper.Lerp(5f, -8f, drive);
+                pose.FrontKneeX = MathHelper.Lerp(11f, 27f, drive);
+                pose.FrontKneeY = MathHelper.Lerp(-11f, -28f, drive);
+                pose.FrontFootX = MathHelper.Lerp(14f, 55f, drive);
+                pose.FrontFootY = MathHelper.Lerp(-1f, -28f, drive);
+                break;
+            case 2: // rising elbow
+                pose.Crouch = MathHelper.Lerp(11f, 1f, drive);
+                pose.Lean = MathHelper.Lerp(-5f, 9f, drive);
+                pose.SwordHandX = MathHelper.Lerp(2f, 20f, drive);
+                pose.SwordHandY = MathHelper.Lerp(-28f, -57f, drive);
+                pose.FrontElbowX = MathHelper.Lerp(-2f, 31f, drive);
+                pose.FrontElbowY = MathHelper.Lerp(-34f, -53f, drive);
+                break;
+            case 3: // spinning kick, articulated rather than whole-body spin
+                pose.Crouch = 4f;
+                pose.Lean = MathHelper.Lerp(7f, -11f, drive);
+                pose.Step = -9f;
+                pose.FrontKneeX = MathHelper.Lerp(-2f, 28f, drive);
+                pose.FrontKneeY = MathHelper.Lerp(-15f, -36f, drive);
+                pose.FrontFootX = MathHelper.Lerp(-13f, 53f, drive);
+                pose.FrontFootY = MathHelper.Lerp(-8f, -39f, drive);
+                pose.OffHandX = -8f;
+                pose.OffHandY = -48f;
+                break;
+            default:
+                pose.Crouch = 8f + recovery * 3f;
+                pose.Lean = MathHelper.Lerp(-8f, 13f, drive);
+                pose.Step = MathHelper.Lerp(-8f, 10f, drive);
+                SetFrontArm(ref pose, drive, -5f, -31f, -9f, -40f,
+                    48f, -36f, 27f, -42f);
+                break;
+        }
+        pose.CloakTail = -9f - drive * 5f;
+    }
+
+    private static void ApplyHeavenReversalPose(
+        ref Pose pose,
+        float drive,
+        float contact,
+        float recovery)
+    {
+        pose.Crouch = MathHelper.Lerp(-2f, 2f, recovery);
+        pose.Lean = MathHelper.Lerp(7f, -9f, drive);
+        pose.Step = -6f;
+        pose.FrontKneeX = MathHelper.Lerp(12f, 25f, drive);
+        pose.FrontKneeY = MathHelper.Lerp(-31f, -38f, drive);
+        pose.FrontFootX = MathHelper.Lerp(5f, 35f, drive);
+        pose.FrontFootY = MathHelper.Lerp(-24f, 4f, drive);
+        pose.RearKneeX = -1f;
+        pose.RearKneeY = -31f;
+        pose.RearFootX = -18f;
+        pose.RearFootY = -20f;
+        pose.SwordHandX = 10f;
+        pose.SwordHandY = -48f;
+        pose.FrontElbowX = 23f;
+        pose.FrontElbowY = -46f;
+        SetGuardArm(ref pose, -3f, -45f, -17f, -46f);
+        pose.CloakTail = -13f;
+    }
+
+    private static void ApplyZeroDistancePose(
+        ref Pose pose,
+        int stage,
+        float drive,
+        float contact,
+        float recovery)
+    {
+        if (stage == 0)
+        {
+            pose.Crouch = 13f;
+            pose.Lean = 14f;
+            pose.Step = 13f;
+            pose.SwordHandX = 18f;
+            pose.SwordHandY = -31f;
+            pose.FrontElbowX = 25f;
+            pose.FrontElbowY = -37f;
+            pose.OffHandX = -5f;
+            pose.OffHandY = -33f;
+            pose.RearElbowX = -15f;
+            pose.RearElbowY = -39f;
+            pose.FrontFootX = 24f;
+            pose.RearFootX = -23f;
+            pose.CloakTail = -16f;
+            return;
+        }
+
+        pose.Crouch = MathHelper.Lerp(10f, 4f, drive) + recovery * 3f;
+        pose.Lean = MathHelper.Lerp(8f, 16f, drive) - recovery * 4f;
+        pose.Step = 12f;
+        SetFrontArm(ref pose, drive, 2f, -29f, 4f, -38f,
+            54f, -35f, 29f, -41f);
+        SetGuardArm(ref pose, -5f, -43f, -18f, -45f);
+        pose.FrontFootX = 25f;
+        pose.RearFootX = -23f;
+        pose.CloakTail = -14f;
+    }
+
+    private static void ApplyGoldenCataclysmPose(
+        ref Pose pose,
+        int stage,
+        float drive,
+        float contact,
+        float recovery)
+    {
+        if (stage <= 0)
+        {
+            pose.Crouch = 6f;
+            pose.Lean = -2f;
+            pose.Step = -5f;
+            pose.SwordHandX = 7f;
+            pose.SwordHandY = -45f;
+            pose.FrontElbowX = 19f;
+            pose.FrontElbowY = -48f;
+            SetGuardArm(ref pose, 4f, -34f, -10f, -40f);
+            return;
+        }
+
+        if (stage <= AbyssRingTuning.UltimateStrikeCount)
+        {
+            int pattern = (stage - 1) % 4;
+            float commitment = .82f + stage /
+                (float)AbyssRingTuning.UltimateStrikeCount * .18f;
+            switch (pattern)
+            {
+                case 0: // descending diagonal punch
+                    pose.Crouch = 5f;
+                    pose.Lean = MathHelper.Lerp(-6f, 12f, drive);
+                    pose.Step = 8f;
+                    SetFrontArm(ref pose, drive, 0f, -48f, -5f, -44f,
+                        46f, -29f, 25f, -38f);
+                    SetGuardArm(ref pose, -4f, -42f, -17f, -45f);
+                    break;
+                case 1: // crossing kick
+                    pose.Crouch = 3f;
+                    pose.Lean = MathHelper.Lerp(6f, -9f, drive);
+                    pose.FrontKneeX = MathHelper.Lerp(8f, 26f, drive);
+                    pose.FrontKneeY = MathHelper.Lerp(-10f, -31f, drive);
+                    pose.FrontFootX = MathHelper.Lerp(13f, 52f, drive);
+                    pose.FrontFootY = MathHelper.Lerp(-1f, -33f, drive);
+                    pose.SwordHandX = 13f;
+                    pose.SwordHandY = -48f;
+                    pose.FrontElbowX = 22f;
+                    pose.FrontElbowY = -47f;
+                    break;
+                case 2: // rising elbow
+                    pose.Crouch = MathHelper.Lerp(11f, 1f, drive);
+                    pose.Lean = MathHelper.Lerp(-5f, 10f, drive);
+                    pose.SwordHandX = MathHelper.Lerp(1f, 20f, drive);
+                    pose.SwordHandY = MathHelper.Lerp(-28f, -58f, drive);
+                    pose.FrontElbowX = MathHelper.Lerp(-3f, 32f, drive);
+                    pose.FrontElbowY = MathHelper.Lerp(-34f, -53f, drive);
+                    SetGuardArm(ref pose, -4f, -40f, -16f, -44f);
+                    break;
+                default: // compact cross
+                    pose.Crouch = 6f;
+                    pose.Lean = MathHelper.Lerp(-7f, 9f, drive);
+                    pose.Step = 7f;
+                    SetFrontArm(ref pose, drive, 2f, -42f, 5f, -47f,
+                        43f, -35f, 24f, -41f);
+                    pose.OffHandX = MathHelper.Lerp(-4f, 34f,
+                        Math.Clamp(drive + contact * .18f, 0f, 1f));
+                    pose.OffHandY = MathHelper.Lerp(-35f, -47f, drive);
+                    pose.RearElbowX = MathHelper.Lerp(-17f, 18f, drive);
+                    pose.RearElbowY = -47f;
+                    break;
+            }
+            pose.Lean *= commitment;
+            pose.CloakTail = MathHelper.Lerp(-8f, -15f, commitment);
+            return;
+        }
+
+        if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
+        {
+            pose.Crouch = MathHelper.Lerp(12f, 2f, drive) + recovery * 5f;
+            pose.Lean = MathHelper.Lerp(-10f, 13f, drive) - recovery * 4f;
+            pose.Step = MathHelper.Lerp(-10f, 12f, drive);
+            pose.SwordHandX = MathHelper.Lerp(-9f, 35f, drive);
+            pose.SwordHandY = MathHelper.Lerp(-31f, -8f, drive);
+            pose.FrontElbowX = MathHelper.Lerp(-5f, 25f, drive);
+            pose.FrontElbowY = MathHelper.Lerp(-42f, -27f, drive);
+            SetGuardArm(ref pose, -7f, -45f, -19f, -47f);
+            pose.FrontFootX = MathHelper.Lerp(11f, 24f, drive);
+            pose.RearFootX = MathHelper.Lerp(-15f, -25f, drive);
+            pose.CloakTail = -16f;
+            return;
+        }
+
+        pose.Crouch = MathHelper.Lerp(7f, 3f, recovery);
+        pose.Lean = MathHelper.Lerp(8f, 1f, recovery);
+        pose.Step = MathHelper.Lerp(7f, 2f, recovery);
+        pose.SwordHandX = MathHelper.Lerp(31f, 17f, recovery);
+        pose.SwordHandY = MathHelper.Lerp(-37f, -42f, recovery);
+        pose.FrontElbowX = MathHelper.Lerp(24f, 16f, recovery);
+        pose.FrontElbowY = -44f;
+        SetGuardArm(ref pose, -4f, -40f, -16f, -44f);
+    }
+
+    private static void SetFrontArm(
+        ref Pose pose,
+        float amount,
+        float handStartX,
+        float handStartY,
+        float elbowStartX,
+        float elbowStartY,
+        float handEndX,
+        float handEndY,
+        float elbowEndX,
+        float elbowEndY)
+    {
+        pose.SwordHandX = MathHelper.Lerp(handStartX, handEndX, amount);
+        pose.SwordHandY = MathHelper.Lerp(handStartY, handEndY, amount);
+        pose.FrontElbowX = MathHelper.Lerp(elbowStartX, elbowEndX, amount);
+        pose.FrontElbowY = MathHelper.Lerp(elbowStartY, elbowEndY, amount);
+    }
+
+    private static void SetGuardArm(
+        ref Pose pose,
+        float handX,
+        float handY,
+        float elbowX,
+        float elbowY)
+    {
+        pose.OffHandX = handX;
+        pose.OffHandY = handY;
+        pose.RearElbowX = elbowX;
+        pose.RearElbowY = elbowY;
+    }
+
+    private void DrawSovereignTransformation(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.AbyssRing)
+            return;
+
+        float x = pose.Lean;
+        float y = pose.Bob + pose.Crouch +
+            GetHeightOffset(player.Appearance.ApparentHeight);
+        Color obsidian = player.IsHitFlashing
+            ? new Color(72, 60, 42)
+            : new Color(16, 17, 22);
+        Color blackGold = new(77, 58, 25);
+        Color gold = player.Combat.IsSovereignThroneActive
+            ? new Color(255, 209, 73)
+            : new Color(220, 164, 48);
+
+        if (player.Combat.IsSovereignRiftEvading)
+        {
+            float trail = flip ? 18f : -18f;
+            DrawBox(anchor, x - 11f + trail, y - 47f,
+                22f, 37f, new Color(12, 10, 17, 105), flip);
+            DrawLine(anchor,
+                new Vector2(x - 6f + trail, y - 39f),
+                new Vector2(x + 9f + trail, y - 27f),
+                2f,
+                new Color(231, 178, 48, 125),
+                flip);
+        }
+
+        DrawBox(anchor, x - 12f, y - 48f, 24f, 25f, obsidian, flip);
+        DrawBox(anchor, x - 10f, y - 46f, 4f, 18f, blackGold, flip);
+        DrawBox(anchor, x + 3f, y - 43f, 3f, 15f, gold, flip);
+        DrawLine(anchor, new Vector2(x - 8f, y - 40f),
+            new Vector2(x + 8f, y - 32f), 2f, gold, flip);
+        DrawBox(anchor, x + 2f, y - 59f, 7f, 4f, obsidian, flip);
+        DrawBox(anchor, x + 5f, y - 58f, 3f, 2f, gold, flip);
+
+        Vector2 fist = new(x + pose.SwordHandX, y + pose.SwordHandY);
+        DrawBox(anchor, fist.X - 5f, fist.Y - 5f, 11f, 10f, obsidian, flip);
+        DrawBox(anchor, fist.X + 1f, fist.Y - 4f, 4f, 3f, gold, flip);
+        DrawRectangleOutlineLocal(anchor, fist.X - 7f, fist.Y - 7f,
+            15f, 14f, 2f, gold, flip);
+
+        if (player.Combat.IsSovereignThroneActive)
+        {
+            DrawRectangleOutlineLocal(anchor, x - 25f, y - 72f,
+                50f, 58f, 2f, new Color(208, 156, 45, 120), flip);
+            DrawRectangleOutlineLocal(anchor, x - 19f, y - 66f,
+                38f, 46f, 1f, new Color(24, 21, 19, 180), flip);
+        }
+    }
+
+    private void DrawSovereignAfterimages(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.AbyssRing ||
+            player.Combat.CurrentTechnique == null)
+            return;
+
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        int stage = player.Combat.TechniqueStageIndex;
+        bool moving = effect is
+                WeaponTechniqueEffect.SovereignOmnipresentStep or
+                WeaponTechniqueEffect.SovereignHeavenReversal or
+                WeaponTechniqueEffect.SovereignZeroDistanceStrike ||
+            effect == WeaponTechniqueEffect.SovereignParadoxImpact && stage >= 4 ||
+            effect == WeaponTechniqueEffect.SovereignInfiniteRiftTheatre &&
+                stage <= 4 ||
+            effect == WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                stage is >= 1 and <= 17;
+        if (!moving)
+            return;
+
+        Vector2 travel = player.Combat.SovereignTransitDirection;
+        if (travel.LengthSquared() < .01f)
+            travel = new Vector2(flip ? -1f : 1f, 0f);
+        else
+            travel.Normalize();
+        float speed = effect == WeaponTechniqueEffect.SovereignGoldenCataclysm
+            ? MathHelper.Lerp(.72f, 1.18f,
+                Math.Clamp(stage / 16f, 0f, 1f))
+            : effect == WeaponTechniqueEffect.SovereignInfiniteRiftTheatre
+                ? 1f
+                : .78f;
+        DrawSovereignEcho(anchor - travel * (16f * speed), flip, pose, .34f);
+        if (effect is WeaponTechniqueEffect.SovereignInfiniteRiftTheatre or
+            WeaponTechniqueEffect.SovereignHeavenReversal ||
+            effect == WeaponTechniqueEffect.SovereignParadoxImpact && stage >= 4 ||
+            effect == WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                stage >= 9)
+        {
+            DrawSovereignEcho(
+                anchor - travel * (31f * speed), flip, pose, .16f);
+        }
+    }
+
+    private void DrawSovereignEcho(
+        Vector2 anchor,
+        bool flip,
+        Pose pose,
+        float alpha)
+    {
+        Color body = ScaleAlpha(new Color(13, 12, 18, 185), alpha);
+        Color seam = ScaleAlpha(new Color(224, 169, 49, 180), alpha);
+        float y = pose.Bob + pose.Crouch;
+        DrawBox(anchor, pose.Lean - 11f, y - 48f, 22f, 27f, body, flip);
+        DrawBox(anchor, pose.Lean - 7f, y - 65f, 15f, 16f, body, flip);
+        DrawLine(anchor, new Vector2(pose.Lean + 6f, y - 22f),
+            new Vector2(pose.FrontKneeX, pose.FrontKneeY), 6f, body, flip);
+        DrawLine(anchor, new Vector2(pose.FrontKneeX, pose.FrontKneeY),
+            new Vector2(pose.FrontFootX, pose.FrontFootY), 5f, body, flip);
+        DrawLine(anchor, new Vector2(pose.Lean + 10f, y - 44f),
+            new Vector2(pose.FrontElbowX, pose.FrontElbowY), 5f, body, flip);
+        DrawLine(anchor, new Vector2(pose.FrontElbowX, pose.FrontElbowY),
+            new Vector2(pose.SwordHandX, pose.SwordHandY), 3f, seam, flip);
+    }
+
+    private void DrawSovereignMartialEffects(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.AbyssRing ||
+            player.Combat.CurrentTechnique == null ||
+            player.Combat.CurrentAttack == null)
+            return;
+
+        float perfectRift = player.Combat.SovereignPerfectRiftVisualRatio;
+        if (perfectRift > 0f)
+        {
+            float counterProgress = 1f - perfectRift;
+            float counterFlash = 1f - Math.Clamp(
+                MathF.Abs(counterProgress - .58f) * 4.2f,
+                0f,
+                1f);
+            if (counterFlash > .02f)
+            {
+                Vector2 fist = new(pose.SwordHandX, pose.SwordHandY);
+                Color counterGold = ScaleAlpha(
+                    new Color(255, 217, 105),
+                    counterFlash * .88f);
+                DrawBox(anchor, fist.X - 3f, fist.Y - 3f,
+                    7f, 7f, counterGold, flip);
+                DrawLine(anchor, fist, fist + new Vector2(18f, 0f),
+                    2f, counterGold, flip);
+            }
+        }
+
+        AttackDefinition attack = player.Combat.CurrentAttack;
+        float activeElapsed = player.Combat.StateElapsed - attack.StartupTime;
+        if (activeElapsed < -.025f ||
+            activeElapsed > attack.ActiveTime + .055f ||
+            attack.DamageMultiplier <= 0f)
+            return;
+
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        int stage = player.Combat.TechniqueStageIndex;
+        bool legContact =
+            effect == WeaponTechniqueEffect.SovereignMartialArts &&
+                stage is 3 or 5 ||
+            effect == WeaponTechniqueEffect.SovereignParadoxImpact && stage == 5 ||
+            effect == WeaponTechniqueEffect.SovereignInfiniteRiftTheatre &&
+                stage is 1 or 3 ||
+            effect == WeaponTechniqueEffect.SovereignHeavenReversal;
+        Vector2 contact = legContact
+            ? new Vector2(pose.FrontFootX, pose.FrontFootY)
+            : new Vector2(pose.SwordHandX, pose.SwordHandY);
+        Vector2 strikeDirection = legContact &&
+            effect == WeaponTechniqueEffect.SovereignHeavenReversal
+                ? Vector2.UnitY
+                : Vector2.UnitX;
+        float fade = 1f - Math.Clamp(
+            MathF.Max(0f, activeElapsed) /
+                Math.Max(.01f, attack.ActiveTime + .055f),
+            0f,
+            1f);
+        Color gold = ScaleAlpha(new Color(250, 202, 83), .35f + fade * .55f);
+        DrawBox(anchor, contact.X - 3f, contact.Y - 3f, 6f, 6f, gold, flip);
+        DrawLine(anchor, contact,
+            contact + strikeDirection * (13f + (stage == 7 ? 8f : 0f)),
+            stage == 7 ? 3f : 2f, gold, flip);
+        DrawLine(anchor, contact,
+            contact + strikeDirection * 9f + new Vector2(0f, -6f),
+            1f, gold, flip);
+        DrawLine(anchor, contact,
+            contact + strikeDirection * 8f + new Vector2(0f, 6f),
+            1f, gold, flip);
+
+        if (effect == WeaponTechniqueEffect.SovereignMartialArts && stage == 6)
+        {
+            Vector2 second = new(pose.OffHandX, pose.OffHandY);
+            DrawBox(anchor, second.X - 2f, second.Y - 2f, 5f, 5f, gold, flip);
+            DrawLine(anchor, second, second + new Vector2(13f, -3f),
+                2f, gold, flip);
         }
     }
 
@@ -1256,6 +2457,13 @@ public sealed class PlayerSpriteRenderer
         float bodyX,
         float bodyY)
     {
+        if (player.WeaponFamily == WeaponFamily.AbyssRing &&
+            pose.UseMartialLimbs)
+        {
+            DrawSovereignLegs(player, anchor, flip, pose, bodyX, bodyY);
+            return;
+        }
+
         if (player.ArmorClass == ArmorClass.Light)
         {
             DrawLightLegs(player, anchor, flip, pose, bodyX, bodyY);
@@ -1286,6 +2494,44 @@ public sealed class PlayerSpriteRenderer
         DrawBox(anchor, bodyX + 1f + rightStep * 0.65f, rightTop + 17f, 11f, 7f, leather, flip);
         DrawBox(anchor, bodyX - 9f + leftStep * 0.45f, leftTop + 11f, 2f, 7f, Tint(SteelLight, player), flip);
         DrawBox(anchor, bodyX + 4f + rightStep * 0.45f, rightTop + 11f, 2f, 7f, Tint(SteelLight, player), flip);
+    }
+
+    private void DrawSovereignLegs(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose,
+        float bodyX,
+        float bodyY)
+    {
+        Color obsidian = Tint(new Color(17, 18, 23), player);
+        Color gold = Tint(new Color(174, 126, 34), player);
+        Vector2 frontHip = new(bodyX + 6f, bodyY - 22f);
+        Vector2 rearHip = new(bodyX - 6f, bodyY - 22f);
+        Vector2 frontKnee = new(pose.FrontKneeX, pose.FrontKneeY);
+        Vector2 frontFoot = new(pose.FrontFootX, pose.FrontFootY);
+        Vector2 rearKnee = new(pose.RearKneeX, pose.RearKneeY);
+        Vector2 rearFoot = new(pose.RearFootX, pose.RearFootY);
+
+        DrawLine(anchor, rearHip, rearKnee, 8f, Outline, flip);
+        DrawLine(anchor, rearKnee, rearFoot, 7f, Outline, flip);
+        DrawLine(anchor, rearHip, rearKnee, 5f, obsidian, flip);
+        DrawLine(anchor, rearKnee, rearFoot, 4f, obsidian, flip);
+        DrawLine(anchor, frontHip, frontKnee, 9f, Outline, flip);
+        DrawLine(anchor, frontKnee, frontFoot, 8f, Outline, flip);
+        DrawLine(anchor, frontHip, frontKnee, 6f, obsidian, flip);
+        DrawLine(anchor, frontKnee, frontFoot, 5f, obsidian, flip);
+        DrawLine(anchor, frontKnee, frontFoot, 1f, gold, flip);
+        Vector2 footDirection = Vector2.Normalize(
+            frontFoot - frontKnee + new Vector2(.01f, 0f));
+        DrawLine(anchor, frontFoot - footDirection * 3f,
+            frontFoot + footDirection * 8f, 6f, Outline, flip);
+        DrawLine(anchor, frontFoot - footDirection * 2f,
+            frontFoot + footDirection * 7f, 3f, obsidian, flip);
+        Vector2 rearFootDirection = Vector2.Normalize(
+            rearFoot - rearKnee + new Vector2(.01f, 0f));
+        DrawLine(anchor, rearFoot - rearFootDirection * 2f,
+            rearFoot + rearFootDirection * 7f, 5f, obsidian, flip);
     }
 
     private void DrawLightLegs(
@@ -1349,6 +2595,16 @@ public sealed class PlayerSpriteRenderer
     {
         float shoulderWidth = 10f * GetTorsoScale(player.Appearance);
         Vector2 shoulder = new(bodyX - shoulderWidth, bodyY - 44f);
+
+        if (player.WeaponFamily == WeaponFamily.AbyssRing &&
+            pose.UseMartialLimbs)
+        {
+            DrawSovereignArm(player, anchor, flip, shoulder,
+                new Vector2(pose.RearElbowX, pose.RearElbowY),
+                new Vector2(pose.OffHandX, pose.OffHandY),
+                front: false);
+            return;
+        }
 
         if (player.WeaponFamily == WeaponFamily.DualDaggers)
         {
@@ -1734,6 +2990,15 @@ public sealed class PlayerSpriteRenderer
         float shoulderWidth = 12f * GetTorsoScale(player.Appearance);
         Vector2 shoulder = new(bodyX + shoulderWidth, bodyY - 44f);
         Vector2 hand = new(pose.SwordHandX, pose.SwordHandY);
+        if (player.WeaponFamily == WeaponFamily.AbyssRing &&
+            pose.UseMartialLimbs)
+        {
+            DrawSovereignArm(player, anchor, flip, shoulder,
+                new Vector2(pose.FrontElbowX, pose.FrontElbowY),
+                hand,
+                front: true);
+            return;
+        }
         DrawLine(anchor, shoulder, hand, 8f, Outline, flip);
         DrawLine(anchor, shoulder, hand, 5f, Tint(Leather, player), flip);
         DrawLine(
@@ -1751,6 +3016,26 @@ public sealed class PlayerSpriteRenderer
             5f,
             Tint(GetSkinColor(player.Appearance.SkinTone), player),
             flip);
+    }
+
+    private void DrawSovereignArm(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Vector2 shoulder,
+        Vector2 elbow,
+        Vector2 hand,
+        bool front)
+    {
+        Color sleeve = Tint(new Color(18, 19, 24), player);
+        Color bracer = Tint(new Color(87, 65, 27), player);
+        Color skin = Tint(GetSkinColor(player.Appearance.SkinTone), player);
+        DrawLine(anchor, shoulder, elbow, front ? 9f : 8f, Outline, flip);
+        DrawLine(anchor, elbow, hand, front ? 8f : 7f, Outline, flip);
+        DrawLine(anchor, shoulder, elbow, front ? 6f : 5f, sleeve, flip);
+        DrawLine(anchor, elbow, hand, front ? 5f : 4f, bracer, flip);
+        DrawBox(anchor, hand.X - 3f, hand.Y - 3f, 7f, 7f, Outline, flip);
+        DrawBox(anchor, hand.X - 2f, hand.Y - 2f, 5f, 5f, skin, flip);
     }
 
     private void DrawWeapon(
@@ -1786,8 +3071,12 @@ public sealed class PlayerSpriteRenderer
                 WeaponTechniqueEffect.None;
             Vector2 shotDirection = rangerEffect is
                 WeaponTechniqueEffect.RangerSkyfallMarker or
-                WeaponTechniqueEffect.RangerFallingStar
+                WeaponTechniqueEffect.RangerFallingStar or
+                WeaponTechniqueEffect.RangerArrowStorm
                     ? Vector2.Normalize(new Vector2(.45f, -.89f))
+                    : rangerEffect is WeaponTechniqueEffect.RangerSkyfallVolley or
+                        WeaponTechniqueEffect.RangerSkyfallShot
+                        ? Vector2.Normalize(new Vector2(1f, 1f))
                     : Vector2.UnitX;
             if (player.Combat.RangerDrawState == RangerDrawState.Perfect &&
                 player.Combat.State == CombatState.ChargingHeavy)
@@ -1809,22 +3098,42 @@ public sealed class PlayerSpriteRenderer
             DrawLine(anchor, bowTop, bowUpper, 2f, wood, flip);
             DrawLine(anchor, bowUpper, bowLower, 2f, wood, flip);
             DrawLine(anchor, bowLower, bowBottom, 2f, wood, flip);
-            bool isHeavensFury = player.Combat.CurrentTechnique?.Effect ==
-                WeaponTechniqueEffect.RangerHeavensFury;
+            bool isHeavensFury = player.Combat.CurrentTechnique?.Effect is
+                WeaponTechniqueEffect.RangerHeavensFury or
+                WeaponTechniqueEffect.RangerPhantomHunt;
+            bool phantomExecution = player.Combat.CurrentTechnique?.Effect ==
+                    WeaponTechniqueEffect.RangerPhantomHunt &&
+                player.Combat.TechniqueStageIndex ==
+                    RangerTuning.PhantomHuntArrowCount + 1;
             float ultimateFormation = isHeavensFury
-                ? player.Combat.HeavyChargeProgress
+                ? player.Combat.CurrentTechnique?.Effect ==
+                        WeaponTechniqueEffect.RangerPhantomHunt
+                    ? player.Combat.State == CombatState.ChargingHeavy
+                        ? player.Combat.RangerUltimateCinematicRatio
+                        : phantomExecution
+                            ? Math.Clamp(
+                                player.Combat.StateElapsed /
+                                    MathF.Max(.01f,
+                                        player.Combat.CurrentAttack?.StartupTime ?? .01f),
+                                0f,
+                                1f)
+                            : .38f
+                    : player.Combat.HeavyChargeProgress
                 : 0f;
             float drawAmount = player.Combat.State == CombatState.ChargingHeavy
                 ? isHeavensFury
                     ? MathHelper.Lerp(.38f, .78f, ultimateFormation)
                     : player.Combat.RangerChargeRatio
+                : phantomExecution
+                    ? MathHelper.Lerp(.58f, 1f, ultimateFormation)
                 : player.Combat.IsAttackWindingUp ? .48f : .12f;
             Vector2 stringHand = hand - shotDirection * (7f + drawAmount * 13f);
             DrawLine(anchor, bowTop, stringHand, 1f, new Color(202, 194, 164), flip);
             DrawLine(anchor, stringHand, bowBottom, 1f, new Color(202, 194, 164), flip);
             bool isHunterDraw = player.Combat.State == CombatState.ChargingHeavy &&
-                player.Combat.CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.RangerHuntersDraw;
+                player.Combat.CurrentTechnique?.Effect is
+                    WeaponTechniqueEffect.RangerHuntersDraw or
+                    WeaponTechniqueEffect.RangerPiercingDraw;
             if (isHunterDraw && player.Combat.RangerChargeRatio < .22f)
             {
                 float nockProgress = player.Combat.RangerChargeRatio / .22f;
@@ -1843,11 +3152,18 @@ public sealed class PlayerSpriteRenderer
             }
             if (drawAmount > .18f)
             {
+                bool phantomHunt = player.Combat.CurrentTechnique?.Effect ==
+                    WeaponTechniqueEffect.RangerPhantomHunt;
                 Color arrowColor = isHeavensFury
-                    ? Color.Lerp(
-                        new Color(151, 127, 85),
-                        new Color(226, 205, 135),
-                        ultimateFormation)
+                    ? phantomHunt
+                        ? Color.Lerp(
+                            new Color(72, 166, 192),
+                            new Color(177, 245, 255),
+                            ultimateFormation)
+                        : Color.Lerp(
+                            new Color(151, 127, 85),
+                            new Color(226, 205, 135),
+                            ultimateFormation)
                     : drawAmount >= .98f
                     ? new Color(245, 218, 118)
                     : new Color(166, 131, 78);
@@ -1958,7 +3274,7 @@ public sealed class PlayerSpriteRenderer
             return;
         }
 
-        if (player.WeaponFamily == WeaponFamily.GreatSword)
+        if (player.WeaponFamily == WeaponFamily.SpikedMace)
         {
             DrawSpikedMace(player, anchor, flip, hand, bladeEnd, direction, perpendicular);
             return;
@@ -2646,6 +3962,116 @@ public sealed class PlayerSpriteRenderer
         }
     }
 
+    private void DrawGreatswordTechniqueEffects(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.GreatSword)
+            return;
+
+        Vector2 hand = new(pose.SwordHandX, pose.SwordHandY);
+        Vector2 direction = new(
+            MathF.Cos(pose.SwordAngle),
+            MathF.Sin(pose.SwordAngle));
+        Vector2 bladeEnd = hand + direction * pose.SwordLength;
+
+        if (player.Combat.IsFinalVerdictReady)
+        {
+            float pulse = .35f +
+                (MathF.Sin(player.Combat.StateElapsed * 8f) + 1f) * .16f;
+            Color readiness = ScaleAlpha(new Color(214, 190, 126), pulse);
+            DrawLine(
+                anchor,
+                bladeEnd - direction * 9f,
+                bladeEnd,
+                2f,
+                readiness,
+                flip);
+        }
+
+        if (player.Combat.GreatswordLandingPulse > 0f)
+        {
+            float fade = Math.Clamp(
+                player.Combat.GreatswordLandingPulse / .32f,
+                0f,
+                1f);
+            Color dust = ScaleAlpha(new Color(135, 118, 91), fade);
+            DrawLine(anchor, new Vector2(-7f, -2f),
+                new Vector2(25f, -3f), 3f, dust, flip);
+            DrawBox(anchor, 8f, -9f, 5f, 4f, dust, flip);
+            DrawBox(anchor, 21f, -6f, 4f, 3f, dust, flip);
+        }
+
+        WeaponTechniqueEffect effect =
+            player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect is WeaponTechniqueEffect.GreatswordCrushingBreaker or
+                WeaponTechniqueEffect.GreatswordTitanReckoning or
+                WeaponTechniqueEffect.GreatswordKingsRupture or
+                WeaponTechniqueEffect.GreatswordFinalVerdict &&
+            player.Combat.IsAttackActive)
+        {
+            Color spark = new(211, 178, 103, 190);
+            DrawLine(anchor, bladeEnd - new Vector2(8f, 0f),
+                bladeEnd + new Vector2(7f, 0f), 2f, spark, flip);
+        }
+
+        if (player.Combat.IsGreatswordCharging)
+        {
+            float intensity = .25f +
+                player.Combat.GreatswordChargeRatio * .65f;
+            Color force = ScaleAlpha(new Color(220, 182, 91), intensity);
+            DrawLine(anchor, hand, bladeEnd, 2f, force, flip);
+            DrawBox(anchor, -12f, -5f, 24f, 3f, force, flip);
+            if (player.Combat.GreatswordChargeLevel >= 2 ||
+                player.Combat.GreatswordChargeRatio >= .48f)
+            {
+                DrawLine(anchor, new Vector2(-18f, -9f),
+                    new Vector2(17f, -11f), 2f, force, flip);
+            }
+        }
+
+        if (effect == WeaponTechniqueEffect.GreatswordKingsRupture &&
+            player.Combat.TechniqueStageIndex == 2 &&
+            player.Combat.IsAttackActive)
+        {
+            Color fracture = new(154, 126, 78, 175);
+            DrawLine(anchor, new Vector2(8f, -2f),
+                new Vector2(72f, -3f), 4f, fracture, flip);
+            DrawLine(anchor, new Vector2(28f, -3f),
+                new Vector2(38f, -13f), 2f, fracture, flip);
+            DrawLine(anchor, new Vector2(51f, -3f),
+                new Vector2(63f, -10f), 2f, fracture, flip);
+        }
+
+        if (effect == WeaponTechniqueEffect.GreatswordFinalVerdict &&
+            player.Combat.TechniqueStageIndex == 3 &&
+            player.Combat.IsAttackActive)
+        {
+            Color spectral = new(236, 205, 120, 150);
+            Vector2 spectralStart = hand - new Vector2(7f, 10f);
+            Vector2 spectralEnd = spectralStart + direction * 82f;
+            DrawLine(anchor, spectralStart, spectralEnd, 12f, spectral, flip);
+            DrawLine(anchor, spectralStart, spectralEnd, 4f,
+                new Color(255, 239, 184, 205), flip);
+        }
+
+        if (effect == WeaponTechniqueEffect.GreatswordFinalVerdict &&
+            player.Combat.TechniqueStageIndex == 4 &&
+            player.Combat.IsAttackActive)
+        {
+            Color impact = new(196, 165, 91, 170);
+            DrawLine(anchor, new Vector2(-34f, -2f),
+                new Vector2(38f, -2f), 5f, impact, flip);
+            DrawLine(anchor, new Vector2(-18f, -3f),
+                new Vector2(-28f, -17f), 3f, impact, flip);
+            DrawLine(anchor, new Vector2(17f, -3f),
+                new Vector2(31f, -14f), 3f, impact, flip);
+        }
+    }
+
     private void DrawThrustTrail(
         PlayerCharacter player,
         Vector2 anchor,
@@ -2772,10 +4198,20 @@ public sealed class PlayerSpriteRenderer
         out int segments,
         out float weight)
     {
-        if (family == WeaponFamily.GreatSword)
+        if (family is WeaponFamily.GreatSword or WeaponFamily.SpikedMace)
         {
-            startAngle = -2.05f;
-            endAngle = kind == AttackKind.LightTwo ? -1.05f : 1.02f;
+            startAngle = kind switch
+            {
+                AttackKind.LightTwo => .78f,
+                AttackKind.LightThree => .72f,
+                _ => -2.05f
+            };
+            endAngle = kind switch
+            {
+                AttackKind.LightTwo => -1.92f,
+                AttackKind.LightThree => -1.55f,
+                _ => 1.02f
+            };
             radius = kind == AttackKind.Heavy ? 66f : 58f;
             duration = kind == AttackKind.Heavy ? .30f : .22f;
             trailSpan = .86f;
@@ -2986,6 +4422,31 @@ public sealed class PlayerSpriteRenderer
         DrawLine(anchor, new Vector2(x, y + 5f), new Vector2(x - 5f, y + 14f), 2f, spark, flip);
     }
 
+    private void DrawGreatswordGuardImpact(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        Vector2 hand = new(pose.SwordHandX, pose.SwordHandY);
+        Vector2 direction = new(
+            MathF.Cos(pose.SwordAngle),
+            MathF.Sin(pose.SwordAngle));
+        Vector2 impact = hand + direction * 29f;
+        Color core = player.Combat.IsPerfectGuardFeedbackActive
+            ? new Color(245, 228, 177)
+            : new Color(190, 196, 193);
+        Color spark = new(218, 164, 78);
+        DrawBox(anchor, impact.X - 3f, impact.Y - 3f, 7f, 7f,
+            core, flip);
+        DrawLine(anchor, impact, impact + new Vector2(12f, -10f),
+            2f, spark, flip);
+        DrawLine(anchor, impact, impact + new Vector2(14f, 3f),
+            2f, core, flip);
+        DrawLine(anchor, impact, impact + new Vector2(5f, 13f),
+            2f, spark, flip);
+    }
+
     private void DrawCollapsed(PlayerCharacter player, Vector2 anchor, bool flip)
     {
         float settle = _animation.Frame >= 3 ? 0f : -2f;
@@ -3098,6 +4559,24 @@ public sealed class PlayerSpriteRenderer
             Math.Max(1, (int)MathF.Round(width)),
             Math.Max(1, (int)MathF.Round(height)));
         _spriteBatch.Draw(_pixel, destination, color);
+    }
+
+    private void DrawRectangleOutlineLocal(
+        Vector2 anchor,
+        float x,
+        float y,
+        float width,
+        float height,
+        float thickness,
+        Color color,
+        bool flip)
+    {
+        DrawBox(anchor, x, y, width, thickness, color, flip);
+        DrawBox(anchor, x, y + height - thickness,
+            width, thickness, color, flip);
+        DrawBox(anchor, x, y, thickness, height, color, flip);
+        DrawBox(anchor, x + width - thickness, y,
+            thickness, height, color, flip);
     }
 
     private void DrawLine(
@@ -3280,5 +4759,20 @@ public sealed class PlayerSpriteRenderer
         public float SwordLength;
         public float ShieldX;
         public float ShieldY;
+        public bool UseMartialLimbs;
+        public float OffHandX;
+        public float OffHandY;
+        public float FrontElbowX;
+        public float FrontElbowY;
+        public float RearElbowX;
+        public float RearElbowY;
+        public float FrontKneeX;
+        public float FrontKneeY;
+        public float FrontFootX;
+        public float FrontFootY;
+        public float RearKneeX;
+        public float RearKneeY;
+        public float RearFootX;
+        public float RearFootY;
     }
 }

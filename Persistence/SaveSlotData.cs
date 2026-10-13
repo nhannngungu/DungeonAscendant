@@ -117,7 +117,10 @@ public sealed class SaveSlotData
         if (!Enum.IsDefined(LastDiceChoice))
             LastDiceChoice = DungeonAscendant.World.LastDiceChoice.Xiu;
         LastDiceRevealProgress = Math.Clamp(LastDiceRevealProgress, 0f, 1f);
-        LastDiceRewardWeaponIndex = Math.Clamp(LastDiceRewardWeaponIndex, -1, 6);
+        LastDiceRewardWeaponIndex = Math.Clamp(
+            LastDiceRewardWeaponIndex,
+            -1,
+            EquipmentCatalog.RewardWeaponSampleCount - 1);
         if (!LastDiceRoundCommitted)
         {
             LastDiceRoundResolved = false;
@@ -176,12 +179,14 @@ public sealed class SavedEquipmentItemData
     {
         return new SavedEquipmentItemData
         {
-            DefinitionId = item.Definition.Id,
+            DefinitionId = item.WeaponId.Length > 0
+                ? item.WeaponId
+                : item.Definition.Id,
             Name = item.Definition.Name,
             Slot = item.Slot,
             Rarity = item.Rarity,
             Tier = item.Definition.Tier,
-            WeaponFamily = item.WeaponDefinition?.Family ?? WeaponFamily.LongSword,
+            WeaponFamily = item.WeaponType ?? WeaponFamily.LongSword,
             DamageBonus = item.WeaponDefinition?.DamageBonus ?? 0,
             ArmorClass = item.ArmorDefinition?.Class ?? ArmorClass.Medium,
             HealthBonus = item.ArmorDefinition?.MaxHealthBonus ?? 0,

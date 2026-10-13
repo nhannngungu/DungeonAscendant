@@ -54,6 +54,7 @@ public sealed class Projectile
     public Vector2 TelegraphPosition { get; }
     public bool HasTelegraphPosition { get; }
     public bool IsEmberArrow { get; }
+    public object LockedTarget { get; }
     public bool IsSpellbladeProjectile => TechniqueEffect is
         WeaponTechniqueEffect.SpellbladeRuneBrand or
         WeaponTechniqueEffect.SpellbladeRunicSpear;
@@ -109,7 +110,8 @@ public sealed class Projectile
         float placementDistance = 0f,
         float cursePressure = 0f,
         Vector2? telegraphPosition = null,
-        bool isEmberArrow = false)
+        bool isEmberArrow = false,
+        object lockedTarget = null)
     {
         Type = type;
         SourcePosition = position;
@@ -150,5 +152,6 @@ public sealed class Projectile
         TelegraphPosition = telegraphPosition ?? Vector2.Zero;
         HasTelegraphPosition = telegraphPosition.HasValue;
         IsEmberArrow = isEmberArrow;
+        LockedTarget = lockedTarget;
     }
 }

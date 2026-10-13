@@ -7,7 +7,6 @@ public static class WeaponFamilyExtensions
 #pragma warning disable CS0618
         return family switch
         {
-            WeaponFamily.GreatSword => WeaponFamily.SpikedMace,
             WeaponFamily.BattleAxe => WeaponFamily.WarAxe,
             WeaponFamily.Spear => WeaponFamily.HunterBow,
             WeaponFamily.DualDaggers => WeaponFamily.DualSwords,
@@ -27,6 +26,8 @@ public static class WeaponFamilyExtensions
             WeaponFamily.ArcaneWarStaff => "Arcane War Staff",
             WeaponFamily.SpikedMace => "Spiked Mace",
             WeaponFamily.ChainFlail => "Chain Flail",
+            WeaponFamily.GreatSword => "Greatsword",
+            WeaponFamily.AbyssRing => "Abyss Ring",
             _ => "Long Sword + Shield"
         };
     }

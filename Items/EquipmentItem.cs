@@ -6,6 +6,8 @@ public sealed class EquipmentItem : Item
 {
     public EquipmentDefinition Definition { get; }
     public WeaponDefinition WeaponDefinition => Definition as WeaponDefinition;
+    public string WeaponId => WeaponDefinition?.WeaponId ?? string.Empty;
+    public WeaponFamily? WeaponType => WeaponDefinition?.WeaponType;
     public ArmorDefinition ArmorDefinition => Definition as ArmorDefinition;
     public ArmorGrade ArmorGrade { get; }
     public string ArmorGradeLabel => ArmorGradeRules.ToDisplayName(ArmorGrade);

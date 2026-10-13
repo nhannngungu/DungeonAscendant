@@ -21,6 +21,13 @@ public static class InventorySessionValidation
         Require(session.ActiveInventoryTab == InventoryTab.Weapons,
             "default Weapons tab");
         Require(AllItemsMatchTab(session), "Weapons filtering");
+        Require(session.ActiveInventoryItems.Count ==
+            EquipmentCatalog.WeaponSampleCount,
+            "Weapons tab does not expose every implemented weapon");
+        Require(HasUniqueWeaponIdentities(session),
+            "Weapons tab contains missing or duplicate test identities");
+        Require(HasCanonicalWeaponOrderAndRarity(session),
+            "Weapons tab order or orange development rarity is incorrect");
 
         Vector2 lockedPosition = session.Player.Position;
         Press(session, Keys.D);
@@ -121,6 +128,44 @@ public static class InventorySessionValidation
             ? session.SelectedInventoryIndex == 0
             : session.SelectedInventoryIndex >= 0 &&
                 session.SelectedInventoryIndex < session.ActiveInventoryItems.Count;
+    }
+
+    private static bool HasUniqueWeaponIdentities(GameSession session)
+    {
+        var ids = new System.Collections.Generic.HashSet<string>(
+            StringComparer.Ordinal);
+        foreach (EquipmentItem item in session.ActiveInventoryItems)
+        {
+            if (item.WeaponDefinition == null || !ids.Add(item.WeaponId))
+                return false;
+        }
+        return ids.Count == EquipmentCatalog.WeaponSampleCount;
+    }
+
+    private static bool HasCanonicalWeaponOrderAndRarity(GameSession session)
+    {
+        if (session.ActiveInventoryItems.Count !=
+            EquipmentCatalog.AllImplementedWeapons.Count)
+        {
+            return false;
+        }
+
+        for (int index = 0;
+             index < EquipmentCatalog.AllImplementedWeapons.Count;
+             index++)
+        {
+            EquipmentItem item = session.ActiveInventoryItems[index];
+            if (item.WeaponId !=
+                    EquipmentCatalog.AllImplementedWeapons[index].WeaponId ||
+                item.Rarity != (item.WeaponType == WeaponFamily.AbyssRing
+                    ? ItemRarity.SecretMythic
+                    : EquipmentCatalog.DevelopmentWeaponRarity))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static void Require(bool condition, string scenario)

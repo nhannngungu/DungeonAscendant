@@ -29,6 +29,31 @@ public static class WeaponMoveSets
         },
         Melee(AttackKind.Heavy, 2.75f, 95f, 34f, .58f, .22f, .68f, 124f, 118f, 90f, AttackHitboxShape.WideArc, 8f));
 
+    public static readonly WeaponMoveSet IronVanguard = new(
+        "iron-vanguard-greatsword",
+        new[]
+        {
+            Melee(AttackKind.LightOne, 1.10f, 34f, 8f, .16f, .14f, .26f, 18f, 102f, 68f, AttackHitboxShape.WideArc, 92f),
+            Melee(AttackKind.LightTwo, 1.20f, 46f, 8f, .17f, .14f, .28f, 22f, 104f, 72f, AttackHitboxShape.WideArc, 74f),
+            Melee(AttackKind.LightThree, 1.35f, 72f, 8f, .25f, .15f, .38f, 30f, 101f, 78f, AttackHitboxShape.WideArc, 28f),
+            Melee(AttackKind.LightFour, 1.80f, 108f, 10f, .38f, .17f, .55f, 48f, 106f, 90f, AttackHitboxShape.Chop, 14f)
+        },
+        Melee(AttackKind.Heavy, 1.80f, 108f, 10f, .38f, .17f, .55f,
+            48f, 106f, 90f, AttackHitboxShape.Chop, 14f));
+
+    public static readonly WeaponMoveSet AbyssRing = new(
+        "abyss-ring",
+        new[]
+        {
+            Melee(AttackKind.LightOne, .70f, 12f, 4f, .06f, .07f, .12f, 8f, 62f, 38f, AttackHitboxShape.ShortArc, 54f),
+            Melee(AttackKind.LightTwo, .75f, 14f, 4f, .07f, .07f, .12f, 9f, 64f, 40f, AttackHitboxShape.ShortArc, 48f),
+            Melee(AttackKind.LightThree, .85f, 17f, 5f, .08f, .08f, .13f, 11f, 72f, 44f, AttackHitboxShape.Thrust, 58f),
+            Melee(AttackKind.LightFour, .90f, 20f, 5f, .09f, .09f, .15f, 13f, 76f, 50f, AttackHitboxShape.WideArc, 62f),
+            Melee(AttackKind.LightFive, 1f, 24f, 6f, .10f, .09f, .16f, 16f, 74f, 46f, AttackHitboxShape.Thrust, 60f)
+        },
+        Melee(AttackKind.Heavy, 1.60f, 52f, 18f, .18f, .12f, .34f,
+            42f, 92f, 68f, AttackHitboxShape.Circular, 40f));
+
     public static readonly WeaponMoveSet BattleAxe = new(
         "battle-axe",
         new[]

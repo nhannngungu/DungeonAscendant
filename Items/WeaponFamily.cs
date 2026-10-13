@@ -6,8 +6,6 @@ public enum WeaponFamily
     // read and are normalized through WeaponFamilyExtensions.ToOfficialFamily.
     LongSword = 0,
     SpikedMace = 1,
-    // Legacy serialized name retained as an alias.
-    GreatSword = SpikedMace,
     WarAxe = 2,
     // Legacy serialized name retained as an alias.
     BattleAxe = WarAxe,
@@ -22,5 +20,8 @@ public enum WeaponFamily
     ArcaneWarStaff = 6,
     // Legacy source/save name.
     ArcaneStaff = ArcaneWarStaff,
-    ChainFlail = 7
+    ChainFlail = 7,
+    // Added after the original save values; never reuse an existing value.
+    GreatSword = 8,
+    AbyssRing = 9
 }

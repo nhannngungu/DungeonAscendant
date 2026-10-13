@@ -90,14 +90,12 @@ public sealed class CharacterSelectState
 
     public static EquipmentItem CreateWeapon(SaveSlotData slot)
     {
-        var definition = slot.EquippedWeaponId.StartsWith(
-            "generated-",
-            StringComparison.OrdinalIgnoreCase)
-            ? EquipmentCatalog.CreateGeneratedWeapon(
-                slot.EquippedWeaponFamily,
-                slot.EquippedWeaponTier,
-                slot.EquippedWeaponDamageBonus)
-            : EquipmentCatalog.ResolveSavedWeaponId(slot.EquippedWeaponId);
+        WeaponDefinition definition = EquipmentCatalog.RestoreWeaponDefinition(
+            slot.EquippedWeaponId,
+            slot.EquippedWeaponName,
+            slot.EquippedWeaponFamily,
+            slot.EquippedWeaponTier,
+            slot.EquippedWeaponDamageBonus);
         return new EquipmentItem(definition, slot.EquippedWeaponRarity);
     }
 
@@ -121,14 +119,12 @@ public sealed class CharacterSelectState
     {
         if (saved.Slot == EquipmentSlot.Weapon)
         {
-            var definition = saved.DefinitionId.StartsWith(
-                "generated-",
-                StringComparison.OrdinalIgnoreCase)
-                ? EquipmentCatalog.CreateGeneratedWeapon(
-                    saved.WeaponFamily,
-                    saved.Tier,
-                    saved.DamageBonus)
-                : EquipmentCatalog.ResolveSavedWeaponId(saved.DefinitionId);
+            WeaponDefinition definition = EquipmentCatalog.RestoreWeaponDefinition(
+                saved.DefinitionId,
+                saved.Name,
+                saved.WeaponFamily,
+                saved.Tier,
+                saved.DamageBonus);
             return new EquipmentItem(definition, saved.Rarity);
         }
 

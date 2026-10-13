@@ -11,6 +11,24 @@ public static class WeaponTechniqueCatalog
 {
     private static readonly ProjectileDefinition Arrow = new(
         ProjectileType.Arrow, 640f, new Vector2(18f, 6f), 2.8f);
+    private static readonly ProjectileDefinition PiercingArrow = new(
+        ProjectileType.Arrow, 780f, new Vector2(24f, 7f), 3.0f,
+        ProjectileTrajectoryType.Penetrating, remainingPierces: 1);
+    private static readonly ProjectileDefinition StormArrow = new(
+        ProjectileType.Arrow, 630f, new Vector2(17f, 6f), 3.0f,
+        ProjectileTrajectoryType.ArrowRain, gravity: 760f,
+        impactRadius: 30f, splitCount: RangerTuning.ArrowStormRainArrowCount);
+    private static readonly ProjectileDefinition AerialArrow = new(
+        ProjectileType.Arrow, 665f, new Vector2(18f, 6f), 2.6f,
+        ProjectileTrajectoryType.Straight);
+    private static readonly ProjectileDefinition SkyfallVolleyArrow = new(
+        ProjectileType.Arrow, 610f, new Vector2(18f, 6f), 2.1f,
+        ProjectileTrajectoryType.Ballistic, gravity: 180f);
+    private static readonly ProjectileDefinition PhantomArrow = new(
+        ProjectileType.Arrow, 720f, new Vector2(19f, 6f), 2.8f);
+    private static readonly ProjectileDefinition PhantomFinalArrow = new(
+        ProjectileType.Arrow, 900f, new Vector2(30f, 9f), 3.0f,
+        ProjectileTrajectoryType.Penetrating, remainingPierces: 1);
     private static readonly ProjectileDefinition ThreefoldArrow = new(
         ProjectileType.Arrow, 600f, new Vector2(17f, 6f), 2.8f,
         ProjectileTrajectoryType.Spread);
@@ -153,36 +171,284 @@ public static class WeaponTechniqueCatalog
                 M(AttackKind.Heavy, 1.70f, 34, .20f, .12f, .42f, 38, 102, 76, AttackHitboxShape.TargetZone)
             }));
 
+    public static readonly WeaponTechnique RangerPiercingDraw = T(
+        "piercing-draw", "Piercing Draw", WeaponTechniqueInput.Skill1Skill3,
+        RangerTuning.HunterDrawBaseStaminaCost,
+        effect: WeaponTechniqueEffect.RangerPiercingDraw,
+        stages: new[] { R(AttackKind.Heavy, 1.16f, 34, .05f, .04f, .24f, 28, PiercingArrow) });
+
+    public static readonly WeaponTechnique RangerCounterShot = T(
+        "counter-shot", "Counter Shot", WeaponTechniqueInput.Skill1Skill2, 8,
+        effect: WeaponTechniqueEffect.RangerCounterShot,
+        stages: new[] { R(AttackKind.LightFive, 1.40f, 34, .035f, .04f, .18f, 26, PhantomArrow) });
+
+    public static readonly WeaponTechnique RangerArrowStorm = T(
+        "arrow-storm", "Arrow Storm", WeaponTechniqueInput.Skill2Skill3, 24,
+        effect: WeaponTechniqueEffect.RangerArrowStorm,
+        stages: new[] { R(AttackKind.Heavy, .82f, 16, .24f, .05f, .30f, 8, StormArrow) });
+
+    public static readonly WeaponTechnique RangerAerialShot = T(
+        "aerial-shot", "Aerial Shot", WeaponTechniqueInput.Skill1, 5,
+        effect: WeaponTechniqueEffect.RangerAerialShot,
+        stages: new[] {
+            R(AttackKind.LightTwo, .78f, 12, .045f, .04f, .13f, 9, AerialArrow),
+            R(AttackKind.LightThree, .28f, 7, .035f, .04f, .12f, 6, AerialArrow)
+        });
+
+    public static readonly WeaponTechnique RangerSkyfallVolley = T(
+        "skyfall-volley", "Skyfall Volley", WeaponTechniqueInput.Skill3, 18,
+        effect: WeaponTechniqueEffect.RangerSkyfallVolley,
+        stages: new[] {
+            R(AttackKind.LightOne, .44f, 10, .05f, .04f, .07f, 7, SkyfallVolleyArrow),
+            R(AttackKind.LightTwo, .44f, 10, .04f, .04f, .07f, 7, SkyfallVolleyArrow),
+            R(AttackKind.LightThree, .44f, 12, .04f, .04f, .15f, 9, SkyfallVolleyArrow)
+        });
+
+    public static readonly WeaponTechnique RangerSkyfallShot = T(
+        "skyfall-shot", "Skyfall Shot", WeaponTechniqueInput.Skill2, 7,
+        effect: WeaponTechniqueEffect.RangerSkyfallShot,
+        stages: new[] {
+            R(AttackKind.LightThree, .78f, 12, .05f, .04f, .14f, 10,
+                SkyfallVolleyArrow)
+        });
+
     public static readonly WeaponCombatProfile Ranger = new(
-        "ranger", WeaponTechniqueInput.Skill1,
-        T("hunters-draw", "Hunter's Draw", WeaponTechniqueInput.Skill1,
-            RangerTuning.HunterDrawBaseStaminaCost,
-            effect: WeaponTechniqueEffect.RangerHuntersDraw,
-            stages: new[] { R(AttackKind.LightOne, .86f, 12, .035f, .035f, .13f, 10, Arrow) }),
-        T("threefold-hunt", "Threefold Hunt", WeaponTechniqueInput.Skill2, 16,
-            effect: WeaponTechniqueEffect.RangerThreefoldHunt,
-            stages: new[] { R(AttackKind.LightTwo, .82f, 15, .10f, .05f, .22f, 11, ThreefoldArrow) }),
-        T("skyfall-marker", "Skyfall Marker", WeaponTechniqueInput.Skill3, 18,
-            effect: WeaponTechniqueEffect.RangerSkyfallMarker,
-            stages: new[] { R(AttackKind.LightThree, .82f, 14, .05f, .04f, .18f, 10, SkyfallArrow) }),
-        T("windrunner-shot", "Windrunner Shot", WeaponTechniqueInput.DashSkill, 22,
-            effect: WeaponTechniqueEffect.RangerWindrunnerShot,
-            stages: new[] { R(AttackKind.LightOne, .94f, 14, .025f, .16f, .16f, 12, Arrow, 440) }),
-        T("dragon-piercer", "Dragon Piercer", WeaponTechniqueInput.Skill1Skill2, 32,
-            effect: WeaponTechniqueEffect.RangerDragonPiercer,
-            stages: new[] { R(AttackKind.Heavy, 1.72f, 44, .24f, .06f, .30f, 30, DragonPiercerArrow) }),
-        T("falling-star", "Falling Star", WeaponTechniqueInput.Skill1Skill3, 36,
-            effect: WeaponTechniqueEffect.RangerFallingStar,
-            stages: new[] { R(AttackKind.Heavy, 1.95f, 54, .30f, .05f, .38f, 34, FallingStarArrow) }),
-        T("predators-horizon", "Predator's Horizon", WeaponTechniqueInput.Skill2Skill3, 40,
-            effect: WeaponTechniqueEffect.RangerPredatorsHorizon,
+        "phantom-archer", WeaponTechniqueInput.Skill1,
+        T("quick-shot-combo", "Quick Shot Combo", WeaponTechniqueInput.Skill1, 4,
+            effect: WeaponTechniqueEffect.RangerMobileShot,
+            manual: true, stageCost: 3,
             stages: new[] {
-                R(AttackKind.LightFour, .48f, 10, .09f, .08f, .20f, 7, PredatorFanArrow, 330),
-                R(AttackKind.Heavy, 1.48f, 48, .12f, .06f, .34f, 28, PredatorCenterArrow)
+                R(AttackKind.LightOne, .65f, 8, .035f, .035f, .10f, 6, Arrow),
+                R(AttackKind.LightTwo, .70f, 9, .035f, .035f, .10f, 7, Arrow),
+                R(AttackKind.LightThree, .80f, 11, .04f, .035f, .11f, 8, Arrow),
+                R(AttackKind.LightFour, .52f, 7, .045f, .035f, .045f, 5, Arrow),
+                R(AttackKind.LightFour, .52f, 7, .04f, .035f, .11f, 5, Arrow),
+                R(AttackKind.LightFive, 1.30f, 27, .12f, .04f, .28f, 24, PhantomFinalArrow)
             }),
-        T("heavens-fury", "Heaven's Fury", WeaponTechniqueInput.Ultimate, 100,
-            full: true, effect: WeaponTechniqueEffect.RangerHeavensFury,
-            stages: new[] { R(AttackKind.Heavy, 3.20f, 120, .08f, .08f, .70f, 64, HeavenArrow) }));
+        T("evasive-shot", "Evasive Shot", WeaponTechniqueInput.Skill2, 7,
+            effect: WeaponTechniqueEffect.RangerEvasiveShot,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .01f, .01f, .08f, 0,
+                    1, 1, AttackHitboxShape.ShortArc,
+                    RangerTuning.EvasiveStepSpeed),
+                R(AttackKind.LightTwo, .76f, 11, .04f, .04f, .13f, 9,
+                    Arrow)
+            }),
+        T("phantom-barrage", "Phantom Barrage", WeaponTechniqueInput.Skill3, 20,
+            effect: WeaponTechniqueEffect.RangerPhantomBarrage,
+            stages: new[] {
+                R(AttackKind.LightOne, .42f, 7, .06f, .035f, .06f, 5, PhantomArrow, 210),
+                R(AttackKind.LightTwo, .42f, 7, .035f, .035f, .06f, 5, PhantomArrow),
+                R(AttackKind.LightThree, .42f, 7, .035f, .035f, .08f, 5, PhantomArrow),
+                R(AttackKind.LightFour, .65f, 15, .055f, .04f, .14f, 15, PhantomFinalArrow, 190),
+                R(AttackKind.LightFour, .20f, 4, .03f, .035f, .05f, 4, PhantomArrow),
+                R(AttackKind.LightFive, .70f, 18, .07f, .04f, .22f, 18, PhantomFinalArrow)
+            }),
+        T("backstep-shot", "Backstep Shot", WeaponTechniqueInput.DashSkill, 10,
+            effect: WeaponTechniqueEffect.RangerBackstepShot,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .01f, .01f, .09f, 0,
+                    1, 1, AttackHitboxShape.ShortArc, 390),
+                R(AttackKind.LightThree, .98f, 15, .055f, .05f, .18f, 13,
+                    Arrow)
+            }),
+        T("twin-fang", "Twin Fang", WeaponTechniqueInput.Skill1Skill2, 13,
+            effect: WeaponTechniqueEffect.RangerTwinFang,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .01f, .01f, .07f, 0,
+                    1, 1, AttackHitboxShape.ShortArc, 285),
+                R(AttackKind.LightTwo, .62f, 9, .035f, .035f, .055f, 7,
+                    PhantomArrow),
+                R(AttackKind.LightThree, .68f, 11, .035f, .04f, .11f, 9,
+                    PhantomArrow)
+            }),
+        T("piercing-volley", "Piercing Volley", WeaponTechniqueInput.Skill1Skill3, 22,
+            effect: WeaponTechniqueEffect.RangerPiercingVolley,
+            stages: new[] {
+                R(AttackKind.LightOne, .55f, 8, .04f, .035f, .055f, 5,
+                    Arrow),
+                R(AttackKind.LightTwo, .55f, 8, .035f, .035f, .08f, 5,
+                    Arrow),
+                R(AttackKind.Heavy, 1.22f, 40, .18f, .05f, .24f, 26,
+                    PiercingArrow)
+            }),
+        T("phantom-retreat", "Phantom Retreat", WeaponTechniqueInput.Skill2Skill3, 20,
+            effect: WeaponTechniqueEffect.RangerPhantomRetreat,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .01f, .01f, .10f, 0,
+                    1, 1, AttackHitboxShape.ShortArc, 330),
+                R(AttackKind.LightTwo, .48f, 7, .035f, .035f, .055f, 5,
+                    PhantomArrow),
+                R(AttackKind.LightThree, .48f, 7, .035f, .035f, .055f, 5,
+                    PhantomArrow),
+                R(AttackKind.LightFour, .68f, 13, .045f, .04f, .14f, 12,
+                    PhantomArrow)
+            }),
+        T("phantom-hunt", "Phantom Hunt", WeaponTechniqueInput.Ultimate, 100,
+            full: true,
+            effect: WeaponTechniqueEffect.RangerPhantomHunt,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .05f, .01f, .24f, 0,
+                    1, 1, AttackHitboxShape.ShortArc),
+                R(AttackKind.LightOne, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .07f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightTwo, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightThree, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightFour, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightFive, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightOne, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightTwo, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightThree, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightFour, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightFive, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightOne, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .045f, 2, PhantomArrow),
+                R(AttackKind.LightTwo, RangerTuning.PhantomHuntArrowDamageMultiplier, 5, .035f, .025f, .08f, 2, PhantomArrow),
+                R(AttackKind.Heavy, RangerTuning.PhantomHuntExecutionDamageMultiplier, 76, .28f, .055f, .30f, 42,
+                    PhantomFinalArrow),
+                M(AttackKind.LightFive, 0f, 0, .02f, .01f, .32f, 0,
+                    1, 1, AttackHitboxShape.ShortArc)
+            }));
+
+    public static readonly WeaponCombatProfile IronVanguard = new(
+        "iron-vanguard", WeaponTechniqueInput.Skill1,
+        T("iron-sweep", "Iron Sweep", WeaponTechniqueInput.Skill1, 8,
+            effect: WeaponTechniqueEffect.GreatswordCombo,
+            manual: true, stageCost: 8,
+            stages: new[] {
+                M(AttackKind.LightOne, 1.10f, 34, .16f, .14f, .26f, 18, 102, 68, AttackHitboxShape.WideArc, 92),
+                M(AttackKind.LightTwo, 1.20f, 46, .17f, .14f, .28f, 22, 104, 72, AttackHitboxShape.WideArc, 74),
+                M(AttackKind.LightThree, 1.35f, 72, .25f, .15f, .38f, 30, 101, 78, AttackHitboxShape.WideArc, 28),
+                M(AttackKind.Heavy, 1.80f, 108, .38f, .17f, .55f, 48, 106, 90, AttackHitboxShape.Chop, 14)
+            }),
+        T("iron-resolve", "Iron Resolve", WeaponTechniqueInput.Skill2, 5,
+            guard: true, effect: WeaponTechniqueEffect.GreatswordIronResolve,
+            stages: new[] {
+                M(AttackKind.LightTwo, 0f, 0, .04f, 8f, .16f, 0, 72, 82, AttackHitboxShape.Thrust)
+            }),
+        T("whirling-judgment", "Whirling Judgment", WeaponTechniqueInput.Skill3, 26,
+            effect: WeaponTechniqueEffect.GreatswordWhirlingJudgment,
+            stages: new[] {
+                M(AttackKind.LightOne, .35f, 24, .18f, .09f, .18f, 8, 94, 66, AttackHitboxShape.WideArc),
+                M(AttackKind.LightTwo, .35f, 24, .02f, .09f, .18f, 8, 94, 66, AttackHitboxShape.WideArc),
+                M(AttackKind.LightOne, .35f, 25, .02f, .09f, .18f, 9, 96, 68, AttackHitboxShape.WideArc),
+                M(AttackKind.LightTwo, .35f, 25, .02f, .09f, .18f, 9, 96, 68, AttackHitboxShape.WideArc),
+                M(AttackKind.LightOne, .35f, 26, .02f, .09f, .18f, 10, 98, 70, AttackHitboxShape.WideArc),
+                M(AttackKind.LightTwo, .35f, 26, .02f, .09f, .18f, 10, 98, 70, AttackHitboxShape.WideArc),
+                M(AttackKind.Heavy, .75f, 54, .10f, .13f, .34f, 28, 108, 82, AttackHitboxShape.WideArc)
+            }),
+        T("vanguard-assault", "Vanguard Assault", WeaponTechniqueInput.DashSkill, 22,
+            effect: WeaponTechniqueEffect.GreatswordVanguardAssault,
+            manual: true,
+            stages: new[] {
+                M(AttackKind.LightOne, .90f, 58, .14f, .14f, .24f, 28, 98, 74, AttackHitboxShape.WideArc, 265),
+                M(AttackKind.Heavy, 1.20f, 82, .22f, .15f, .42f, 38, 104, 84, AttackHitboxShape.Chop, 24)
+            }),
+        T("titans-reckoning", "Titan's Reckoning", WeaponTechniqueInput.Skill1Skill2, 20,
+            guard: true, effect: WeaponTechniqueEffect.GreatswordTitanReckoning,
+            stages: new[] {
+                M(AttackKind.Heavy, 1.40f, 94, .18f, .15f, .42f, 36, 106, 84, AttackHitboxShape.WideArc, 42)
+            }),
+        T("kings-rupture", "King's Rupture", WeaponTechniqueInput.Skill1Skill3, 30,
+            effect: WeaponTechniqueEffect.GreatswordKingsRupture,
+            stages: new[] {
+                M(AttackKind.LightOne, .55f, 48, .16f, .12f, .10f, 14, 98, 76, AttackHitboxShape.WideArc),
+                M(AttackKind.Heavy, 1.10f, 90, .18f, .15f, .18f, 34, 108, 88, AttackHitboxShape.Chop),
+                M(AttackKind.Heavy, .55f, 74, .08f, .12f, .48f, 28, GreatswordTuning.GroundFractureRange, 34, AttackHitboxShape.Thrust)
+            }),
+        T("iron-dominion", "Iron Dominion", WeaponTechniqueInput.Skill2Skill3, 26,
+            guard: true, effect: WeaponTechniqueEffect.GreatswordIronDominion,
+            stages: new[] {
+                M(AttackKind.LightOne, .25f, 34, .18f, .10f, .10f, 18, 82, 54, AttackHitboxShape.Circular),
+                M(AttackKind.Heavy, .80f, 62, .10f, .12f, .12f, 30, 104, 76, AttackHitboxShape.Circular),
+                M(AttackKind.Heavy, .90f, 70, .10f, .12f, .14f, 34, 108, 80, AttackHitboxShape.Circular),
+                M(AttackKind.Heavy, 1.10f, 88, .14f, .14f, .38f, 42, 112, 84, AttackHitboxShape.WideArc)
+            }),
+        T("final-verdict", "Final Verdict", WeaponTechniqueInput.Ultimate, 100,
+            full: true, effect: WeaponTechniqueEffect.GreatswordFinalVerdict,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .05f, .01f, .34f, 0, 72, 50, AttackHitboxShape.Thrust),
+                M(AttackKind.Heavy, GreatswordTuning.FinalVerdictAscentDamageMultiplier, 92, .12f, .13f, .16f, 18, 112, 86, AttackHitboxShape.WideArc),
+                M(AttackKind.Heavy, GreatswordTuning.FinalVerdictCleaveDamageMultiplier, 132, .22f, .16f, .20f, 34, 116, 92, AttackHitboxShape.Chop),
+                M(AttackKind.Heavy, GreatswordTuning.FinalVerdictSpectralDamageMultiplier, 176, .28f, .18f, .22f, 46, 124, 104, AttackHitboxShape.Chop),
+                M(AttackKind.Heavy, 0f, 0, .04f, .06f, .15f, 0, 68, 46, AttackHitboxShape.Circular),
+                M(AttackKind.LightOne, 0f, 0, .02f, .01f, .38f, 0, 68, 46, AttackHitboxShape.Circular)
+            }));
+
+    public static readonly WeaponTechnique IronSovereignFallingBastion =
+        T("falling-bastion", "Falling Bastion", WeaponTechniqueInput.Skill2, 18,
+            effect: WeaponTechniqueEffect.GreatswordFallingBastion,
+            stages: new[] {
+                M(AttackKind.Heavy, 1.20f, 78, .08f, .78f, .34f, 30, 98, 70, AttackHitboxShape.WideArc)
+            });
+
+    public static readonly WeaponTechnique IronVanguardSpinStop =
+        T("whirling-judgment-stop", "Whirling Judgment",
+            WeaponTechniqueInput.Skill3, 0,
+            effect: WeaponTechniqueEffect.GreatswordWhirlingJudgment,
+            stages: new[] {
+                M(AttackKind.LightTwo, 0f, 0, .03f, .01f, .16f, 0, 80, 54, AttackHitboxShape.WideArc)
+            });
+
+    public static readonly WeaponTechnique SovereignHeavenReversal =
+        T("heaven-reversal", "Heaven Reversal", WeaponTechniqueInput.Skill2, 16,
+            effect: WeaponTechniqueEffect.SovereignHeavenReversal,
+            stages: new[] {
+                M(AttackKind.Heavy, 1.58f, 52, .12f, .13f, .34f, 34, 94, 66, AttackHitboxShape.Chop)
+            });
+
+    public static readonly WeaponCombatProfile Sovereign = new(
+        "forbidden-sovereign", WeaponTechniqueInput.Skill1,
+        T("sovereign-martial-arts", "Sovereign Martial Arts",
+            WeaponTechniqueInput.Skill1, 5,
+            effect: WeaponTechniqueEffect.SovereignMartialArts,
+            manual: true, stageCost: 4,
+            stages: new[] {
+                M(AttackKind.LightOne, .70f, 12, .06f, .07f, .12f, 8, 62, 38, AttackHitboxShape.ShortArc, 54),
+                M(AttackKind.LightTwo, .75f, 14, .07f, .07f, .12f, 9, 64, 40, AttackHitboxShape.ShortArc, 48),
+                M(AttackKind.LightThree, .85f, 17, .08f, .08f, .13f, 11, 76, 44, AttackHitboxShape.Thrust, 58),
+                M(AttackKind.LightFour, .90f, 20, .09f, .09f, .15f, 13, 78, 52, AttackHitboxShape.WideArc, 62),
+                M(AttackKind.LightFive, 1.00f, 24, .10f, .09f, .16f, 16, 82, 48, AttackHitboxShape.Thrust, 60),
+                M(AttackKind.LightOne, 1.05f, 28, .12f, .10f, .18f, 18, 84, 52, AttackHitboxShape.Chop, 42),
+                M(AttackKind.LightTwo, 1.15f, 34, .13f, .11f, .21f, 22, 92, 58, AttackHitboxShape.Circular, 34),
+                M(AttackKind.Heavy, 1.60f, 58, .18f, .13f, .38f, 46, 104, 76, AttackHitboxShape.Circular, 24)
+            }),
+        T("omnipresent-step", "Omnipresent Step", WeaponTechniqueInput.Skill2, 12,
+            effect: WeaponTechniqueEffect.SovereignOmnipresentStep,
+            stages: new[] { M(AttackKind.LightOne, 0f, 0, .02f, .01f, .20f, 0, 1, 1, AttackHitboxShape.ShortArc) }),
+        T("throne-manifestation", "Throne Manifestation", WeaponTechniqueInput.Skill3, 22,
+            effect: WeaponTechniqueEffect.SovereignThroneManifestation,
+            stages: new[] { M(AttackKind.LightOne, 0f, 0, .15f, .01f, .25f, 0, 1, 1, AttackHitboxShape.Circular) }),
+        T("zero-distance-strike", "Zero-Distance Strike", WeaponTechniqueInput.DashSkill, 20,
+            effect: WeaponTechniqueEffect.SovereignZeroDistanceStrike,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .03f, .01f, .08f, 0, 1, 1, AttackHitboxShape.ShortArc, 320),
+                M(AttackKind.Heavy, 1.65f, 58, .10f, .12f, .30f, 38, 96, 64, AttackHitboxShape.Thrust)
+            }),
+        T("paradox-impact", "Paradox Impact", WeaponTechniqueInput.Skill1Skill2, 26,
+            effect: WeaponTechniqueEffect.SovereignParadoxImpact,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .05f, .01f, .05f, 0, 1, 1, AttackHitboxShape.ShortArc),
+                M(AttackKind.LightOne, .55f, 18, .06f, .07f, .06f, 8, 110, 48, AttackHitboxShape.Thrust),
+                M(AttackKind.LightTwo, .55f, 18, .04f, .07f, .06f, 8, 110, 48, AttackHitboxShape.Thrust),
+                M(AttackKind.LightThree, .55f, 18, .04f, .07f, .08f, 8, 110, 48, AttackHitboxShape.Thrust),
+                M(AttackKind.LightFour, 0f, 0, .03f, .01f, .08f, 0, 1, 1, AttackHitboxShape.ShortArc),
+                M(AttackKind.Heavy, 1.45f, 52, .11f, .12f, .30f, 38, 94, 66, AttackHitboxShape.WideArc)
+            }),
+        T("event-horizon-palm", "Event Horizon Palm", WeaponTechniqueInput.Skill1Skill3, 30,
+            effect: WeaponTechniqueEffect.SovereignEventHorizonPalm,
+            stages: new[] { M(AttackKind.Heavy, 1.90f, 76, .16f, .15f, .42f, 42, 132, 78, AttackHitboxShape.Thrust) }),
+        T("infinite-rift-theatre", "Infinite Rift Theatre", WeaponTechniqueInput.Skill2Skill3, 34,
+            effect: WeaponTechniqueEffect.SovereignInfiniteRiftTheatre,
+            stages: new[] {
+                M(AttackKind.LightOne, .65f, 20, .08f, .08f, .08f, 10, 108, 50, AttackHitboxShape.Thrust),
+                M(AttackKind.LightTwo, .65f, 20, .06f, .08f, .08f, 10, 108, 54, AttackHitboxShape.WideArc),
+                M(AttackKind.LightThree, .65f, 22, .06f, .08f, .08f, 12, 110, 52, AttackHitboxShape.Thrust),
+                M(AttackKind.LightFour, .65f, 22, .06f, .09f, .10f, 12, 112, 58, AttackHitboxShape.WideArc),
+                M(AttackKind.Heavy, 1.00f, 54, .12f, .13f, .34f, 34, 126, 80, AttackHitboxShape.Circular)
+            }),
+        T("golden-sovereign-cataclysm", "Golden Sovereign Cataclysm",
+            WeaponTechniqueInput.Ultimate, 100, full: true,
+            effect: WeaponTechniqueEffect.SovereignGoldenCataclysm,
+            stages: GoldenCataclysmStages()));
 
     public static readonly WeaponCombatProfile Raider = new(
         "raider", WeaponTechniqueInput.Skill1,
@@ -427,4 +693,25 @@ public static class WeaponTechniqueCatalog
         M(AttackKind.LightFour, .66f, 7, .03f, .06f, .04f, 7, 60, 40),
         M(AttackKind.LightFive, 1.05f, 16, .05f, .09f, .18f, 20, 68, 46)
     };
+
+    private static AttackDefinition[] GoldenCataclysmStages()
+    {
+        var stages = new AttackDefinition[19];
+        stages[0] = M(AttackKind.LightOne, .30f, 16, .08f, .08f, .12f,
+            0, 130, 64, AttackHitboxShape.TargetZone);
+        for (int index = 0; index < AbyssRingTuning.UltimateStrikeCount; index++)
+        {
+            float interval = index < 4 ? .25f : index < 8 ? .17f :
+                index < 12 ? .11f : .07f;
+            stages[index + 1] = M(
+                (AttackKind)((int)AttackKind.LightOne + index % 5),
+                .30f, 14 + index, interval * .38f, interval * .30f,
+                interval * .32f, 4, 132, 58, AttackHitboxShape.TargetZone);
+        }
+        stages[17] = M(AttackKind.Heavy, 2.10f, 130, .30f, .16f, .46f,
+            64, 148, 106, AttackHitboxShape.TargetZone);
+        stages[18] = M(AttackKind.LightOne, 0f, 0, .02f, .01f, .32f,
+            0, 1, 1, AttackHitboxShape.ShortArc);
+        return stages;
+    }
 }

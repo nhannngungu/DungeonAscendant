@@ -188,7 +188,8 @@ public sealed class ProjectileManager
         int techniqueUseId = -1,
         int spreadArrowIndex = -1,
         int additionalPierces = 0,
-        float placementDistance = 0f)
+        float placementDistance = 0f,
+        object lockedTarget = null)
     {
         if (definition == null)
             return;
@@ -226,7 +227,8 @@ public sealed class ProjectileManager
             techniqueUseId: techniqueUseId,
             spreadArrowIndex: spreadArrowIndex,
             isRangerProjectile: definition.Type == ProjectileType.Arrow,
-            placementDistance: placementDistance));
+            placementDistance: placementDistance,
+            lockedTarget: lockedTarget));
     }
 
     public void SpawnWebShot(

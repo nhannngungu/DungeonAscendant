@@ -20,6 +20,11 @@ public sealed class WeaponResourceState
         DuelistTuning.GetTier(DuelistMomentum);
     public float HunterFocus { get; private set; }
     public float HunterFocusRatio => RangerTuning.FocusRatio(HunterFocus);
+    public float HunterUltimate { get; private set; }
+    public float HunterUltimateRatio => Math.Clamp(
+        HunterUltimate / RangerTuning.UltimateMaximum, 0f, 1f);
+    public bool IsHunterUltimateReady =>
+        HunterUltimate >= RangerTuning.UltimateMaximum;
     public float ChainMomentum { get; private set; }
     public float ChainMomentumRatio =>
         ReckonerTuning.MomentumRatio(ChainMomentum);
@@ -164,6 +169,37 @@ public sealed class WeaponResourceState
         HunterFocus = MathF.Max(0f, HunterFocus - amount);
     }
 
+    public void AddHunterUltimate(float amount)
+    {
+        if (Family != WeaponFamily.HunterBow || amount <= 0f)
+            return;
+
+        HunterUltimate = MathF.Min(
+            RangerTuning.UltimateMaximum,
+            HunterUltimate + amount);
+    }
+
+    public bool ConsumeHunterUltimate()
+    {
+        if (Family != WeaponFamily.HunterBow || !IsHunterUltimateReady)
+            return false;
+
+        HunterUltimate = 0f;
+        return true;
+    }
+
+    public void SetHunterFocusForDebug(float amount)
+    {
+        if (Family == WeaponFamily.HunterBow)
+            HunterFocus = Math.Clamp(amount, 0f, RangerTuning.FocusMaximum);
+    }
+
+    public void SetHunterUltimateForDebug(float amount)
+    {
+        if (Family == WeaponFamily.HunterBow)
+            HunterUltimate = Math.Clamp(amount, 0f, RangerTuning.UltimateMaximum);
+    }
+
     public void MarkRangerCombatActivity()
     {
         _focusInactiveSeconds = 0f;
@@ -176,6 +212,7 @@ public sealed class WeaponResourceState
 
         float amount = HunterFocus;
         HunterFocus = 0f;
+        HunterUltimate = 0f;
         MarkRangerCombatActivity();
         return amount;
     }
@@ -328,6 +365,7 @@ public sealed class WeaponResourceState
     {
         DuelistMomentum = 0;
         HunterFocus = 0f;
+        HunterUltimate = 0f;
         ChainMomentum = 0f;
         BreakerInertia = 0f;
         _inactiveSeconds = 0f;

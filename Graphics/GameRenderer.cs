@@ -344,13 +344,30 @@ public sealed class GameRenderer : IDisposable
         DrawRangerTrajectoryGuide(gameSession);
         DrawSpellbladeWorld(gameSession);
         DrawBreakerWorld(gameSession);
+        DrawSovereignUltimateWorld(gameSession, gameTime);
+        DrawSovereignPortals(gameSession);
 
+        Vector2? sovereignVisualPosition = null;
+        Vector2? sovereignTravelDirection = null;
+        float sovereignTransitionStrength = 0f;
+        if (gameSession.SovereignPortals.TryGetTransitVisual(
+            out Vector2 transitPosition,
+            out Vector2 transitDirection,
+            out float transitStrength))
+        {
+            sovereignVisualPosition = transitPosition;
+            sovereignTravelDirection = transitDirection;
+            sovereignTransitionStrength = transitStrength;
+        }
         _playerSpriteRenderer.Draw(
             gameSession.Player,
             gameTime,
             gameSession.Player.WeaponFamily == WeaponFamily.ChainFlail
                 ? gameSession.PlayerAttackArea.Center.ToVector2()
-                : null);
+                : null,
+            sovereignVisualPosition,
+            sovereignTravelDirection,
+            sovereignTransitionStrength);
 
         foreach (Enemy enemy in gameSession.Enemies.DefeatPresentations)
         {
@@ -386,6 +403,10 @@ public sealed class GameRenderer : IDisposable
                     gameSession.IsWildForestShowcaseMode);
             }
         }
+
+        DrawRangerUltimateTargetLock(gameSession, gameTime);
+        DrawGreatswordUltimateTargetLock(gameSession, gameTime);
+        DrawSovereignUltimateTargetLock(gameSession, gameTime);
 
         foreach (Projectile projectile in gameSession.Projectiles.Projectiles)
         {
@@ -469,18 +490,29 @@ public sealed class GameRenderer : IDisposable
                 _graphicsDevice.Viewport.Width,
                 _graphicsDevice.Viewport.Height),
             gameTime);
-        DrawHudPanel();
-        DrawPlayerHealth(gameSession.Player);
-        DrawPlayerStamina(gameSession.Player);
-        DrawCurseMeter(gameSession);
-        DrawCityAlarm(gameSession);
-        DrawDemonicCorruptionMeter(gameSession);
-        DrawBrokenKingBossBar(gameSession);
-        DrawHornedGeneralBossBar(gameSession);
-        DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
-        DrawWeaponResource(gameSession.Player);
-        DrawTechniqueFeedback(gameSession.Player);
-        DrawDungeonStatus(gameSession);
+        DrawRangerUltimateCinematic(gameSession);
+        DrawGreatswordUltimateCinematic(gameSession);
+        DrawSovereignAssaultOverlay(gameSession);
+        DrawSovereignUltimateCinematic(gameSession);
+        DrawSovereignExecutionFrame(gameSession);
+        bool hideSovereignHud =
+            gameSession.Player.Combat.SovereignUltimateCinematicRatio > 0f ||
+            gameSession.IsSovereignExecutionActive;
+        if (!hideSovereignHud)
+        {
+            DrawHudPanel();
+            DrawPlayerHealth(gameSession.Player);
+            DrawPlayerStamina(gameSession.Player);
+            DrawCurseMeter(gameSession);
+            DrawCityAlarm(gameSession);
+            DrawDemonicCorruptionMeter(gameSession);
+            DrawBrokenKingBossBar(gameSession);
+            DrawHornedGeneralBossBar(gameSession);
+            DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
+            DrawWeaponResource(gameSession.Player);
+            DrawTechniqueFeedback(gameSession.Player);
+            DrawDungeonStatus(gameSession);
+        }
 
         if (gameSession.ScholarTomb.CanInspect(gameSession.Player.Position))
         {
@@ -1891,6 +1923,15 @@ public sealed class GameRenderer : IDisposable
                 new Color(225, 77, 181, 25),
                 new Color(225, 77, 181, 190));
 
+            if (gameSession.Player.WeaponFamily == WeaponFamily.HunterBow &&
+                (enemy.IsCombatAttackTelegraphing || enemy.IsStaggered))
+            {
+                DrawDebugZone(
+                    enemy.WeakPointBounds,
+                    new Color(240, 214, 92, 45),
+                    new Color(255, 226, 105, 235));
+            }
+
             if (enemy.Type != EnemyType.GoblinHunter &&
                 (enemy.IsCombatAttackTelegraphing ||
                  enemy.IsCombatAttackActive))
@@ -1926,6 +1967,15 @@ public sealed class GameRenderer : IDisposable
                 gameSession.Boss.Bounds,
                 new Color(225, 77, 181, 25),
                 new Color(225, 77, 181, 190));
+
+            if (gameSession.Player.WeaponFamily == WeaponFamily.HunterBow &&
+                gameSession.Boss.IsStaggered)
+            {
+                DrawDebugZone(
+                    gameSession.Boss.WeakPointBounds,
+                    new Color(240, 214, 92, 45),
+                    new Color(255, 226, 105, 235));
+            }
 
             if (gameSession.Boss.Attack.IsTelegraphing ||
                 gameSession.Boss.Attack.IsActive)
@@ -3005,16 +3055,23 @@ public sealed class GameRenderer : IDisposable
         }
         if (projectile.IsRangerProjectile)
         {
-            Color trail = projectile.TechniqueEffect ==
-                WeaponTechniqueEffect.RangerHeavensFury
-                    ? new Color(239, 215, 122, 180)
+            bool phantomHunt = projectile.TechniqueEffect ==
+                WeaponTechniqueEffect.RangerPhantomHunt;
+            bool executionArrow = phantomHunt && projectile.Size.X >= 28f;
+            Color trail = phantomHunt
+                    ? executionArrow
+                        ? new Color(119, 239, 255, 225)
+                        : new Color(66, 194, 232, 165)
+                    : projectile.TechniqueEffect ==
+                        WeaponTechniqueEffect.RangerHeavensFury
+                        ? new Color(239, 215, 122, 180)
                     : projectile.RicochetCount > 0
                         ? new Color(132, 214, 196, 145)
                         : new Color(211, 191, 135, 105);
             DrawWorldLine(
                 projectile.PreviousPosition,
                 projectile.Position,
-                projectile.TechniqueEffect ==
+                executionArrow || projectile.TechniqueEffect ==
                     WeaponTechniqueEffect.RangerHeavensFury ? 4f : 2f,
                 trail);
 
@@ -3039,6 +3096,9 @@ public sealed class GameRenderer : IDisposable
             sourceRectangle: null,
             projectile.IsEmberArrow
                 ? new Color(78, 44, 31)
+                : projectile.TechniqueEffect ==
+                    WeaponTechniqueEffect.RangerPhantomHunt
+                    ? new Color(73, 166, 190)
                 : new Color(105, 74, 42),
             rotation,
             new Vector2(0f, 0.5f),
@@ -3051,6 +3111,9 @@ public sealed class GameRenderer : IDisposable
             sourceRectangle: null,
             projectile.IsEmberArrow
                 ? new Color(239, 116, 49)
+                : projectile.TechniqueEffect ==
+                    WeaponTechniqueEffect.RangerPhantomHunt
+                    ? new Color(153, 241, 255)
                 : new Color(67, 73, 68),
             rotation,
             new Vector2(0.5f, 0.5f),
@@ -4341,7 +4404,10 @@ public sealed class GameRenderer : IDisposable
                 : null;
             bool isSelected = item != null &&
                 index == gameSession.SelectedInventoryIndex;
-            DrawInventorySlot(slotBounds, item, isSelected);
+            bool isEquipped = item != null && ReferenceEquals(
+                item,
+                gameSession.Player.EquippedItems.GetEquipped(item.Slot));
+            DrawInventorySlot(slotBounds, item, isSelected, isEquipped);
         }
 
         if (gameSession.ActiveInventoryItems.Count == 0)
@@ -4639,11 +4705,14 @@ public sealed class GameRenderer : IDisposable
     private void DrawInventorySlot(
         Rectangle bounds,
         EquipmentItem item,
-        bool isSelected)
+        bool isSelected,
+        bool isEquipped)
     {
         Color borderColor = isSelected
             ? new Color(245, 230, 151)
-            : new Color(83, 91, 99);
+            : isEquipped
+                ? new Color(78, 182, 133)
+                : new Color(83, 91, 99);
         _spriteBatch.Draw(
             _pixel,
             bounds,
@@ -4676,6 +4745,16 @@ public sealed class GameRenderer : IDisposable
                 new Color(245, 230, 151),
                 scale: 1);
         }
+
+        if (isEquipped)
+        {
+            DrawDebugText(
+                "E",
+                bounds.Right - 9,
+                bounds.Y + 3,
+                new Color(111, 230, 166),
+                scale: 1);
+        }
     }
 
     private void DrawSelectedItemIdentity(
@@ -4689,7 +4768,7 @@ public sealed class GameRenderer : IDisposable
             return;
 
         DrawDebugText(
-            item.Name.ToUpperInvariant(),
+            GetLocalizedEquipmentName(item),
             x,
             y,
             GetRarityColor(item.Rarity),
@@ -4709,7 +4788,7 @@ public sealed class GameRenderer : IDisposable
 
         DrawDebugText(
             item.ArmorDefinition == null
-                ? $"RARITY: {item.Rarity}"
+                ? $"TIER: {item.Tier}  RARITY: {item.Rarity}"
                 : $"GRADE: {item.ArmorGradeLabel} RARITY: {item.Rarity}",
             x,
             y + 26,
@@ -4729,11 +4808,29 @@ public sealed class GameRenderer : IDisposable
             new Color(161, 190, 174),
             scale: 1);
         DrawDebugText(
-            "STATUS: UNEQUIPPED",
+            gameSession.IsSelectedInventoryItemEquipped
+                ? "STATUS: EQUIPPED"
+                : "STATUS: UNEQUIPPED",
             x,
             y + 52,
-            new Color(137, 149, 158),
+            gameSession.IsSelectedInventoryItemEquipped
+                ? new Color(111, 230, 166)
+                : new Color(137, 149, 158),
             scale: 1);
+
+        if (item.WeaponDefinition != null)
+        {
+            if (GameSession.DeveloperModeEnabled)
+            {
+                DrawDebugText(
+                    $"ID: {item.WeaponId}",
+                    x,
+                    y + 65,
+                    new Color(104, 119, 130),
+                    scale: 1);
+            }
+            return;
+        }
 
         if (item.ArmorDefinition == null)
             return;
@@ -4891,7 +4988,7 @@ public sealed class GameRenderer : IDisposable
                 return;
             }
 
-            if (item.WeaponDefinition.Family == WeaponFamily.GreatSword)
+            if (item.WeaponDefinition.Family == WeaponFamily.SpikedMace)
             {
                 _spriteBatch.Draw(_pixel,
                     new Rectangle(centerX - 2, top + 10, 5, height + 3),
@@ -4900,6 +4997,24 @@ public sealed class GameRenderer : IDisposable
                     new Rectangle(centerX - 9, top - 2, 19, 19), color);
                 _spriteBatch.Draw(_pixel,
                     new Rectangle(centerX - 13, top + 5, 27, 5), color);
+                return;
+            }
+
+            if (item.WeaponDefinition.Family == WeaponFamily.AbyssRing)
+            {
+                int size = Math.Min(30, bounds.Width - 8);
+                var outer = new Rectangle(
+                    centerX - size / 2,
+                    bounds.Center.Y - size / 2,
+                    size,
+                    size);
+                DrawRectangleOutline(outer, 4, color);
+                var inner = outer;
+                inner.Inflate(-8, -8);
+                DrawRectangleOutline(inner, 2, new Color(27, 23, 31));
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX - 2, outer.Top - 4, 5, 8),
+                    new Color(255, 221, 94));
                 return;
             }
 
@@ -5364,8 +5479,29 @@ public sealed class GameRenderer : IDisposable
             ItemRarity.Rare => new Color(72, 132, 232),
             ItemRarity.Epic => new Color(170, 89, 224),
             ItemRarity.Legendary => new Color(236, 159, 52),
+            ItemRarity.SecretMythic => new Color(255, 194, 46),
             _ => new Color(202, 207, 210)
         };
+    }
+
+    private static string GetLocalizedEquipmentName(EquipmentItem item)
+    {
+        if (item?.WeaponDefinition == null)
+            return item?.Name.ToUpperInvariant() ?? string.Empty;
+
+        string key = item.WeaponId switch
+        {
+            "knight-long-sword" => "weapon.knight.name",
+            "duelist-dual-swords" => "weapon.duelist.name",
+            "iron-vanguard-greatsword" => "weapon.iron_vanguard.name",
+            "hunter-bow" => "weapon.phantom_archer.name",
+            "forbidden-sovereign-abyss-ring" =>
+                "weapon.forbidden_sovereign.name",
+            _ => string.Empty
+        };
+        return key.Length > 0
+            ? Loc.Get(key)
+            : item.Name.ToUpperInvariant();
     }
 
     private void DrawDungeonStatus(GameSession gameSession)
@@ -6804,24 +6940,15 @@ public sealed class GameRenderer : IDisposable
                 focus);
         }
 
-        for (int index = 1; index < 4; index++)
+        int[] focusMarkers = { 34, 67 };
+        for (int index = 0; index < focusMarkers.Length; index++)
         {
-            int markerX = background.X + background.Width * index / 4;
+            int markerX = background.X +
+                background.Width * focusMarkers[index] / 100;
             _spriteBatch.Draw(
                 _pixel,
                 new Rectangle(markerX, background.Y, 1, background.Height),
                 new Color(226, 219, 177, 155));
-        }
-
-        int segments = player.Combat.Resources.ActiveValue;
-        for (int index = 0; index < 4; index++)
-        {
-            Rectangle pip = new(42 + index * 15, 91, 11, 6);
-            _spriteBatch.Draw(
-                _pixel,
-                pip,
-                index < segments ? focus : new Color(54, 59, 64));
-            DrawRectangleOutline(pip, 1, new Color(190, 194, 191));
         }
 
         if (player.Combat.CurrentTechnique?.Effect ==
@@ -6846,6 +6973,1243 @@ public sealed class GameRenderer : IDisposable
                 DrawRectangleOutline(distance, 1, new Color(213, 201, 163));
             }
         }
+    }
+
+    private void DrawSovereignUltimateWorld(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsSovereignUltimateActive)
+            return;
+        Rectangle target = gameSession.SovereignUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+
+        int stage = gameSession.SovereignUltimateStage;
+        float stageRatio = gameSession.SovereignUltimateStageRatio;
+        Vector2 center = target.Center.ToVector2();
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 7f);
+
+        if (stage <= 0)
+        {
+            Color judgment = new(218, 166, 53, (int)(65f + pulse * 45f));
+            DrawPortalArc(center, Vector2.UnitX, Vector2.UnitY,
+                target.Width * .66f + 12f,
+                target.Height * .58f + 8f,
+                -.35f, 2.20f, 1f, judgment);
+            DrawPortalArc(center, Vector2.UnitX, Vector2.UnitY,
+                target.Width * .66f + 12f,
+                target.Height * .58f + 8f,
+                MathHelper.Pi - .35f, 2.20f, 1f, judgment);
+            return;
+        }
+
+        if (stage <= AbyssRingTuning.UltimateStrikeCount)
+        {
+            float acceleration = (stage - 1f) /
+                Math.Max(1f, AbyssRingTuning.UltimateStrikeCount - 1f);
+            float detail = MathHelper.Lerp(1f, .46f, acceleration);
+            Color restraint = new(201, 151, 43,
+                (int)(46f + detail * 42f));
+            float ringWidth = target.Width * .58f + 8f;
+            float ringHeight = target.Height * (.24f + stage % 3 * .05f);
+            for (int band = -1; band <= 1; band++)
+            {
+                float y = center.Y + band * target.Height * .22f;
+                DrawPortalArc(new Vector2(center.X, y),
+                    Vector2.UnitX, Vector2.UnitY,
+                    ringWidth, ringHeight,
+                    stage * .31f + band,
+                    MathHelper.Pi * 1.34f,
+                    1f,
+                    restraint);
+            }
+
+            Vector2 from = gameSession.Player.Bounds.Center.ToVector2();
+            Vector2 delta = center - from;
+            float length = delta.Length();
+            if (length > .01f)
+            {
+                Vector2 direction = delta / length;
+                Vector2 normal = new(-direction.Y, direction.X);
+                float routeStart = acceleration > .70f ? .34f : .08f;
+                Vector2 start = Vector2.Lerp(from, center, routeStart);
+                float routePulse = 1f - Math.Clamp(
+                    MathF.Abs(stageRatio - .42f) * 2.2f,
+                    0f,
+                    1f);
+                Vector2 bend = normal * ((stage % 4) - 1.5f) *
+                    MathHelper.Lerp(13f, 5f, acceleration);
+                Vector2 middle = Vector2.Lerp(start, center, .54f) + bend;
+                Color shadow = new(5, 4, 8, (int)(105f * detail));
+                Color route = new(245, 190, 58,
+                    (int)((55f + routePulse * 130f) * detail));
+                DrawWorldLine(start, middle, 5f, shadow);
+                DrawWorldLine(middle, center, 5f, shadow);
+                DrawWorldLine(start, middle, acceleration > .70f ? 1f : 2f,
+                    route);
+                DrawWorldLine(middle, center,
+                    acceleration > .70f ? 1f : 2f, route);
+            }
+            return;
+        }
+
+        if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
+        {
+            float setup = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(stageRatio / .38f, 0f, 1f));
+            Vector2 gate = new(center.X, target.Top - 48f);
+            Color dark = new(4, 3, 8, (int)(220f * setup));
+            Color gold = new(255, 207, 76, (int)(235f * setup));
+            DrawWorldLine(gate - new Vector2(13f, 0f),
+                gate + new Vector2(13f, 0f), 24f, dark);
+            DrawPortalArc(gate, Vector2.UnitX, Vector2.UnitY,
+                15f * setup, 29f * setup,
+                -.20f, MathHelper.TwoPi * .44f, 3f, gold);
+            DrawPortalArc(gate, Vector2.UnitX, Vector2.UnitY,
+                15f * setup, 29f * setup,
+                MathHelper.Pi - .20f, MathHelper.TwoPi * .44f, 3f, gold);
+            DrawWorldLine(gate + new Vector2(0f, 18f), center,
+                7f, new Color(5, 4, 8, (int)(190f * setup)));
+            DrawWorldLine(gate + new Vector2(0f, 18f), center,
+                2f, gold);
+            for (int crack = -2; crack <= 2; crack++)
+            {
+                DrawWorldLine(center,
+                    center + new Vector2(crack * 9f, 12f +
+                        Math.Abs(crack) * 5f) * setup,
+                    crack == 0 ? 2f : 1f,
+                    gold);
+            }
+        }
+    }
+
+    private void DrawSovereignPortals(GameSession gameSession)
+    {
+        IReadOnlyList<SovereignPortal> portals =
+            gameSession.SovereignPortals.Portals;
+        for (int index = 0; index < portals.Count; index++)
+        {
+            SovereignPortal portal = portals[index];
+            float hierarchy = GetSovereignPortalHierarchy(
+                gameSession,
+                portal,
+                index);
+            DrawSovereignPortal(portal, index, hierarchy);
+        }
+    }
+
+    private static float GetSovereignPortalHierarchy(
+        GameSession gameSession,
+        SovereignPortal portal,
+        int portalIndex)
+    {
+        if (portal.Type != SovereignPortalType.Decorative && portal.IsLogical)
+            return 1f;
+        if (!gameSession.IsSovereignUltimateActive ||
+            portal.Type != SovereignPortalType.Decorative)
+            return .38f;
+
+        int stage = Math.Max(0, gameSession.SovereignUltimateStage);
+        int routeCenter = stage <= 0
+            ? 0
+            : (stage * 5 + stage / 4 * 3) %
+                AbyssRingTuning.GoldenGateCount;
+        int gateIndex = portalIndex % AbyssRingTuning.GoldenGateCount;
+        int distance = Math.Abs(gateIndex - routeCenter);
+        distance = Math.Min(distance,
+            AbyssRingTuning.GoldenGateCount - distance);
+        if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
+            return gateIndex is 17 or 18 or 19 ? .82f : .16f;
+        if (distance <= 2)
+            return .78f - distance * .12f;
+        return gateIndex < routeCenter ? .18f : .28f;
+    }
+
+    private void DrawSovereignPortal(
+        SovereignPortal portal,
+        int portalIndex,
+        float hierarchy)
+    {
+        bool decorative = portal.Type == SovereignPortalType.Decorative ||
+            !portal.IsLogical;
+        float visibility = portal.Phase switch
+        {
+            SovereignPortalPhase.Anticipating =>
+                .18f + portal.PhaseRatio * .42f,
+            SovereignPortalPhase.Closing => portal.PhaseRatio,
+            _ => 1f
+        } * hierarchy;
+        float usePulse = portal.Phase == SovereignPortalPhase.Active
+            ? MathF.Sin(Math.Min(1f, portal.ActiveRatio * 3.4f) *
+                MathHelper.Pi)
+            : 0f;
+        float open = Math.Max(.04f, portal.OpenRatio);
+        float radiusX = (portal.Type == SovereignPortalType.Strike
+                ? 14f
+                : 18f) * portal.Scale * open;
+        float radiusY = (portal.Type == SovereignPortalType.Strike
+                ? 27f
+                : 32f) * portal.Scale * open;
+        if (portal.Flow == SovereignPortalFlow.Entry &&
+            portal.Type == SovereignPortalType.Strike)
+        {
+            radiusX *= 1f - usePulse * .12f;
+            radiusY *= 1f - usePulse * .08f;
+        }
+        else if (portal.Flow == SovereignPortalFlow.Exit &&
+            portal.Type == SovereignPortalType.Transit)
+        {
+            radiusX *= 1f - usePulse * .10f;
+        }
+        Vector2 direction = portal.Direction;
+        Vector2 vertical = new(-direction.Y, direction.X);
+
+        if (portal.Phase == SovereignPortalPhase.Anticipating)
+        {
+            float sparkLength = 5f + 12f * portal.PhaseRatio;
+            DrawWorldLine(
+                portal.Position - vertical * sparkLength,
+                portal.Position + vertical * sparkLength,
+                1f + portal.PhaseRatio,
+                PortalColor(new Color(255, 220, 116, 230), visibility));
+            return;
+        }
+
+        DrawPortalCore(portal, direction, vertical, radiusX, radiusY,
+            visibility);
+        DrawPortalFracturedRing(portal, portalIndex, direction, vertical,
+            radiusX, radiusY, visibility, usePulse);
+        DrawPortalRuneRing(portal, portalIndex, direction, vertical,
+            radiusX * .72f, radiusY * .75f, visibility);
+        DrawPortalEnergyFlow(portal, direction, vertical, radiusX, radiusY,
+            visibility, usePulse);
+        if (portal.Type == SovereignPortalType.Transit &&
+            portal.Flow == SovereignPortalFlow.Exit &&
+            usePulse > .04f)
+        {
+            DrawPortalPushOff(portal, direction, vertical, radiusX, radiusY,
+                visibility, usePulse);
+        }
+
+        if (portal.Type == SovereignPortalType.Transit &&
+            portal.Flow != SovereignPortalFlow.Neutral &&
+            !decorative)
+        {
+            DrawTransitBodyEcho(portal, direction, vertical, radiusY,
+                visibility);
+        }
+    }
+
+    private void DrawPortalCore(
+        SovereignPortal portal,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float visibility)
+    {
+        Color voidEdge = PortalColor(new Color(22, 17, 25, 225), visibility);
+        Color voidCore = PortalColor(new Color(3, 3, 7, 244), visibility);
+        for (int band = -4; band <= 4; band++)
+        {
+            float acrossRatio = band / 4.7f;
+            float across = acrossRatio * radiusX;
+            float halfHeight = radiusY * .88f * MathF.Sqrt(
+                Math.Max(0f, 1f - acrossRatio * acrossRatio));
+            Vector2 center = portal.Position + direction * across;
+            DrawWorldLine(
+                center - vertical * halfHeight,
+                center + vertical * halfHeight,
+                Math.Max(2f, radiusX * .25f),
+                band is -4 or 4 ? voidEdge : voidCore);
+        }
+
+        float distortion = .6f + .4f * MathF.Sin(portal.Age * 19f);
+        DrawPortalArc(portal.Position, direction, vertical,
+            radiusX * 1.12f, radiusY * 1.08f,
+            portal.Age * .8f, MathHelper.Pi * .72f, 1f,
+            PortalColor(new Color(98, 72, 34, 75),
+                visibility * distortion));
+        DrawPortalArc(portal.Position, direction, vertical,
+            radiusX * 1.08f, radiusY * 1.14f,
+            MathHelper.Pi + portal.Age * .8f, MathHelper.Pi * .72f, 1f,
+            PortalColor(new Color(98, 72, 34, 75),
+                visibility * distortion));
+    }
+
+    private void DrawPortalFracturedRing(
+        SovereignPortal portal,
+        int portalIndex,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float visibility,
+        float usePulse)
+    {
+        const int segmentCount = 16;
+        float rotation = portal.Age *
+            (portal.Type == SovereignPortalType.Strike ? 2.1f : 1.15f) +
+            portalIndex * .37f;
+        Color shadow = PortalColor(new Color(92, 59, 13, 120), visibility);
+        Color metal = PortalColor(new Color(211, 151, 35, 220), visibility);
+        Color edge = PortalColor(new Color(255, 224, 124, 245),
+            visibility * (.66f + usePulse * .34f));
+
+        for (int segment = 0; segment < segmentCount; segment++)
+        {
+            if ((segment + portalIndex) % 5 == 2)
+                continue;
+            float start = MathHelper.TwoPi * segment / segmentCount + rotation;
+            float span = MathHelper.TwoPi / segmentCount *
+                (segment % 3 == 0 ? .54f : .72f);
+            float fracture = 1f + (segment % 4 - 1.5f) * .018f;
+            DrawPortalArc(portal.Position, direction, vertical,
+                radiusX * fracture, radiusY * fracture,
+                start, span, portal.IsLogical ? 5f : 3f, shadow);
+            DrawPortalArc(portal.Position, direction, vertical,
+                radiusX * fracture, radiusY * fracture,
+                start, span, portal.IsLogical ? 2f : 1f,
+                segment % 4 == 0 ? edge : metal);
+        }
+    }
+
+    private void DrawPortalRuneRing(
+        SovereignPortal portal,
+        int portalIndex,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float visibility)
+    {
+        float rotation = -portal.Age * 1.55f + portalIndex * .23f;
+        Color rune = PortalColor(new Color(235, 190, 78, 175),
+            visibility * .78f);
+        for (int index = 0; index < 8; index++)
+        {
+            float angle = MathHelper.TwoPi * index / 8f + rotation;
+            Vector2 point = PortalPoint(portal.Position, direction, vertical,
+                radiusX, radiusY, angle);
+            Vector2 tangent = Vector2.Normalize(
+                direction * (-MathF.Sin(angle) * radiusX) +
+                vertical * (MathF.Cos(angle) * radiusY));
+            float length = index % 2 == 0 ? 5f : 3f;
+            DrawWorldLine(point - tangent * length * .5f,
+                point + tangent * length * .5f, 1f, rune);
+            if (index % 2 == 0)
+            {
+                Vector2 inward = Vector2.Normalize(portal.Position - point);
+                DrawWorldLine(point, point + inward * 3f, 1f, rune);
+            }
+        }
+    }
+
+    private void DrawPortalEnergyFlow(
+        SovereignPortal portal,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float visibility,
+        float usePulse)
+    {
+        Color flow = PortalColor(new Color(248, 194, 62, 190),
+            visibility * (.55f + usePulse * .45f));
+        float flowSign = portal.Flow == SovereignPortalFlow.Entry ? -1f : 1f;
+        if (portal.Flow == SovereignPortalFlow.Neutral)
+            flowSign = portal.Type == SovereignPortalType.Strike ? 1f : 0f;
+
+        for (int index = -2; index <= 2; index++)
+        {
+            float lane = index * radiusY * .17f;
+            float phase = (portal.Age * 5.5f + index * .19f) % 1f;
+            float near = radiusX * (.22f + phase * .42f);
+            float far = near + radiusX * (.34f + usePulse * .20f);
+            Vector2 offset = vertical * lane;
+            Vector2 from = portal.Position + offset + direction * near * flowSign;
+            Vector2 to = portal.Position + offset + direction * far * flowSign;
+            if (portal.Flow == SovereignPortalFlow.Entry)
+                (from, to) = (to, from);
+            DrawWorldLine(from, to, index == 0 ? 2f : 1f, flow);
+        }
+
+        if (portal.Type == SovereignPortalType.Strike && usePulse > .05f)
+        {
+            for (int index = -2; index <= 2; index++)
+            {
+                Vector2 ray = direction * radiusX * (1.1f + usePulse) +
+                    vertical * index * 5f;
+                DrawWorldLine(portal.Position + direction * radiusX * .45f,
+                    portal.Position + ray, index == 0 ? 3f : 1f,
+                    PortalColor(new Color(255, 211, 91, 210),
+                        visibility * usePulse));
+            }
+        }
+    }
+
+    private void DrawTransitBodyEcho(
+        SovereignPortal portal,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusY,
+        float visibility)
+    {
+        float use = portal.Phase == SovereignPortalPhase.Active
+            ? 1f - Math.Min(1f, portal.ActiveRatio * 2.4f)
+            : portal.Phase == SovereignPortalPhase.Stabilizing
+                ? portal.PhaseRatio
+                : 0f;
+        if (use <= .02f)
+            return;
+
+        float sign = portal.Flow == SovereignPortalFlow.Entry ? -1f : 1f;
+        Color shadow = PortalColor(new Color(10, 8, 14, 150),
+            visibility * use);
+        Color seam = PortalColor(new Color(223, 166, 48, 125),
+            visibility * use);
+        for (int echo = 1; echo <= 3; echo++)
+        {
+            Vector2 center = portal.Position - direction * sign * echo * 7f;
+            float fade = 1f - echo * .22f;
+            DrawWorldLine(center - vertical * radiusY * .48f,
+                center + vertical * radiusY * .24f,
+                Math.Max(3f, 8f - echo), PortalColor(shadow, fade));
+            DrawWorldLine(center - vertical * radiusY * .08f,
+                center + direction * sign * (13f + echo * 3f),
+                2f, PortalColor(seam, fade));
+        }
+    }
+
+    private void DrawPortalPushOff(
+        SovereignPortal portal,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float visibility,
+        float pulse)
+    {
+        Vector2 contact = portal.Position + vertical * radiusY * .62f -
+            direction * radiusX * .18f;
+        Color burst = PortalColor(new Color(255, 211, 92, 225),
+            visibility * pulse);
+        for (int index = -1; index <= 1; index++)
+        {
+            Vector2 ray = direction * (9f + pulse * 10f) +
+                vertical * index * 5f;
+            DrawWorldLine(contact, contact + ray,
+                index == 0 ? 2f : 1f, burst);
+        }
+        DrawPortalArc(portal.Position, direction, vertical,
+            radiusX * (1.04f + pulse * .13f),
+            radiusY * (1.02f + pulse * .08f),
+            -.72f, 1.44f, 1f, burst);
+    }
+
+    private void DrawPortalArc(
+        Vector2 center,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float start,
+        float span,
+        float thickness,
+        Color color)
+    {
+        const int steps = 3;
+        Vector2 previous = PortalPoint(center, direction, vertical,
+            radiusX, radiusY, start);
+        for (int step = 1; step <= steps; step++)
+        {
+            float angle = start + span * step / steps;
+            Vector2 next = PortalPoint(center, direction, vertical,
+                radiusX, radiusY, angle);
+            DrawWorldLine(previous, next, thickness, color);
+            previous = next;
+        }
+    }
+
+    private static Vector2 PortalPoint(
+        Vector2 center,
+        Vector2 direction,
+        Vector2 vertical,
+        float radiusX,
+        float radiusY,
+        float angle) =>
+        center + direction * (MathF.Cos(angle) * radiusX) +
+        vertical * (MathF.Sin(angle) * radiusY);
+
+    private static Color PortalColor(Color color, float opacity) => new(
+        color.R,
+        color.G,
+        color.B,
+        (byte)Math.Clamp((int)MathF.Round(color.A * opacity), 0, 255));
+
+    private void DrawRangerUltimateCinematic(GameSession gameSession)
+    {
+        float ratio = gameSession.Player.Combat.RangerUltimateCinematicRatio;
+        if (ratio <= 0f)
+            return;
+
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        float fade = MathF.Sin(ratio * MathHelper.Pi);
+        byte alpha = (byte)Math.Clamp(
+            (int)MathF.Round(116f * fade),
+            0,
+            116);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(0, 0, width, height),
+            new Color(6, 10, 16, (int)alpha));
+
+        float sweep = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .20f) / .34f, 0f, 1f));
+        if (sweep > 0f)
+        {
+            Vector2 bannerCenter = new(width * .58f, height * .48f);
+            float bannerWidth = width * .78f * sweep;
+            _spriteBatch.Draw(
+                _pixel,
+                bannerCenter,
+                sourceRectangle: null,
+                new Color(12, 42, 67, (int)(205f * fade)),
+                -.16f,
+                new Vector2(.5f, .5f),
+                new Vector2(bannerWidth, Math.Max(72f, height * .15f)),
+                SpriteEffects.None,
+                layerDepth: 0f);
+            DrawWorldLine(
+                new Vector2(width * .12f, height * .66f),
+                new Vector2(width * .94f, height * .25f),
+                5f,
+                new Color(74, 224, 255, (int)(210f * fade)));
+            DrawWorldLine(
+                new Vector2(width * .20f, height * .72f),
+                new Vector2(width * .88f, height * .38f),
+                2f,
+                new Color(177, 246, 255, (int)(180f * fade)));
+            for (int index = 0; index < 6; index++)
+            {
+                float offset = index * height * .055f;
+                DrawWorldLine(
+                    new Vector2(width * (.04f + index * .025f),
+                        height * .30f + offset),
+                    new Vector2(width * (.34f + index * .045f),
+                        height * .16f + offset),
+                    index % 2 == 0 ? 3f : 2f,
+                    new Color(69, 191, 235, (int)(145f * fade)));
+            }
+        }
+
+        float portrait = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .16f) / .28f, 0f, 1f));
+        if (portrait > 0f)
+        {
+            float portraitScale = MathHelper.Lerp(3.05f, 3.70f, portrait);
+            Vector2 portraitAnchor = new(width * .28f, height * .86f);
+            _spriteBatch.End();
+            _spriteBatch.Begin(
+                samplerState: SamplerState.PointClamp,
+                transformMatrix: Matrix.CreateScale(portraitScale) *
+                    Matrix.CreateTranslation(
+                        portraitAnchor.X,
+                        portraitAnchor.Y,
+                        0f));
+            _playerSpriteRenderer.DrawCinematicCutIn(
+                gameSession.Player,
+                Vector2.Zero);
+            _spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        }
+
+        if (ratio < .48f)
+            return;
+
+        DrawCenteredDebugText(
+            Loc.Get("weapon.phantom_hunt.name"),
+            width / 2,
+            height / 2 - 82,
+            new Color(190, 242, 255),
+            3);
+        if (ratio >= .72f)
+        {
+            DrawCenteredDebugText(
+                Loc.Get("weapon.phantom_hunt.voice"),
+                width / 2,
+                height / 2 - 34,
+                new Color(210, 220, 215),
+                2);
+        }
+    }
+
+    private void DrawRangerUltimateTargetLock(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsRangerUltimateTargetLocked)
+            return;
+
+        Rectangle target = gameSession.RangerUltimateTargetBounds;
+        if (target.Width <= 0 || target.Height <= 0)
+            return;
+
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 9f);
+        int inset = 5 + (int)MathF.Round(pulse * 3f);
+        Rectangle lockBounds = target;
+        lockBounds.Inflate(inset, inset);
+        Color cyan = new(77, 222, 247, 205);
+        int corner = Math.Max(8, Math.Min(18, lockBounds.Width / 3));
+        DrawWorldLine(new Vector2(lockBounds.Left, lockBounds.Top),
+            new Vector2(lockBounds.Left + corner, lockBounds.Top), 2f, cyan);
+        DrawWorldLine(new Vector2(lockBounds.Left, lockBounds.Top),
+            new Vector2(lockBounds.Left, lockBounds.Top + corner), 2f, cyan);
+        DrawWorldLine(new Vector2(lockBounds.Right, lockBounds.Top),
+            new Vector2(lockBounds.Right - corner, lockBounds.Top), 2f, cyan);
+        DrawWorldLine(new Vector2(lockBounds.Right, lockBounds.Top),
+            new Vector2(lockBounds.Right, lockBounds.Top + corner), 2f, cyan);
+        DrawWorldLine(new Vector2(lockBounds.Left, lockBounds.Bottom),
+            new Vector2(lockBounds.Left + corner, lockBounds.Bottom), 2f, cyan);
+        DrawWorldLine(new Vector2(lockBounds.Right, lockBounds.Bottom),
+            new Vector2(lockBounds.Right - corner, lockBounds.Bottom), 2f, cyan);
+    }
+
+    private void DrawGreatswordUltimateCinematic(GameSession gameSession)
+    {
+        float ratio =
+            gameSession.Player.Combat.GreatswordUltimateCinematicRatio;
+        if (ratio <= 0f)
+            return;
+
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        float fade = MathF.Sin(ratio * MathHelper.Pi);
+        int shadeAlpha = Math.Clamp(
+            (int)MathF.Round(150f * fade),
+            0,
+            150);
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(0, 0, width, height),
+            new Color(4, 5, 7, shadeAlpha));
+
+        float sweep = MathHelper.SmoothStep(
+            0f,
+            1f,
+            Math.Clamp((ratio - .16f) / .30f, 0f, 1f));
+        if (sweep > 0f)
+        {
+            Vector2 center = new(width * .58f, height * .48f);
+            _spriteBatch.Draw(
+                _pixel,
+                center,
+                sourceRectangle: null,
+                new Color(12, 13, 15, (int)(225f * fade)),
+                -.14f,
+                new Vector2(.5f, .5f),
+                new Vector2(width * .82f * sweep,
+                    Math.Max(82f, height * .18f)),
+                SpriteEffects.None,
+                layerDepth: 0f);
+            DrawWorldLine(
+                new Vector2(width * .10f, height * .68f),
+                new Vector2(width * .94f, height * .24f),
+                6f,
+                new Color(190, 148, 55, (int)(220f * fade)));
+            DrawWorldLine(
+                new Vector2(width * .16f, height * .72f),
+                new Vector2(width * .90f, height * .34f),
+                2f,
+                new Color(245, 218, 142, (int)(185f * fade)));
+            for (int index = 0; index < 7; index++)
+            {
+                float y = height * (.20f + index * .065f);
+                DrawWorldLine(
+                    new Vector2(width * (.04f + index * .018f), y + 42f),
+                    new Vector2(width * (.31f + index * .035f), y - 18f),
+                    index % 3 == 0 ? 4f : 2f,
+                    new Color(143, 124, 82, (int)(150f * fade)));
+            }
+        }
+
+        float portrait = MathHelper.SmoothStep(
+            0f,
+            1f,
+            Math.Clamp((ratio - .12f) / .28f, 0f, 1f));
+        if (portrait > 0f)
+        {
+            float scale = MathHelper.Lerp(3.15f, 3.85f, portrait);
+            Vector2 anchor = new(width * .29f, height * .87f);
+            _spriteBatch.End();
+            _spriteBatch.Begin(
+                samplerState: SamplerState.PointClamp,
+                transformMatrix: Matrix.CreateScale(scale) *
+                    Matrix.CreateTranslation(anchor.X, anchor.Y, 0f));
+            _playerSpriteRenderer.DrawCinematicCutIn(
+                gameSession.Player,
+                Vector2.Zero);
+            _spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        }
+
+        if (ratio < .45f)
+            return;
+
+        DrawCenteredDebugText(
+            Loc.Get("weapon.final_verdict.name"),
+            width / 2,
+            height / 2 - 84,
+            new Color(244, 215, 139),
+            3);
+        if (ratio >= .72f)
+        {
+            DrawCenteredDebugText(
+                Loc.Get("weapon.final_verdict.voice"),
+                width / 2,
+                height / 2 - 35,
+                new Color(221, 219, 208),
+                2);
+        }
+    }
+
+    private void DrawSovereignUltimateCinematic(GameSession gameSession)
+    {
+        float ratio = gameSession.Player.Combat.SovereignUltimateCinematicRatio;
+        if (ratio <= 0f)
+            return;
+
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        float fadeIn = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp(ratio / .14f, 0f, 1f));
+        float fadeOut = 1f - MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .88f) / .12f, 0f, 1f));
+        float visibility = fadeIn * fadeOut;
+        int shadeAlpha = (int)(MathHelper.Lerp(82f, 218f,
+            Math.Clamp((ratio - .16f) / .30f, 0f, 1f)) * visibility);
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+            new Color(3, 3, 6, shadeAlpha));
+
+        Rectangle target = gameSession.SovereignUltimateTargetBounds;
+        if (ratio < .26f && !target.IsEmpty)
+        {
+            Vector2 targetScreen = Vector2.Transform(
+                target.Center.ToVector2(),
+                gameSession.Camera.Transform);
+            float judgment = MathHelper.SmoothStep(0f, 1f, ratio / .18f);
+            float radius = 24f - judgment * 8f;
+            Color mark = new(246, 195, 65, (int)(210f * visibility));
+            for (int corner = 0; corner < 4; corner++)
+            {
+                float angle = MathHelper.PiOver2 * corner + .78f;
+                Vector2 inward = new(MathF.Cos(angle), MathF.Sin(angle));
+                Vector2 tangent = new(-inward.Y, inward.X);
+                Vector2 point = targetScreen + inward * radius;
+                DrawWorldLine(point, point - inward * 8f, 2f, mark);
+                DrawWorldLine(point, point + tangent * 5f, 1f, mark);
+            }
+        }
+
+        float composition = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .16f) / .24f, 0f, 1f));
+        if (composition > 0f)
+        {
+            float bannerWidth = width * .92f * composition;
+            Vector2 bannerCenter = new(width * .52f, height * .52f);
+            _spriteBatch.Draw(
+                _pixel,
+                bannerCenter,
+                sourceRectangle: null,
+                new Color(7, 6, 10, (int)(242f * visibility)),
+                -.16f,
+                new Vector2(.5f, .5f),
+                new Vector2(bannerWidth, Math.Max(92f, height * .20f)),
+                SpriteEffects.None,
+                layerDepth: 0f);
+            DrawWorldLine(
+                new Vector2(width * .04f, height * .72f),
+                new Vector2(width * .96f, height * .25f),
+                2f,
+                new Color(250, 198, 66, (int)(225f * visibility)));
+
+            Vector2 runeCenter = new(width * .76f, height * .45f);
+            for (int ring = 0; ring < 3; ring++)
+            {
+                float radiusX = 42f + ring * 25f;
+                float radiusY = radiusX * (.48f + ring * .035f);
+                float spin = ratio * (ring % 2 == 0 ? 1.1f : -1.3f);
+                for (int segment = 0; segment < 8; segment += 2)
+                {
+                    float start = MathHelper.TwoPi * segment / 8f + spin;
+                    DrawPortalArc(runeCenter, Vector2.UnitX, Vector2.UnitY,
+                        radiusX, radiusY, start, .62f, 1f,
+                        new Color(214, 158, 43,
+                            (int)((72f - ring * 12f) * visibility)));
+                }
+            }
+        }
+
+        float portrait = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .22f) / .24f, 0f, 1f));
+        if (portrait > 0f)
+        {
+            float portraitScale = MathHelper.Lerp(4.15f, 4.72f, portrait);
+            _spriteBatch.End();
+            _spriteBatch.Begin(
+                samplerState: SamplerState.PointClamp,
+                transformMatrix: Matrix.CreateScale(portraitScale) *
+                    Matrix.CreateTranslation(
+                        width * .19f,
+                        height * 1.02f,
+                        0f));
+            _playerSpriteRenderer.DrawSovereignCinematicCutIn(
+                gameSession.Player, Vector2.Zero);
+            _spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        }
+
+        if (ratio >= .48f)
+            DrawCenteredDebugText(
+                Loc.Get("weapon.golden_sovereign_cataclysm.name"),
+                width / 2,
+                height / 2 - 76,
+                new Color(255, 213, 91, (int)(255f * visibility)),
+                3);
+        if (ratio >= .70f)
+            DrawCenteredDebugText(
+                Loc.Get("weapon.golden_sovereign_cataclysm.voice"),
+                width / 2,
+                height / 2 - 29,
+                new Color(235, 220, 174, (int)(235f * visibility)),
+                2);
+    }
+
+    private void DrawSovereignAssaultOverlay(GameSession gameSession)
+    {
+        if (!gameSession.IsSovereignUltimateActive ||
+            gameSession.Player.Combat.State == CombatState.ChargingHeavy)
+            return;
+        int stage = gameSession.SovereignUltimateStage;
+        AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+        if (attack == null)
+            return;
+
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        if (stage is >= 1 and <= 16)
+        {
+            float acceleration = (stage - 1f) / 15f;
+            int bar = 7 + (int)MathF.Round(acceleration * 7f);
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, bar),
+                new Color(2, 2, 5, 112));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(0, height - bar, width, bar),
+                new Color(2, 2, 5, 112));
+
+            bool cadenceBeat = stage is 4 or 8 or 12;
+            float recoveryStart = attack.StartupTime + attack.ActiveTime;
+            float recoveryRatio = Math.Clamp(
+                (gameSession.Player.Combat.StateElapsed - recoveryStart) /
+                    Math.Max(.01f, attack.RecoveryTime),
+                0f,
+                1f);
+            if (cadenceBeat && recoveryRatio > 0f)
+            {
+                float pause = MathF.Sin(recoveryRatio * MathHelper.Pi);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(0, 0, width, height),
+                    new Color(2, 2, 5, (int)(54f * pause)));
+            }
+
+            if (stage >= 9)
+            {
+                float streakAlpha = stage >= 13 ? 82f : 52f;
+                float slope = stage % 2 == 0 ? -1f : 1f;
+                for (int streak = 0; streak < (stage >= 13 ? 3 : 2); streak++)
+                {
+                    float y = height * (.28f + streak * .18f);
+                    DrawWorldLine(
+                        new Vector2(width * .12f, y),
+                        new Vector2(width * .42f,
+                            y + slope * (18f + streak * 7f)),
+                        1f,
+                        new Color(225, 169, 48, (int)streakAlpha));
+                }
+            }
+            return;
+        }
+
+        if (stage != 17)
+            return;
+        float activeElapsed = gameSession.Player.Combat.StateElapsed -
+            attack.StartupTime;
+        float impact = 1f - Math.Clamp(
+            MathF.Abs(activeElapsed - attack.ActiveTime * .36f) /
+                Math.Max(.025f, attack.ActiveTime * .34f),
+            0f,
+            1f);
+        if (impact <= 0f)
+            return;
+
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+            new Color(1, 1, 3, (int)(188f * impact)));
+        Rectangle target = gameSession.SovereignUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+        Vector2 targetScreen = Vector2.Transform(
+            target.Center.ToVector2(),
+            gameSession.Camera.Transform);
+        Color gold = new(255, 207, 76, (int)(240f * impact));
+        DrawWorldLine(targetScreen - new Vector2(0f, height * .32f),
+            targetScreen, 5f, gold);
+        for (int crack = -3; crack <= 3; crack++)
+        {
+            Vector2 end = targetScreen + new Vector2(
+                crack * 13f,
+                18f + Math.Abs(crack) * 7f);
+            DrawWorldLine(targetScreen, end,
+                crack == 0 ? 2f : 1f, gold);
+        }
+    }
+
+    private void DrawSovereignUltimateTargetLock(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsSovereignUltimateTargetLocked)
+            return;
+        Rectangle target = gameSession.SovereignUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+        int stage = gameSession.SovereignUltimateStage;
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 9f);
+        Rectangle frame = target;
+        frame.Inflate(8 + (int)(pulse * 3f), 7 + (int)(pulse * 2f));
+        Color gold = stage <= 0
+            ? new Color(250, 205, 76, 225)
+            : new Color(231, 178, 50, 145);
+        int corner = Math.Max(7, Math.Min(15, frame.Width / 3));
+        DrawWorldLine(new Vector2(frame.Left, frame.Top),
+            new Vector2(frame.Left + corner, frame.Top), 1f, gold);
+        DrawWorldLine(new Vector2(frame.Left, frame.Top),
+            new Vector2(frame.Left, frame.Top + corner), 1f, gold);
+        DrawWorldLine(new Vector2(frame.Right, frame.Top),
+            new Vector2(frame.Right - corner, frame.Top), 1f, gold);
+        DrawWorldLine(new Vector2(frame.Right, frame.Top),
+            new Vector2(frame.Right, frame.Top + corner), 1f, gold);
+        DrawWorldLine(new Vector2(frame.Left, frame.Bottom),
+            new Vector2(frame.Left + corner, frame.Bottom), 1f, gold);
+        DrawWorldLine(new Vector2(frame.Right, frame.Bottom),
+            new Vector2(frame.Right - corner, frame.Bottom), 1f, gold);
+
+        if (stage is >= 1 and <= 16)
+        {
+            for (int band = -1; band <= 1; band++)
+            {
+                float y = target.Center.Y + band * target.Height * .22f;
+                DrawWorldLine(
+                    new Vector2(target.Left - 4f, y),
+                    new Vector2(target.Left + target.Width * .22f, y + 2f),
+                    1f,
+                    new Color(213, 164, 48, 95));
+                DrawWorldLine(
+                    new Vector2(target.Right + 4f, y),
+                    new Vector2(target.Right - target.Width * .22f, y - 2f),
+                    1f,
+                    new Color(213, 164, 48, 95));
+            }
+        }
+        else if (stage == 17)
+        {
+            Vector2 center = target.Center.ToVector2();
+            float contract = MathHelper.Lerp(1.25f, .84f,
+                gameSession.SovereignUltimateStageRatio);
+            DrawPortalArc(center, Vector2.UnitX, Vector2.UnitY,
+                (target.Width * .5f + 12f) * contract,
+                (target.Height * .5f + 8f) * contract,
+                -.35f, 2.24f, 2f, new Color(255, 208, 76, 220));
+            DrawPortalArc(center, Vector2.UnitX, Vector2.UnitY,
+                (target.Width * .5f + 12f) * contract,
+                (target.Height * .5f + 8f) * contract,
+                MathHelper.Pi - .35f, 2.24f, 2f,
+                new Color(255, 208, 76, 220));
+        }
+    }
+
+    private void DrawSovereignExecutionFrame(GameSession gameSession)
+    {
+        if (!gameSession.IsSovereignExecutionActive)
+            return;
+
+        float executionTime = gameSession.SovereignExecutionElapsedSeconds;
+        static float Phase(float time, float start, float end) =>
+            Math.Clamp((time - start) / MathF.Max(.001f, end - start),
+                0f, 1f);
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        bool suppressed = gameSession.IsSovereignExecutionSuppressed;
+        float fadeIn = MathHelper.SmoothStep(0f, 1f,
+            Phase(executionTime, 0f,
+                AbyssRingTuning.ExecutionSilenceEndSeconds));
+        float fadeOut = 1f - MathHelper.SmoothStep(0f, 1f,
+            Phase(executionTime,
+                AbyssRingTuning.ExecutionShatterEndSeconds,
+                AbyssRingTuning.ExecutionDurationSeconds));
+        float visibility = fadeIn * fadeOut;
+        Color gold = suppressed
+            ? new Color(154, 124, 74, (int)(215f * visibility))
+            : new Color(255, 207, 73, (int)(245f * visibility));
+        _spriteBatch.Draw(
+            _pixel,
+            new Rectangle(0, 0, width, height),
+            new Color(1, 1, 4, (int)(238f * visibility)));
+
+        float eyeReveal = MathHelper.SmoothStep(0f, 1f, Phase(
+            executionTime,
+            AbyssRingTuning.ExecutionSilenceEndSeconds,
+            AbyssRingTuning.ExecutionEyeEndSeconds));
+        float eyeFade = 1f - MathHelper.SmoothStep(0f, 1f,
+            Phase(executionTime,
+                AbyssRingTuning.ExecutionRingEndSeconds,
+                AbyssRingTuning.ExecutionPortalEndSeconds));
+        float eyeVisibility = eyeReveal * eyeFade * visibility;
+        if (eyeVisibility > 0f)
+        {
+            Vector2 eye = new(width * .43f, height * .36f);
+            float eyeWidth = MathHelper.Lerp(38f, 158f, eyeReveal);
+            _spriteBatch.Draw(
+                _pixel,
+                new Rectangle((int)(eye.X - eyeWidth), (int)eye.Y - 25,
+                    (int)(eyeWidth * 2f), 50),
+                new Color(8, 7, 11, (int)(250f * eyeVisibility)));
+            DrawWorldLine(eye - new Vector2(eyeWidth * .88f, 3f),
+                eye + new Vector2(eyeWidth * .88f, 2f),
+                3f,
+                PortalColor(gold, eyeVisibility));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)eye.X - 6, (int)eye.Y - 15, 12, 30),
+                PortalColor(gold, eyeVisibility));
+            DrawPortalArc(eye, Vector2.UnitX, Vector2.UnitY,
+                20f, 11f, -.5f, 2.1f, 1f,
+                PortalColor(new Color(248, 191, 57, 145), eyeVisibility));
+        }
+
+        float handGateReveal = MathHelper.SmoothStep(0f, 1f, Phase(
+            executionTime,
+            AbyssRingTuning.ExecutionEyeEndSeconds,
+            AbyssRingTuning.ExecutionRingEndSeconds));
+        float lastGateReveal = MathHelper.SmoothStep(0f, 1f, Phase(
+            executionTime,
+            AbyssRingTuning.ExecutionRingEndSeconds,
+            AbyssRingTuning.ExecutionPortalEndSeconds));
+        float portalFade = 1f - MathHelper.SmoothStep(0f, 1f,
+            Phase(executionTime,
+                AbyssRingTuning.ExecutionHitStopEndSeconds,
+                AbyssRingTuning.ExecutionShatterEndSeconds));
+        float portalVisibility = portalFade * visibility;
+        Vector2 handGate = new(width * .39f, height * .62f);
+        Vector2 lastGate = new(width * .72f, height * .55f);
+        if (handGateReveal * portalVisibility > 0f)
+        {
+            DrawExecutionPortal(handGate, 18f, 33f,
+                PortalColor(gold,
+                    handGateReveal * portalVisibility * .82f));
+            if (lastGateReveal > 0f)
+                DrawExecutionPortal(lastGate, 14f, 27f,
+                    PortalColor(gold,
+                        lastGateReveal * portalVisibility));
+
+            float anticipation = MathHelper.SmoothStep(0f, 1f, Phase(
+                executionTime,
+                AbyssRingTuning.ExecutionPortalEndSeconds,
+                AbyssRingTuning.ExecutionAnticipationEndSeconds));
+            float release = MathHelper.SmoothStep(0f, 1f, Phase(
+                executionTime,
+                AbyssRingTuning.ExecutionAnticipationEndSeconds,
+                AbyssRingTuning.ExecutionImpactSeconds));
+            float knuckle = MathHelper.Lerp(
+                anticipation * .28f,
+                1f,
+                release);
+            Vector2 armStart = new(width * .10f, height * .68f);
+            Vector2 armEnd = Vector2.Lerp(armStart, handGate, knuckle);
+            DrawWorldLine(armStart, armEnd, 18f,
+                new Color(8, 7, 11,
+                    (int)(245f * handGateReveal * portalVisibility)));
+            DrawWorldLine(armStart, armEnd, 3f,
+                PortalColor(gold,
+                    handGateReveal * portalVisibility * .72f));
+
+            Vector2 target = new(width * .79f, height * .59f);
+            Vector2 fist = Vector2.Lerp(lastGate, target, knuckle);
+            DrawWorldLine(lastGate, fist, 16f,
+                new Color(7, 6, 10,
+                    (int)(250f * lastGateReveal * portalVisibility)));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)fist.X - 8, (int)fist.Y - 7, 17, 14),
+                PortalColor(gold,
+                    lastGateReveal * portalVisibility));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)target.X - 14, (int)target.Y - 40,
+                    28, 68),
+                new Color(5, 5, 8,
+                    (int)(235f * lastGateReveal * portalVisibility)));
+        }
+
+        float impact = executionTime >= AbyssRingTuning.ExecutionImpactSeconds
+            ? 1f - MathHelper.SmoothStep(0f, 1f, Phase(
+                executionTime,
+                AbyssRingTuning.ExecutionImpactSeconds,
+                AbyssRingTuning.ExecutionHitStopEndSeconds))
+            : 0f;
+        if (impact > 0f)
+        {
+            Vector2 impactPoint = new(width * .79f, height * .56f);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(0, (int)(height * .48f), width,
+                    Math.Max(4, (int)(height * .16f))),
+                new Color(2, 2, 4, (int)(230f * impact)));
+            DrawWorldLine(new Vector2(width * .42f, height * .67f),
+                impactPoint, 5f, PortalColor(gold, impact));
+            for (int crack = 0; crack < 8; crack++)
+            {
+                float angle = MathHelper.TwoPi * crack / 8f + .18f;
+                float length = 24f + crack % 3 * 12f;
+                Vector2 middle = impactPoint + new Vector2(
+                    MathF.Cos(angle) * length * .48f,
+                    MathF.Sin(angle) * length * .48f);
+                Vector2 end = impactPoint + new Vector2(
+                    MathF.Cos(angle) * length,
+                    MathF.Sin(angle) * length);
+                DrawWorldLine(impactPoint, middle, 2f,
+                    PortalColor(gold, impact));
+                DrawWorldLine(middle,
+                    end + new Vector2(crack % 2 == 0 ? 5f : -5f, 3f),
+                    1f,
+                    PortalColor(gold, impact * .72f));
+            }
+        }
+
+        if (executionTime >= AbyssRingTuning.ExecutionHitStopEndSeconds)
+        {
+            float shatter = MathHelper.SmoothStep(0f, 1f, Phase(
+                executionTime,
+                AbyssRingTuning.ExecutionHitStopEndSeconds,
+                AbyssRingTuning.ExecutionShatterEndSeconds));
+            Vector2 center = new(width * .79f, height * .56f);
+            for (int shard = 0; shard < 9; shard++)
+            {
+                float angle = MathHelper.TwoPi * shard / 9f + .12f;
+                float inner = 18f + shatter * 22f;
+                float outer = inner + 12f + shard % 3 * 5f;
+                Vector2 from = center + new Vector2(
+                    MathF.Cos(angle) * inner,
+                    MathF.Sin(angle) * inner);
+                Vector2 to = center + new Vector2(
+                    MathF.Cos(angle) * outer,
+                    MathF.Sin(angle) * outer);
+                DrawWorldLine(from, to, shard % 3 == 0 ? 2f : 1f,
+                    PortalColor(gold, (1f - shatter) * .82f));
+            }
+        }
+
+        if (executionTime >= AbyssRingTuning.ExecutionEyeEndSeconds &&
+            executionTime < AbyssRingTuning.ExecutionShatterEndSeconds)
+            DrawCenteredDebugText(
+                Loc.Get("weapon.sovereign_execution.name"),
+                width / 2,
+                (int)(height * .77f),
+                gold,
+                3);
+        if (executionTime >= AbyssRingTuning.ExecutionPortalEndSeconds &&
+            executionTime < AbyssRingTuning.ExecutionAnticipationEndSeconds &&
+            !suppressed)
+        {
+            DrawCenteredDebugText(
+                Loc.Get("weapon.sovereign_execution.voice"),
+                width / 2,
+                (int)(height * .84f),
+                new Color(235, 220, 174, (int)(230f * visibility)),
+                2);
+        }
+
+        if (executionTime >= AbyssRingTuning.ExecutionShatterEndSeconds &&
+            !suppressed)
+        {
+            float pose = MathHelper.SmoothStep(0f, 1f,
+                Phase(executionTime,
+                    AbyssRingTuning.ExecutionShatterEndSeconds,
+                    AbyssRingTuning.ExecutionDurationSeconds));
+            _spriteBatch.End();
+            _spriteBatch.Begin(
+                samplerState: SamplerState.PointClamp,
+                transformMatrix: Matrix.CreateScale(2.75f) *
+                    Matrix.CreateTranslation(
+                        width * .24f,
+                        height * (.96f + (1f - pose) * .04f),
+                        0f));
+            _playerSpriteRenderer.DrawSovereignCinematicCutIn(
+                gameSession.Player, Vector2.Zero);
+            _spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        }
+    }
+
+    private void DrawExecutionPortal(
+        Vector2 center,
+        float radiusX,
+        float radiusY,
+        Color gold)
+    {
+        DrawWorldLine(center - new Vector2(radiusX * .55f, 0f),
+            center + new Vector2(radiusX * .55f, 0f),
+            radiusY * 1.28f,
+            new Color(2, 2, 5, (int)gold.A));
+        for (int segment = 0; segment < 10; segment++)
+        {
+            if (segment is 2 or 7)
+                continue;
+            float start = MathHelper.TwoPi * segment / 10f + .12f;
+            DrawPortalArc(center, Vector2.UnitX, Vector2.UnitY,
+                radiusX, radiusY, start, .46f, 2f, gold);
+        }
+    }
+
+    private void DrawGreatswordUltimateTargetLock(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsGreatswordUltimateTargetLocked)
+            return;
+
+        Rectangle target = gameSession.GreatswordUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 7f);
+        Rectangle bounds = target;
+        bounds.Inflate(7 + (int)MathF.Round(pulse * 4f), 6);
+        Color gold = new(224, 181, 82, 215);
+        int corner = Math.Max(9, Math.Min(20, bounds.Width / 3));
+        DrawWorldLine(new Vector2(bounds.Left, bounds.Top),
+            new Vector2(bounds.Left + corner, bounds.Top), 3f, gold);
+        DrawWorldLine(new Vector2(bounds.Left, bounds.Top),
+            new Vector2(bounds.Left, bounds.Top + corner), 3f, gold);
+        DrawWorldLine(new Vector2(bounds.Right, bounds.Top),
+            new Vector2(bounds.Right - corner, bounds.Top), 3f, gold);
+        DrawWorldLine(new Vector2(bounds.Right, bounds.Top),
+            new Vector2(bounds.Right, bounds.Top + corner), 3f, gold);
+        DrawWorldLine(new Vector2(bounds.Left, bounds.Bottom),
+            new Vector2(bounds.Left + corner, bounds.Bottom), 3f, gold);
+        DrawWorldLine(new Vector2(bounds.Right, bounds.Bottom),
+            new Vector2(bounds.Right - corner, bounds.Bottom), 3f, gold);
     }
 
     private void DrawTechniqueFeedback(PlayerCharacter player)

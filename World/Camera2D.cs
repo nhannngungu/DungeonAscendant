@@ -12,17 +12,19 @@ public sealed class Camera2D
     private float _impactStrength;
     private float _impactPhase;
     private Vector2 _impactOffset;
+    private float _zoom = 1f;
 
     public Vector2 Position { get; private set; }
+    public float Zoom => _zoom;
     public Matrix Transform => Matrix.CreateTranslation(
         -Position.X - _impactOffset.X,
         -Position.Y - _impactOffset.Y,
-        0f);
+        0f) * Matrix.CreateScale(_zoom, _zoom, 1f);
     public Rectangle ViewBounds => new(
         (int)Position.X,
         (int)Position.Y,
-        _viewportWidth,
-        _viewportHeight);
+        Math.Max(1, (int)MathF.Ceiling(_viewportWidth / _zoom)),
+        Math.Max(1, (int)MathF.Ceiling(_viewportHeight / _zoom)));
 
     public Camera2D(int viewportWidth, int viewportHeight)
     {
@@ -47,14 +49,16 @@ public sealed class Camera2D
         float playerScreenRatio = facing == FacingDirection.Right
             ? 1f - forwardViewRatio
             : forwardViewRatio;
-        float desiredX = targetPosition.X - _viewportWidth * playerScreenRatio;
-        float desiredY = targetPosition.Y - _viewportHeight / 2f;
+        float visibleWidth = _viewportWidth / _zoom;
+        float visibleHeight = _viewportHeight / _zoom;
+        float desiredX = targetPosition.X - visibleWidth * playerScreenRatio;
+        float desiredY = targetPosition.Y - visibleHeight / 2f;
         float maximumX = MathHelper.Max(
             worldBounds.Left,
-            worldBounds.Right - _viewportWidth);
+            worldBounds.Right - visibleWidth);
         float maximumY = MathHelper.Max(
             worldBounds.Top,
-            worldBounds.Bottom - _viewportHeight);
+            worldBounds.Bottom - visibleHeight);
 
         Vector2 clampedTarget = new(
             MathHelper.Clamp(desiredX, worldBounds.Left, maximumX),
@@ -81,12 +85,28 @@ public sealed class Camera2D
         _impactOffset = new Vector2(_impactStrength, 0f);
     }
 
+    public void SetCinematicZoom(float targetZoom, float elapsedSeconds)
+    {
+        targetZoom = MathHelper.Clamp(targetZoom, 1f, 1.55f);
+        float blend = 1f - MathF.Exp(-5.5f * MathF.Max(0f, elapsedSeconds));
+        _zoom = MathHelper.Lerp(_zoom, targetZoom, blend);
+        if (MathF.Abs(_zoom - targetZoom) < .001f)
+            _zoom = targetZoom;
+    }
+
+    public void ResetCinematicZoom()
+    {
+        _zoom = 1f;
+        _impactOffset = Vector2.Zero;
+    }
+
     public void Snap(
         Vector2 targetPosition,
         FacingDirection facing,
         Rectangle worldBounds,
         float forwardViewRatio = .57f)
     {
+        _zoom = 1f;
         forwardViewRatio = MathHelper.Clamp(forwardViewRatio, .50f, .62f);
         float playerScreenRatio = facing == FacingDirection.Right
             ? 1f - forwardViewRatio
@@ -105,6 +125,7 @@ public sealed class Camera2D
         _impactTimeRemaining = 0f;
         _impactStrength = 0f;
         _impactOffset = Vector2.Zero;
+        _zoom = 1f;
     }
 
     public void ResetRuntime()
@@ -114,6 +135,7 @@ public sealed class Camera2D
         _impactStrength = 0f;
         _impactPhase = 0f;
         _impactOffset = Vector2.Zero;
+        _zoom = 1f;
     }
 
     private void UpdateImpactFeedback(float elapsedSeconds)

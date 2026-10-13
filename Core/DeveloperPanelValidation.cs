@@ -1,5 +1,6 @@
 using System;
 using DungeonAscendant.Enemies;
+using DungeonAscendant.Items;
 using DungeonAscendant.World;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -23,7 +24,8 @@ public static class DeveloperPanelValidation
             Press(session, Keys.Enter);
             SettleEntry(session);
             int inventoryCount = session.Player.Inventory.Count;
-            var weapon = session.Player.WeaponFamily;
+            string weaponId = session.Player.EquippedWeapon.WeaponId;
+            WeaponFamily weaponType = session.Player.WeaponFamily;
 
             Press(session, Keys.F10);
             Need(session.DeveloperPanel.IsOpen, "F10 did not open the panel.");
@@ -55,6 +57,29 @@ public static class DeveloperPanelValidation
             session.ExecuteDeveloperCommand(DeveloperCommand.ClearCurse, 1, 0);
             Need(session.Curse.Value == 0f, "Clear Curse failed.");
             session.Player.DebugGodMode = godMode;
+
+            EquipmentItem missingWeapon = null;
+            foreach (EquipmentItem item in session.Player.Inventory.Items)
+            {
+                if (item.WeaponId == EquipmentCatalog.HunterBow.WeaponId)
+                {
+                    missingWeapon = item;
+                    break;
+                }
+            }
+            Need(missingWeapon != null &&
+                session.Player.Inventory.Remove(missingWeapon),
+                "Grant All Weapons fixture could not remove Bow.");
+            session.ExecuteDeveloperCommand(
+                DeveloperCommand.GrantAllWeapons, 1, 0);
+            Need(session.Player.CountOwnedImplementedWeapons() ==
+                    EquipmentCatalog.WeaponSampleCount &&
+                session.Player.Inventory.Count == inventoryCount,
+                "Grant All Weapons did not restore the missing identity.");
+            session.ExecuteDeveloperCommand(
+                DeveloperCommand.GrantAllWeapons, 1, 0);
+            Need(session.Player.Inventory.Count == inventoryCount,
+                "Grant All Weapons duplicated existing weapons.");
 
             session.ExecuteDeveloperCommand(DeveloperCommand.TeleportMap, 2, 0);
             ValidateSafeDebugArrival(session, 2, "Map 2 teleport");
@@ -100,7 +125,8 @@ public static class DeveloperPanelValidation
             }
 
             Need(session.Player.Inventory.Count == inventoryCount &&
-                session.Player.WeaponFamily == weapon,
+                session.Player.EquippedWeapon.WeaponId == weaponId &&
+                session.Player.WeaponFamily == weaponType,
                 "Map teleport changed inventory or equipped weapon.");
 
             session.ExecuteDeveloperCommand(DeveloperCommand.ToggleMap01Cleared, 1, 0);

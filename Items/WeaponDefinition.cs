@@ -5,6 +5,8 @@ namespace DungeonAscendant.Items;
 
 public sealed class WeaponDefinition : EquipmentDefinition
 {
+    public string WeaponId => Id;
+    public WeaponFamily WeaponType => Family;
     public WeaponFamily Family { get; }
     public int DamageBonus { get; }
     public float AttackSpeedModifier { get; }

@@ -1,6 +1,7 @@
 using System;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Items;
+using DungeonAscendant.Localization;
 using Microsoft.Xna.Framework;
 
 namespace DungeonAscendant.Player;
@@ -61,6 +62,15 @@ public sealed class PlayerCombat
     private float _rangerLockedDirection = 1f;
     private float _windrunnerPerfectRewardRemaining;
     private int _rangerFocusHitAttackId = -1;
+    private int _rangerInputMask;
+    private float _rangerChordRemaining;
+    private float _rangerEvadeCooldownRemaining;
+    private float _rangerBackstepWindowRemaining;
+    private float _rangerCounterWindowRemaining;
+    private bool _rangerPerfectDodgeActive;
+    private float _rangerEvadeDirection;
+    private float _rangerFlowGainThisTechnique;
+    private bool _rangerUltimateTargetAvailable;
     private int _techniqueUseCounter;
     private int _currentTechniqueUseId;
     private float _poisePowerMultiplier = 1f;
@@ -92,6 +102,41 @@ public sealed class PlayerCombat
     private float _perfectGuardRewardRemaining;
     private float _oathPreventedDamage;
     private float _hitstopRemaining;
+    private int _greatswordInputMask;
+    private float _greatswordChordRemaining;
+    private bool _greatswordSkill1CurrentlyHeld;
+    private bool _greatswordSkill2CurrentlyHeld;
+    private bool _greatswordSkill3CurrentlyHeld;
+    private float _greatswordCounterWindowRemaining;
+    private bool _greatswordFlowingMomentum;
+    private float _greatswordWhirlElapsed;
+    private bool _greatswordWhirlEndRequested;
+    private bool _greatswordWhirlStopping;
+    private bool _greatswordFallingWasAirborne;
+    private bool _greatswordFallingPoiseBonus;
+    private float _greatswordLandingPulseRemaining;
+    private int _greatswordLandingImpactId;
+    private float _greatswordChargeRatio;
+    private int _greatswordChargeLevel = 1;
+    private float _greatswordRecoveryBonusSeconds;
+    private bool _greatswordTitanBraced;
+    private bool _greatswordBraceProtectedHit;
+    private bool _greatswordUltimateTargetAvailable;
+    private int _sovereignInputMask;
+    private float _sovereignChordRemaining;
+    private float _sovereignStepCooldownRemaining;
+    private float _sovereignThroneTimeRemaining;
+    private float _sovereignChargeRatio;
+    private int _sovereignChargeLevel = 1;
+    private bool _sovereignSkill1Held;
+    private bool _sovereignSkill3Held;
+    private bool _sovereignUltimateTargetAvailable;
+    private Vector2 _sovereignTransitDirection;
+    private bool _sovereignPerfectRiftCounterPending;
+    private Vector2 _sovereignPerfectRiftSource;
+    private float _sovereignPerfectRiftVisualRemaining;
+    private bool _isGrounded;
+    private float _verticalVelocity;
     private WeaponDefinition _weapon = EquipmentCatalog.KnightLongSword;
     private ArmorDefinition _armor = EquipmentCatalog.KnightArmor;
     private EquipmentItem _armorItem = EquipmentCatalog.CreateStartingArmor();
@@ -112,6 +157,21 @@ public sealed class PlayerCombat
     public float RangerUltimateFocusRatio =>
         RangerTuning.FocusRatio(_rangerUltimateFocusSnapshot);
     public float RangerLockedDirection => _rangerLockedDirection;
+    public bool IsRangerPerfectDodgeActive => _rangerPerfectDodgeActive;
+    public float RangerCounterWindowRemaining => _rangerCounterWindowRemaining;
+    public int RangerFlowTier => RangerTuning.FocusTier(Resources.HunterFocus);
+    public bool IsRangerUltimateReady =>
+        _weapon.Family == WeaponFamily.HunterBow &&
+        Stamina.IsFull && _rangerUltimateTargetAvailable;
+    public float RangerUltimateCinematicRatio =>
+        CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerPhantomHunt &&
+        State == CombatState.ChargingHeavy
+            ? Math.Clamp(_stateElapsed / RangerTuning.PhantomHuntIntroSeconds, 0f, 1f)
+            : 0f;
+    public float RangerUltimateWorldTimeScale =>
+        RangerUltimateCinematicRatio > 0f
+            ? RangerTuning.PhantomHuntWorldSlowScale
+            : 1f;
     public int CurrentTechniqueUseId => _currentTechniqueUseId;
     public float RaiderControlDirection => _raiderControlDirection;
     public RunePlacementDistance RunePlacementDistance =>
@@ -133,15 +193,34 @@ public sealed class PlayerCombat
     public int ReckonerCurveSide => _reckonerCurveSide;
     public bool ReckonerHarpoonCanPierce =>
         _reckonerMomentumSnapshot >= ReckonerTuning.HarpoonPierceThreshold;
-    public float RangerWindrunnerDirection =>
-        (CurrentTechnique?.Effect is
-            WeaponTechniqueEffect.RangerWindrunnerShot or
-            WeaponTechniqueEffect.RangerPredatorsHorizon) &&
-        _techniqueStageIndex == 0
-            ? _rangerWindrunnerDirection
-            : 0f;
+    public float RangerWindrunnerDirection
+    {
+        get
+        {
+            WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
+                WeaponTechniqueEffect.None;
+            bool movementStage = _techniqueStageIndex == 0 ||
+                effect == WeaponTechniqueEffect.RangerPhantomBarrage &&
+                _techniqueStageIndex == 3;
+            bool mobileEffect = effect is
+                WeaponTechniqueEffect.RangerWindrunnerShot or
+                WeaponTechniqueEffect.RangerPredatorsHorizon or
+                WeaponTechniqueEffect.RangerEvasiveStep or
+                WeaponTechniqueEffect.RangerEvasiveShot or
+                WeaponTechniqueEffect.RangerTwinFang or
+                WeaponTechniqueEffect.RangerPhantomRetreat or
+                WeaponTechniqueEffect.RangerBackstepShot or
+                WeaponTechniqueEffect.RangerSlidingShot or
+                WeaponTechniqueEffect.RangerPhantomBarrage or
+                WeaponTechniqueEffect.RangerPhantomHunt;
+            return mobileEffect && movementStage
+                ? _rangerWindrunnerDirection
+                : 0f;
+        }
+    }
     public bool IsRangerUltimateCharging =>
-        CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerHeavensFury &&
+        CurrentTechnique?.Effect is (WeaponTechniqueEffect.RangerHeavensFury or
+            WeaponTechniqueEffect.RangerPhantomHunt) &&
         State == CombatState.ChargingHeavy;
     public bool IsRuneBrandCharging =>
         CurrentTechnique?.Effect == WeaponTechniqueEffect.SpellbladeRuneBrand &&
@@ -157,9 +236,12 @@ public sealed class PlayerCombat
             WeaponTechniqueEffect.RangerFallingStar or
             WeaponTechniqueEffect.RangerSkyfallMarker);
     public bool IsWindrunnerEvading =>
-        CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerWindrunnerShot &&
+        CurrentTechnique?.Effect is (WeaponTechniqueEffect.RangerWindrunnerShot or
+            WeaponTechniqueEffect.RangerEvasiveStep or
+            WeaponTechniqueEffect.RangerEvasiveShot) &&
         (State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
-        _stateElapsed >= .05f && _stateElapsed <= .19f;
+        _stateElapsed >= .02f &&
+        _stateElapsed <= RangerTuning.PerfectDodgeWindowSeconds;
     public float StateElapsed => _stateElapsed;
     public float DodgeDirection { get; private set; } = 1f;
     public WeaponTechnique CurrentTechnique { get; private set; }
@@ -170,7 +252,8 @@ public sealed class PlayerCombat
     public bool IsBlockInputHeld { get; private set; }
     public bool IsDodging => State == CombatState.Dodging;
     public bool IsGuardBroken => State == CombatState.Staggered;
-    public bool CanBlock => _weapon.Family.ToOfficialFamily() == WeaponFamily.LongSword;
+    public bool CanBlock => _weapon.Family.ToOfficialFamily() is
+        WeaponFamily.LongSword or WeaponFamily.GreatSword;
     public WeaponMoveSet MoveSet => _weapon.MoveSet;
     public float DodgeSpeedMultiplier => _armorItem?.MoveSpeedModifier ??
         _armor.MoveSpeedModifier;
@@ -179,6 +262,76 @@ public sealed class PlayerCombat
         _perfectGuardFeedbackRemaining > 0f;
     public bool IsPerfectPhantomFeedbackActive =>
         _perfectPhantomFeedbackRemaining > 0f;
+    public bool IsBladeMomentumFlowing => _greatswordFlowingMomentum;
+    public bool IsGreatswordWhirling =>
+        CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.GreatswordWhirlingJudgment &&
+        !_greatswordWhirlStopping;
+    public bool IsGreatswordWhirlStopping => _greatswordWhirlStopping;
+    public float GreatswordWhirlElapsed => _greatswordWhirlElapsed;
+    public bool IsFinalVerdictReady =>
+        _weapon.Family == WeaponFamily.GreatSword &&
+        Stamina.IsFull && _greatswordUltimateTargetAvailable;
+    public float GreatswordChargeRatio => _greatswordChargeRatio;
+    public int GreatswordChargeLevel => _greatswordChargeLevel;
+    public bool IsGreatswordCharging =>
+        _weapon.Family == WeaponFamily.GreatSword &&
+        State == CombatState.ChargingHeavy &&
+        CurrentTechnique?.Effect is
+            WeaponTechniqueEffect.GreatswordTitanReckoning or
+            WeaponTechniqueEffect.GreatswordKingsRupture;
+    public float GreatswordUltimateCinematicRatio =>
+        CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFinalVerdict &&
+            State == CombatState.ChargingHeavy
+                ? Math.Clamp(
+                    _stateElapsed / GreatswordTuning.FinalVerdictIntroSeconds,
+                    0f,
+                    1f)
+                : 0f;
+    public float GreatswordUltimateWorldTimeScale =>
+        GreatswordUltimateCinematicRatio > 0f
+            ? GreatswordTuning.FinalVerdictWorldSlowScale
+            : 1f;
+    public bool IsSovereignThroneActive =>
+        _weapon.Family == WeaponFamily.AbyssRing &&
+        _sovereignThroneTimeRemaining > 0f;
+    public float SovereignThroneRatio => Math.Clamp(
+        _sovereignThroneTimeRemaining /
+            AbyssRingTuning.ThroneDurationSeconds, 0f, 1f);
+    public Vector2 SovereignTransitDirection => _sovereignTransitDirection;
+    public float SovereignChargeRatio => _sovereignChargeRatio;
+    public int SovereignChargeLevel => _sovereignChargeLevel;
+    public bool IsSovereignUltimateReady =>
+        _weapon.Family == WeaponFamily.AbyssRing &&
+        Stamina.IsFull && _sovereignUltimateTargetAvailable;
+    public float SovereignUltimateCinematicRatio =>
+        CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+            State == CombatState.ChargingHeavy
+                ? Math.Clamp(_stateElapsed /
+                    AbyssRingTuning.UltimateIntroSeconds, 0f, 1f)
+                : 0f;
+    public float SovereignUltimateWorldTimeScale =>
+        SovereignUltimateCinematicRatio > 0f
+            ? AbyssRingTuning.UltimateWorldSlowScale
+            : 1f;
+    public bool IsSovereignRiftEvading =>
+        (CurrentTechnique?.Effect is
+            WeaponTechniqueEffect.SovereignOmnipresentStep or
+            WeaponTechniqueEffect.SovereignHeavenReversal) &&
+        _stateElapsed <= AbyssRingTuning.PerfectRiftWindowSeconds;
+    public float SovereignPerfectRiftVisualRatio => Math.Clamp(
+        _sovereignPerfectRiftVisualRemaining /
+            AbyssRingTuning.PerfectRiftVisualSeconds,
+        0f,
+        1f);
+    public float GreatswordLandingPulse => _greatswordLandingPulseRemaining;
+    public int GreatswordLandingImpactId => _greatswordLandingImpactId;
+    public bool IsGreatswordFallingBastion =>
+        CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.GreatswordFallingBastion &&
+        !_isGrounded;
     public float OathPreventedDamage => _oathPreventedDamage;
     public float OathStoredForce => MathF.Min(
         OathStoredForceCap,
@@ -193,6 +346,9 @@ public sealed class PlayerCombat
         _stateElapsed <= .20f;
     public bool IsAttackActive => CurrentAttack != null &&
         (State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
+        !(CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFallingBastion &&
+            _greatswordFallingWasAirborne) &&
         _stateElapsed >= CurrentAttack.StartupTime &&
         _stateElapsed < CurrentAttack.StartupTime + CurrentAttack.ActiveTime;
     public bool IsAttackWindingUp => CurrentAttack != null &&
@@ -225,12 +381,20 @@ public sealed class PlayerCombat
             ? CurrentAttack.ForwardMovementSpeed
             : 0f;
     public bool IsTechniqueGuardActive => CurrentTechnique != null &&
-        CurrentAttack != null &&
         CurrentTechnique.ProvidesFrontalGuard &&
-        (State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
-        _stateElapsed < CurrentAttack.StartupTime + CurrentAttack.ActiveTime &&
-        (CurrentTechnique.Effect != WeaponTechniqueEffect.OathStance ||
-            _techniqueStageIndex == 0);
+        (CurrentTechnique.Effect ==
+                WeaponTechniqueEffect.GreatswordTitanReckoning &&
+            State == CombatState.ChargingHeavy ||
+         CurrentAttack != null &&
+            (State == CombatState.LightAttack ||
+                State == CombatState.HeavyAttack) &&
+            _stateElapsed < CurrentAttack.StartupTime +
+                CurrentAttack.ActiveTime &&
+            (CurrentTechnique.Effect != WeaponTechniqueEffect.OathStance ||
+                _techniqueStageIndex == 0) &&
+            (CurrentTechnique.Effect !=
+                    WeaponTechniqueEffect.GreatswordIronDominion ||
+                _techniqueStageIndex == 0));
     public bool CanJump => State == CombatState.Idle ||
         State == CombatState.Moving ||
         State == CombatState.Jumping;
@@ -250,6 +414,12 @@ public sealed class PlayerCombat
                 if (State == CombatState.ChargingHeavy &&
                     _weapon.Family == WeaponFamily.SpikedMace)
                     return .20f;
+                if (State == CombatState.ChargingHeavy &&
+                    _weapon.Family == WeaponFamily.GreatSword)
+                    return CurrentTechnique?.Effect ==
+                            WeaponTechniqueEffect.GreatswordFinalVerdict
+                        ? 0f
+                        : .08f;
                 return CanJump ? 1f : 0f;
             }
 
@@ -262,6 +432,23 @@ public sealed class PlayerCombat
                 WeaponTechniqueEffect.DuelistPhantomStep => 0f,
                 WeaponTechniqueEffect.DuelistAfterimageExecution => 0f,
                 WeaponTechniqueEffect.RangerHuntersDraw => .45f,
+                WeaponTechniqueEffect.RangerMobileShot =>
+                    _techniqueStageIndex >= 3 ? .72f : 1f,
+                WeaponTechniqueEffect.RangerPiercingDraw => .34f,
+                WeaponTechniqueEffect.RangerEvasiveStep => 0f,
+                WeaponTechniqueEffect.RangerEvasiveShot => .82f,
+                WeaponTechniqueEffect.RangerTwinFang => .80f,
+                WeaponTechniqueEffect.RangerPhantomRetreat => .74f,
+                WeaponTechniqueEffect.RangerPiercingVolley => .48f,
+                WeaponTechniqueEffect.RangerBackstepShot => .82f,
+                WeaponTechniqueEffect.RangerCounterShot => .78f,
+                WeaponTechniqueEffect.RangerSlidingShot => .18f,
+                WeaponTechniqueEffect.RangerPhantomBarrage => .64f,
+                WeaponTechniqueEffect.RangerArrowStorm => .16f,
+                WeaponTechniqueEffect.RangerAerialShot => 1f,
+                WeaponTechniqueEffect.RangerSkyfallVolley => .88f,
+                WeaponTechniqueEffect.RangerSkyfallShot => 1f,
+                WeaponTechniqueEffect.RangerPhantomHunt => .08f,
                 WeaponTechniqueEffect.RangerSkyfallMarker => .28f,
                 WeaponTechniqueEffect.RangerPredatorsHorizon => .18f,
                 WeaponTechniqueEffect.RangerHeavensFury => .05f,
@@ -281,6 +468,17 @@ public sealed class PlayerCombat
                 WeaponTechniqueEffect.ReckonerOrbitingMaelstrom => .38f,
                 WeaponTechniqueEffect.ReckonerVortexSnare => .20f,
                 WeaponTechniqueEffect.ReckonerChainsOfJudgment => .04f,
+                WeaponTechniqueEffect.GreatswordIronResolve => .24f,
+                WeaponTechniqueEffect.GreatswordTitanReckoning => .08f,
+                WeaponTechniqueEffect.GreatswordIronDominion => .10f,
+                WeaponTechniqueEffect.GreatswordKingsRupture => .06f,
+                WeaponTechniqueEffect.GreatswordFallingBastion => .16f,
+                WeaponTechniqueEffect.GreatswordVanguardAssault => .14f,
+                WeaponTechniqueEffect.GreatswordWhirlingJudgment =>
+                    _greatswordWhirlStopping
+                        ? .12f
+                        : GreatswordTuning.WhirlMovementMultiplier,
+                WeaponTechniqueEffect.GreatswordFinalVerdict => 0f,
                 _ => _weapon.AttackMovementMultiplier
             };
         }
@@ -288,12 +486,38 @@ public sealed class PlayerCombat
 
     public void ApplyLoadout(WeaponDefinition weapon, EquipmentItem armorItem)
     {
-        _weapon = weapon ?? EquipmentCatalog.KnightLongSword;
+        WeaponDefinition nextWeapon = weapon ?? EquipmentCatalog.KnightLongSword;
+        bool weaponChanged = !string.Equals(
+                _weapon.WeaponId,
+                nextWeapon.WeaponId,
+                StringComparison.Ordinal) ||
+            _weapon.WeaponType != nextWeapon.WeaponType;
+        _weapon = nextWeapon;
         _armorItem = armorItem ?? EquipmentCatalog.CreateStartingArmor();
         _armor = _armorItem.ArmorDefinition ?? EquipmentCatalog.KnightArmor;
         Resources.SetFamily(_weapon.Family);
         _inputBuffer.Clear();
         _dodgeBuffered = false;
+
+        if (weaponChanged)
+        {
+            ClearActionState();
+            if (State != CombatState.Dead)
+                StartTimedState(CombatState.Idle);
+            Resources.Reset();
+            _resourceGainAttackId = -1;
+            _duelistTechniqueGainAwarded = false;
+            _perfectPhantomStepAwarded = false;
+            _duelistRepositionAttackId = -1;
+            _ultimateMomentumSnapshot = 0f;
+            _perfectPhantomFeedbackRemaining = 0f;
+            _windrunnerPerfectRewardRemaining = 0f;
+            _rangerFocusHitAttackId = -1;
+            _rangerEvadeCooldownRemaining = 0f;
+            _rangerFlowGainThisTechnique = 0f;
+            _sovereignThroneTimeRemaining = 0f;
+            _sovereignPerfectRiftCounterPending = false;
+        }
 
         if (!_weapon.UsesShield && State == CombatState.Blocking)
             StartTimedState(CombatState.Idle);
@@ -303,18 +527,89 @@ public sealed class PlayerCombat
         GameTime gameTime,
         CombatInput input,
         bool isGrounded,
-        FacingDirection facing)
+        FacingDirection facing,
+        float verticalVelocity = 0f)
     {
         float elapsedSeconds = MathF.Min(
             (float)gameTime.ElapsedGameTime.TotalSeconds,
             1f / 20f);
         _currentFacing = facing;
         _currentHorizontalDirection = input.HorizontalDirection;
+        _isGrounded = isGrounded;
+        _verticalVelocity = verticalVelocity;
+
+        UpdateGreatswordInputState(elapsedSeconds, input);
+        UpdateRangerInputState(elapsedSeconds, input);
+        UpdateSovereignInputState(elapsedSeconds, input);
+        _sovereignStepCooldownRemaining = MathF.Max(
+            0f, _sovereignStepCooldownRemaining - elapsedSeconds);
+        _sovereignThroneTimeRemaining = MathF.Max(
+            0f, _sovereignThroneTimeRemaining - elapsedSeconds);
+
+        if (_weapon.Family == WeaponFamily.GreatSword &&
+            CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFallingBastion &&
+            _verticalVelocity > 40f)
+        {
+            _greatswordFallingPoiseBonus = true;
+        }
+
+        if (_weapon.Family == WeaponFamily.HunterBow &&
+            CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerPiercingDraw &&
+            State == CombatState.ChargingHeavy &&
+            (input.Skill2Pressed || input.DashHeld))
+        {
+            ClearActionState();
+            StartTimedState(isGrounded ? CombatState.Idle : CombatState.Jumping);
+            SetFeedback("PIERCING DRAW CANCELLED");
+            return;
+        }
+
+        if (_weapon.Family == WeaponFamily.HunterBow &&
+            CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerArrowStorm &&
+            CurrentAttack != null)
+        {
+            bool beforeRelease = _stateElapsed < CurrentAttack.StartupTime;
+            if (beforeRelease && (input.Skill2Pressed || input.DashHeld))
+            {
+                ClearActionState();
+                StartTimedState(isGrounded ? CombatState.Idle : CombatState.Jumping);
+                SetFeedback("ARROW STORM CANCELLED");
+                return;
+            }
+
+            if (!beforeRelease && MathF.Abs(input.HorizontalDirection) > .1f)
+            {
+                ClearActionState();
+                StartTimedState(isGrounded ? CombatState.Moving : CombatState.Jumping);
+                return;
+            }
+        }
+
+        if (_weapon.Family == WeaponFamily.GreatSword &&
+            CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFallingBastion &&
+            _greatswordFallingWasAirborne && isGrounded)
+        {
+            _greatswordFallingWasAirborne = false;
+            _greatswordLandingPulseRemaining = .32f;
+            _greatswordLandingImpactId++;
+            _hitstopRemaining = MathF.Max(_hitstopRemaining, .045f);
+            StartAttack(CurrentAttack, CombatState.HeavyAttack);
+        }
 
         if (input.MovementCancelPressed &&
             MathF.Abs(input.HorizontalDirection) > .1f &&
-            HasCommittedAction)
+            HasCommittedAction &&
+            !IsRangerMovementCompatibleAction() &&
+            (_weapon.Family != WeaponFamily.GreatSword ||
+                IsGreatswordWhirling))
         {
+            if (IsGreatswordWhirling)
+            {
+                BeginGreatswordWhirlStop();
+                return;
+            }
             ClearActionState();
             StartTimedState(isGrounded
                 ? CombatState.Moving
@@ -329,10 +624,53 @@ public sealed class PlayerCombat
             _raiderControlDirection = MathF.Sign(input.HorizontalDirection);
         }
 
-        UpdateRangerInputState(elapsedSeconds, input);
         UpdateSpellbladeInputState(elapsedSeconds, input);
         UpdateBreakerInputState(elapsedSeconds, input);
         UpdateReckonerInputState(elapsedSeconds, input);
+
+        if (_weapon.Family == WeaponFamily.GreatSword &&
+            CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordIronResolve)
+        {
+            if ((input.Skill2Released || !input.Skill2Held) &&
+                _stateElapsed >= GreatswordTuning.SteelDeflectWindowSeconds)
+            {
+                float counterRemaining = _greatswordCounterWindowRemaining;
+                ClearActionState();
+                _greatswordCounterWindowRemaining = counterRemaining;
+                StartTimedState(isGrounded
+                    ? CombatState.Idle
+                    : CombatState.Jumping);
+                return;
+            }
+        }
+
+        if (IsGreatswordWhirling)
+        {
+            _greatswordWhirlElapsed += elapsedSeconds;
+            if (input.Skill3Released || !_greatswordSkill3CurrentlyHeld)
+                _greatswordWhirlEndRequested = true;
+            if ((_greatswordWhirlEndRequested ||
+                    _greatswordWhirlElapsed >=
+                        GreatswordTuning.WhirlMaximumSeconds) &&
+                _greatswordWhirlElapsed >=
+                    GreatswordTuning.WhirlMinimumCommitmentSeconds)
+            {
+                BeginGreatswordWhirlEndingSweep();
+            }
+        }
+
+        if (_weapon.Family == WeaponFamily.GreatSword &&
+            State == CombatState.ChargingHeavy)
+        {
+            _stateElapsed += elapsedSeconds;
+            UpdateGreatswordChargeState(input);
+            Stamina.Update(
+                elapsedSeconds,
+                regenerationAllowed: false,
+                _armorItem.StaminaRegenModifier);
+            return;
+        }
 
         if (_hitstopRemaining > 0f)
         {
@@ -343,7 +681,10 @@ public sealed class PlayerCombat
         IsBlockInputHeld = input.BlockHeld;
         float actionClockMultiplier = State == CombatState.LightAttack ||
             State == CombatState.HeavyAttack
-                ? _weapon.AttackSpeedModifier * GetMomentumSpeedMultiplier()
+                ? _weapon.AttackSpeedModifier * GetMomentumSpeedMultiplier() *
+                    (_weapon.Family == WeaponFamily.HunterBow
+                        ? RangerTuning.FlowSpeedMultiplier(Resources.HunterFocus)
+                        : 1f)
                 : 1f;
         _stateElapsed += elapsedSeconds * actionClockMultiplier;
         _blockFeedbackRemaining = MathF.Max(
@@ -352,6 +693,9 @@ public sealed class PlayerCombat
         _techniqueFeedbackRemaining = MathF.Max(
             0f,
             _techniqueFeedbackRemaining - elapsedSeconds);
+        _sovereignPerfectRiftVisualRemaining = MathF.Max(
+            0f,
+            _sovereignPerfectRiftVisualRemaining - elapsedSeconds);
         _perfectGuardFeedbackRemaining = MathF.Max(
             0f,
             _perfectGuardFeedbackRemaining - elapsedSeconds);
@@ -364,6 +708,12 @@ public sealed class PlayerCombat
         _windrunnerPerfectRewardRemaining = MathF.Max(
             0f,
             _windrunnerPerfectRewardRemaining - elapsedSeconds);
+        _greatswordCounterWindowRemaining = MathF.Max(
+            0f,
+            _greatswordCounterWindowRemaining - elapsedSeconds);
+        _greatswordLandingPulseRemaining = MathF.Max(
+            0f,
+            _greatswordLandingPulseRemaining - elapsedSeconds);
         Resources.Update(elapsedSeconds);
 
         if (State == CombatState.ChargingHeavy &&
@@ -396,6 +746,16 @@ public sealed class PlayerCombat
                 _armorItem.StaminaRegenModifier);
             return;
         }
+        if (State == CombatState.ChargingHeavy &&
+            _weapon.Family == WeaponFamily.AbyssRing)
+        {
+            UpdateSovereignChargeState();
+            Stamina.Update(
+                elapsedSeconds,
+                regenerationAllowed: false,
+                _armorItem.StaminaRegenModifier);
+            return;
+        }
 
         if (CurrentTechnique?.RequiresRepeatedInput == true &&
             input.Skill1Pressed &&
@@ -404,6 +764,18 @@ public sealed class PlayerCombat
             _stateElapsed >= CurrentAttack.StartupTime * .5f)
         {
             _techniqueStageBuffered = true;
+            if (CurrentTechnique.Effect ==
+                WeaponTechniqueEffect.GreatswordCombo)
+            {
+                float flowStart = MathF.Max(
+                    CurrentAttack.StartupTime * .65f,
+                    CurrentAttack.TotalTime -
+                        GreatswordTuning.ComboWindowSeconds);
+                float flowEnd = CurrentAttack.TotalTime - .04f;
+                _greatswordFlowingMomentum =
+                    _stateElapsed >= flowStart &&
+                    _stateElapsed <= flowEnd;
+            }
             if (CurrentTechnique.Effect ==
                 WeaponTechniqueEffect.BreakerIronCrush)
             {
@@ -463,6 +835,12 @@ public sealed class PlayerCombat
         else if (canStartAction && input.DashHeld && dashSkillPressed && isGrounded)
         {
             _inputBuffer.Clear();
+            if (_weapon.Family == WeaponFamily.HunterBow)
+                ClearRangerPendingInput();
+            if (_weapon.Family == WeaponFamily.GreatSword)
+                ClearGreatswordPendingInput();
+            if (_weapon.Family == WeaponFamily.AbyssRing)
+                ClearSovereignPendingInput();
             _dodgeBuffered = false;
             techniqueStarted = TryStartTechnique(WeaponTechniqueInput.DashSkill);
             if (techniqueStarted && CurrentTechnique?.Effect ==
@@ -472,6 +850,26 @@ public sealed class PlayerCombat
                     ? 1f
                     : -1f;
             }
+        }
+        else if (canStartAction &&
+            _weapon.Family == WeaponFamily.GreatSword)
+        {
+            _inputBuffer.Clear();
+            techniqueStarted = ResolveGreatswordActionInput();
+        }
+        else if (canStartAction &&
+            _weapon.Family == WeaponFamily.HunterBow)
+        {
+            _inputBuffer.Clear();
+            techniqueStarted = ResolveRangerActionInput(
+                elapsedSeconds,
+                input);
+        }
+        else if (canStartAction &&
+            _weapon.Family == WeaponFamily.AbyssRing)
+        {
+            _inputBuffer.Clear();
+            techniqueStarted = ResolveSovereignActionInput();
         }
         else if (canStartAction)
         {
@@ -506,7 +904,8 @@ public sealed class PlayerCombat
                 : facing == FacingDirection.Left ? -1f : 1f;
             StartTimedState(CombatState.Dodging);
         }
-        else if (!techniqueStarted && canStartAction && input.BlockHeld && isGrounded && CanBlock)
+        else if (!techniqueStarted && canStartAction && input.BlockHeld &&
+            isGrounded && CanBlock && _weapon.UsesShield)
         {
             StartTimedState(CombatState.Blocking);
         }
@@ -547,14 +946,121 @@ public sealed class PlayerCombat
             SpellbladeTuning.MaximumGroundRunes);
     }
 
+    public void SetRangerUltimateTargetAvailable(bool available)
+    {
+        _rangerUltimateTargetAvailable =
+            _weapon.Family == WeaponFamily.HunterBow && available;
+    }
+
+    public void SetSovereignUltimateTargetAvailable(bool available)
+    {
+        _sovereignUltimateTargetAvailable =
+            _weapon.Family == WeaponFamily.AbyssRing && available;
+    }
+
+    public void RequestSovereignSafeExit()
+    {
+        if (CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.SovereignGoldenCataclysm)
+            return;
+        _techniqueSequenceIndex = Math.Max(
+            0, _effectiveTechniqueStageCount - 1);
+        _hitstopRemaining = 0f;
+        StartTechniqueStage();
+        SetFeedback("SAFE EXIT");
+    }
+
+    public void CancelSovereignTargetedSequence()
+    {
+        WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect is not (WeaponTechniqueEffect.SovereignParadoxImpact or
+            WeaponTechniqueEffect.SovereignInfiniteRiftTheatre or
+            WeaponTechniqueEffect.SovereignZeroDistanceStrike))
+        {
+            return;
+        }
+
+        ClearActionState();
+        StartTimedState(_isGrounded
+            ? CombatState.Idle
+            : CombatState.Jumping);
+        SetFeedback("RIFT TARGET LOST");
+    }
+
+    public bool TryConsumePerfectRiftCounter(out Vector2 source)
+    {
+        source = _sovereignPerfectRiftSource;
+        if (!_sovereignPerfectRiftCounterPending)
+            return false;
+        _sovereignPerfectRiftCounterPending = false;
+        return true;
+    }
+
+    public void RequestRangerUltimateLanding()
+    {
+        if (CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.RangerPhantomHunt)
+            return;
+
+        _techniqueSequenceIndex = Math.Max(
+            0,
+            _effectiveTechniqueStageCount - 1);
+        _hitstopRemaining = 0f;
+        StartTechniqueStage();
+        SetFeedback("PHANTOM LANDING");
+    }
+
+    public void SetGreatswordUltimateTargetAvailable(bool available)
+    {
+        _greatswordUltimateTargetAvailable =
+            _weapon.Family == WeaponFamily.GreatSword && available;
+    }
+
+    public void RequestGreatswordUltimateLanding()
+    {
+        if (CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.GreatswordFinalVerdict)
+            return;
+
+        _techniqueSequenceIndex = Math.Max(
+            0,
+            _effectiveTechniqueStageCount - 1);
+        _hitstopRemaining = 0f;
+        StartTechniqueStage();
+        SetFeedback("SAFE LANDING");
+    }
+
     public AttackResolution ResolveIncomingAttack(
         AttackContact contact,
         Vector2 playerPosition,
-        FacingDirection facing)
+        FacingDirection facing,
+        bool isProjectile = false)
     {
+        if (IsSovereignRiftEvading && !contact.Unblockable)
+        {
+            _sovereignPerfectRiftSource = contact.SourcePosition;
+            _sovereignPerfectRiftCounterPending = true;
+            _sovereignPerfectRiftVisualRemaining =
+                AbyssRingTuning.PerfectRiftVisualSeconds;
+            _hitstopRemaining = MathF.Max(_hitstopRemaining, .035f);
+            SetFeedback("PERFECT RIFT");
+            return AttackResolution.Ignored;
+        }
+
         if (IsWindrunnerEvading)
         {
             _windrunnerPerfectRewardRemaining = .75f;
+            if (_weapon.Family == WeaponFamily.HunterBow &&
+                CurrentTechnique?.Effect is
+                    WeaponTechniqueEffect.RangerEvasiveStep or
+                    WeaponTechniqueEffect.RangerEvasiveShot)
+            {
+                _rangerPerfectDodgeActive = true;
+                Resources.AddHunterFocus(RangerTuning.PerfectEvadeBonus);
+                SetFeedback("PERFECT EVADE");
+                _hitstopRemaining = MathF.Max(_hitstopRemaining, .035f);
+            }
             return AttackResolution.Ignored;
         }
 
@@ -579,6 +1085,58 @@ public sealed class PlayerCombat
         {
             WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
                 WeaponTechniqueEffect.None;
+
+            if (_weapon.Family == WeaponFamily.GreatSword &&
+                effect is (WeaponTechniqueEffect.GreatswordIronResolve or
+                    WeaponTechniqueEffect.GreatswordTitanReckoning or
+                    WeaponTechniqueEffect.GreatswordIronDominion) &&
+                IsTechniqueGuardActive)
+            {
+                float guardCost = MathF.Max(
+                    BlockMinimumStaminaCost,
+                    contact.Damage * BlockStaminaPerDamage) *
+                    GreatswordTuning.IronResolveGuardPressureMultiplier *
+                    _armorItem.GuardCostModifier;
+                bool steelDeflect = effect ==
+                        WeaponTechniqueEffect.GreatswordIronResolve &&
+                    !isProjectile &&
+                    _stateElapsed <=
+                        GreatswordTuning.SteelDeflectWindowSeconds;
+
+                if (Stamina.Current + .001f < guardCost)
+                {
+                    Stamina.SpendUpTo(Stamina.Current);
+                    CurrentAttack = null;
+                    CurrentTechnique = null;
+                    StartTimedState(CombatState.Staggered);
+                    return AttackResolution.GuardBroken;
+                }
+
+                Stamina.SpendUpTo(steelDeflect
+                    ? MathF.Max(3f, guardCost * .35f)
+                    : guardCost);
+                _blockFeedbackRemaining = FeedbackSeconds;
+
+                if (steelDeflect)
+                {
+                    _greatswordCounterWindowRemaining =
+                        GreatswordTuning.SteelDeflectCounterWindowSeconds;
+                    _perfectGuardFeedbackRemaining = .28f;
+                    _hitstopRemaining = PerfectGuardHitstopSeconds;
+                    SetFeedback("STEEL DEFLECT");
+                    return AttackResolution.PerfectGuard;
+                }
+
+                if (effect ==
+                    WeaponTechniqueEffect.GreatswordTitanReckoning)
+                {
+                    _greatswordTitanBraced = true;
+                    _greatswordBraceProtectedHit = true;
+                    SetFeedback("POWER TRANSFER");
+                }
+
+                return AttackResolution.BladeGuarded;
+            }
 
             if (effect == WeaponTechniqueEffect.OathStance &&
                 IsTechniqueGuardActive && _techniqueStageIndex == 0)
@@ -669,10 +1227,21 @@ public sealed class PlayerCombat
     {
         Resources.OnOwnerDamaged(damage >= 20);
 
-        if (isAlive && !hardInterrupt && HasCommittedAction)
+        bool interruptibleGreatswordCharge =
+            _weapon.Family == WeaponFamily.GreatSword &&
+            State == CombatState.ChargingHeavy &&
+            CurrentTechnique?.Effect is
+                WeaponTechniqueEffect.GreatswordTitanReckoning or
+                WeaponTechniqueEffect.GreatswordKingsRupture;
+        bool preserveBracedTitan = _greatswordBraceProtectedHit;
+        _greatswordBraceProtectedHit = false;
+        if (isAlive && !hardInterrupt && HasCommittedAction &&
+            (!interruptibleGreatswordCharge || preserveBracedTitan))
             return;
 
         ClearActionState();
+        if (!isAlive)
+            _sovereignThroneTimeRemaining = 0f;
         StartTimedState(isAlive ? CombatState.Hurt : CombatState.Dead);
     }
 
@@ -691,13 +1260,48 @@ public sealed class PlayerCombat
     public void CancelActions(bool restoreStamina = false)
     {
         ClearActionState();
+        _sovereignThroneTimeRemaining = 0f;
+        _sovereignPerfectRiftCounterPending = false;
         StartTimedState(CombatState.Idle);
 
         if (restoreStamina)
             Stamina.Restore();
     }
 
-    private void ClearActionState()
+    public void DebugCycleRangerFocus()
+    {
+        float next = Resources.HunterFocus < 1f ? 35f :
+            Resources.HunterFocus < 36f ? 70f :
+            Resources.HunterFocus < 71f ? 100f : 0f;
+        Resources.SetHunterFocusForDebug(next);
+    }
+
+    public void DebugToggleRangerUltimate()
+    {
+        Stamina.Restore();
+        SetFeedback("PHANTOM HUNT STAMINA READY");
+    }
+
+    public void DebugForceRangerPerfectDodge()
+    {
+        if (_weapon.Family != WeaponFamily.HunterBow)
+            return;
+        _rangerPerfectDodgeActive = true;
+        _rangerCounterWindowRemaining = RangerTuning.CounterWindowSeconds;
+        Resources.AddHunterFocus(RangerTuning.PerfectEvadeBonus);
+        SetFeedback("PERFECT DODGE — COUNTER READY");
+    }
+
+    public void DebugResetRanger()
+    {
+        if (_weapon.Family != WeaponFamily.HunterBow)
+            return;
+        CancelActions();
+        Resources.SetHunterFocusForDebug(0f);
+        Resources.SetHunterUltimateForDebug(0f);
+    }
+
+    private void ClearActionState(bool preserveRangerWindows = false)
     {
         CurrentAttack = null;
         _attackPowerMultiplier = 1f;
@@ -709,11 +1313,13 @@ public sealed class PlayerCombat
         _techniqueStageBuffered = false;
         _inputBuffer.Clear();
         _dodgeBuffered = false;
-        ResetRangerActionState();
+        ResetRangerActionState(preserveRangerWindows);
         ResetRaiderActionState();
         ResetSpellbladeActionState();
         ResetBreakerActionState();
         ResetReckonerActionState();
+        ResetGreatswordActionState();
+        ResetSovereignActionState();
         IsBlockInputHeld = false;
         _hitstopRemaining = 0f;
     }
@@ -721,9 +1327,27 @@ public sealed class PlayerCombat
     private void CompleteExpiredAction(bool isGrounded)
     {
         if ((State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
-            CurrentAttack != null && _stateElapsed >= CurrentAttack.TotalTime)
+            CurrentAttack != null &&
+            _stateElapsed >= CurrentAttack.TotalTime +
+                GetGreatswordRecoveryBonus())
         {
+            if (CurrentTechnique?.Effect ==
+                    WeaponTechniqueEffect.GreatswordFallingBastion &&
+                !isGrounded)
+            {
+                return;
+            }
+
             RegisterBreakerSwingCompletion();
+
+            if (CurrentTechnique?.Effect ==
+                    WeaponTechniqueEffect.RangerMobileShot &&
+                _techniqueSequenceIndex == 3)
+            {
+                _techniqueSequenceIndex++;
+                StartTechniqueStage();
+                return;
+            }
 
             if (CurrentTechnique?.Effect ==
                     WeaponTechniqueEffect.ReckonerChainLash &&
@@ -806,6 +1430,14 @@ public sealed class PlayerCombat
                     _breakerMaceSide = _techniqueSequenceIndex == 1 ? -1 : 0;
                 }
                 StartTechniqueStage();
+                if (CurrentTechnique?.Effect ==
+                        WeaponTechniqueEffect.GreatswordCombo &&
+                    _greatswordFlowingMomentum)
+                {
+                    _stateElapsed = MathF.Min(
+                        CurrentAttack.StartupTime * .55f,
+                        GreatswordTuning.FlowTransitionAdvanceSeconds);
+                }
                 return;
             }
 
@@ -817,6 +1449,10 @@ public sealed class PlayerCombat
                     ReckonerTuning.LashCompletionBonus);
             }
 
+            bool cinematicLanding = CurrentTechnique?.Effect is
+                WeaponTechniqueEffect.RangerPhantomHunt or
+                WeaponTechniqueEffect.GreatswordFinalVerdict or
+                WeaponTechniqueEffect.SovereignGoldenCataclysm;
             CurrentAttack = null;
             CurrentTechnique = null;
             _techniqueStageIndex = 0;
@@ -828,7 +1464,12 @@ public sealed class PlayerCombat
                 _rangerChargeRatio = 0f;
             if (_weapon.Family == WeaponFamily.SpikedMace)
                 _breakerRhythmPreserved = false;
-            StartTimedState(CombatState.Idle);
+            _greatswordFlowingMomentum = false;
+            _greatswordWhirlStopping = false;
+            _greatswordRecoveryBonusSeconds = 0f;
+            StartTimedState(cinematicLanding && !isGrounded
+                ? CombatState.Jumping
+                : CombatState.Idle);
             return;
         }
 
@@ -866,7 +1507,34 @@ public sealed class PlayerCombat
 
     private bool TryStartTechnique(WeaponTechniqueInput techniqueInput)
     {
-        WeaponTechnique technique = _weapon.CombatProfile.Get(techniqueInput);
+        WeaponTechnique technique;
+        if (_weapon.Family == WeaponFamily.GreatSword)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill2 && !_isGrounded)
+                technique = WeaponTechniqueCatalog.IronSovereignFallingBastion;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
+        else if (_weapon.Family == WeaponFamily.HunterBow)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill1 && !_isGrounded)
+                technique = WeaponTechniqueCatalog.RangerAerialShot;
+            else if (techniqueInput == WeaponTechniqueInput.Skill2 && !_isGrounded)
+                technique = WeaponTechniqueCatalog.RangerSkyfallShot;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
+        else if (_weapon.Family == WeaponFamily.AbyssRing)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill2 && !_isGrounded)
+                technique = WeaponTechniqueCatalog.SovereignHeavenReversal;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
+        else
+        {
+            technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
         if (technique == null)
             return false;
 
@@ -875,6 +1543,59 @@ public sealed class PlayerCombat
             _availableGroundRuneCount < 2)
         {
             SetFeedback("TWO RUNES REQUIRED");
+            return false;
+        }
+
+        if (_weapon.Family == WeaponFamily.HunterBow &&
+            technique.Effect is (WeaponTechniqueEffect.RangerEvasiveStep or
+                WeaponTechniqueEffect.RangerEvasiveShot) &&
+            _rangerEvadeCooldownRemaining > 0f)
+        {
+            SetFeedback("EVASIVE SHOT RECOVERING");
+            return false;
+        }
+
+        bool rangerUltimate = _weapon.Family == WeaponFamily.HunterBow &&
+            technique.Effect == WeaponTechniqueEffect.RangerPhantomHunt;
+        if (rangerUltimate && !_rangerUltimateTargetAvailable)
+        {
+            SetFeedback("NO VALID TARGET IN RANGE");
+            return false;
+        }
+
+        bool greatswordUltimate =
+            _weapon.Family == WeaponFamily.GreatSword &&
+            technique.Effect == WeaponTechniqueEffect.GreatswordFinalVerdict;
+        if (greatswordUltimate && !_greatswordUltimateTargetAvailable)
+        {
+            SetFeedback("NO SAFE TARGET IN RANGE");
+            return false;
+        }
+
+        bool sovereignUltimate =
+            _weapon.Family == WeaponFamily.AbyssRing &&
+            technique.Effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm;
+        if (sovereignUltimate && !_sovereignUltimateTargetAvailable)
+        {
+            SetFeedback("NO SAFE TARGET IN RANGE");
+            return false;
+        }
+        if (_weapon.Family == WeaponFamily.AbyssRing &&
+            (technique.Effect is
+                WeaponTechniqueEffect.SovereignOmnipresentStep or
+                WeaponTechniqueEffect.SovereignHeavenReversal) &&
+            _sovereignStepCooldownRemaining > 0f)
+        {
+            SetFeedback("OMNIPRESENT STEP RECOVERING");
+            return false;
+        }
+        if (_weapon.Family == WeaponFamily.AbyssRing &&
+            technique.Effect ==
+                WeaponTechniqueEffect.SovereignThroneManifestation &&
+            IsSovereignThroneActive)
+        {
+            SetFeedback("THRONE ALREADY MANIFEST");
             return false;
         }
 
@@ -917,6 +1638,57 @@ public sealed class PlayerCombat
         _breakerRhythmPreserved = false;
         _breakerIronCrushFollowupBuffered = false;
         _currentTechniqueUseId = ++_techniqueUseCounter;
+        _rangerFlowGainThisTechnique = 0f;
+        _sovereignChargeRatio = 0f;
+        _sovereignChargeLevel = 1;
+
+        if (_weapon.Family == WeaponFamily.GreatSword)
+        {
+            _greatswordFlowingMomentum = false;
+            _greatswordWhirlStopping = false;
+            _greatswordWhirlEndRequested = false;
+            _greatswordChargeRatio = 0f;
+            _greatswordChargeLevel = 1;
+            _greatswordRecoveryBonusSeconds = 0f;
+            _greatswordTitanBraced = false;
+
+            if (technique.Effect == WeaponTechniqueEffect.GreatswordCombo &&
+                _greatswordCounterWindowRemaining > 0f)
+            {
+                _greatswordCounterWindowRemaining = 0f;
+                _poisePowerMultiplier = 1.35f;
+                SetFeedback("STEEL COUNTER");
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.GreatswordWhirlingJudgment)
+            {
+                _greatswordWhirlElapsed = 0f;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.GreatswordFallingBastion)
+            {
+                _greatswordFallingWasAirborne = !_isGrounded;
+                _greatswordFallingPoiseBonus = _verticalVelocity > 40f;
+            }
+            else if (technique.Effect is
+                WeaponTechniqueEffect.GreatswordTitanReckoning or
+                WeaponTechniqueEffect.GreatswordKingsRupture)
+            {
+                SetFeedback(technique.Effect ==
+                        WeaponTechniqueEffect.GreatswordTitanReckoning
+                    ? "TITAN STANCE"
+                    : "ROYAL WINDUP");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.GreatswordFinalVerdict)
+            {
+                SetFeedback("FINAL VERDICT");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+        }
 
         if (_weapon.Family == WeaponFamily.WarAxe)
         {
@@ -968,6 +1740,15 @@ public sealed class PlayerCombat
                 ? -1f
                 : 1f;
 
+            if (technique.Effect == WeaponTechniqueEffect.RangerPhantomHunt)
+            {
+                _rangerUltimateFocusSnapshot = 0f;
+                _rangerWindrunnerDirection = -_rangerLockedDirection;
+                SetFeedback("PHANTOM HUNT");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+
             if (technique.Effect == WeaponTechniqueEffect.RangerHeavensFury)
             {
                 _rangerUltimateFocusSnapshot = Resources.HunterFocus;
@@ -976,7 +1757,8 @@ public sealed class PlayerCombat
                 return true;
             }
 
-            if (technique.Effect == WeaponTechniqueEffect.RangerHuntersDraw)
+            if (technique.Effect is WeaponTechniqueEffect.RangerHuntersDraw or
+                WeaponTechniqueEffect.RangerPiercingDraw)
             {
                 _rangerChargeRatio = Math.Clamp(
                     _rangerSkill1HoldSeconds /
@@ -1017,6 +1799,58 @@ public sealed class PlayerCombat
             {
                 _rangerWindrunnerDirection = -_rangerLockedDirection;
             }
+
+            if (technique.Effect is WeaponTechniqueEffect.RangerEvasiveStep or
+                    WeaponTechniqueEffect.RangerEvasiveShot)
+            {
+                _rangerEvadeCooldownRemaining =
+                    RangerTuning.EvasiveStepCooldownSeconds;
+                _rangerBackstepWindowRemaining =
+                    RangerTuning.BackstepFollowupWindowSeconds;
+                _rangerEvadeDirection = MathF.Abs(_currentHorizontalDirection) > .1f
+                    ? MathF.Sign(_currentHorizontalDirection)
+                    : -_rangerLockedDirection;
+                _rangerWindrunnerDirection = _rangerEvadeDirection;
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.RangerTwinFang)
+            {
+                _rangerWindrunnerDirection = MathF.Abs(
+                    _currentHorizontalDirection) > .1f
+                        ? -MathF.Sign(_currentHorizontalDirection)
+                        : -_rangerLockedDirection;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.RangerPhantomRetreat)
+            {
+                _rangerWindrunnerDirection = -_rangerLockedDirection;
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.RangerBackstepShot)
+            {
+                _rangerWindrunnerDirection = -_rangerLockedDirection;
+                _rangerBackstepWindowRemaining = 0f;
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.RangerSlidingShot)
+            {
+                _rangerWindrunnerDirection = MathF.Abs(_currentHorizontalDirection) > .1f
+                    ? MathF.Sign(_currentHorizontalDirection)
+                    : _rangerLockedDirection;
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.RangerPhantomBarrage)
+            {
+                _effectiveTechniqueStageCount = Resources.HunterFocus >=
+                    RangerTuning.PhantomFlowThreshold ? 6 : 4;
+                _rangerWindrunnerDirection = MathF.Abs(_currentHorizontalDirection) > .1f
+                    ? MathF.Sign(_currentHorizontalDirection)
+                    : -_rangerLockedDirection;
+                SetFeedback(_effectiveTechniqueStageCount == 6
+                    ? "TEMPEST BARRAGE"
+                    : "PHANTOM BARRAGE");
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.RangerAerialShot)
+            {
+                _effectiveTechniqueStageCount = Resources.HunterFocus >=
+                    RangerTuning.PhantomFlowThreshold ? 2 : 1;
+            }
         }
 
         else if (_weapon.Family == WeaponFamily.ArcaneWarStaff &&
@@ -1048,8 +1882,56 @@ public sealed class PlayerCombat
         {
             ConfigureReckonerTechnique(technique);
         }
+        else if (_weapon.Family == WeaponFamily.AbyssRing)
+        {
+            if (technique.Effect is
+                WeaponTechniqueEffect.SovereignOmnipresentStep or
+                WeaponTechniqueEffect.SovereignHeavenReversal)
+            {
+                _sovereignStepCooldownRemaining =
+                    AbyssRingTuning.OmnipresentStepCooldownSeconds;
+                if (technique.Effect ==
+                    WeaponTechniqueEffect.SovereignHeavenReversal)
+                {
+                    _sovereignTransitDirection = new Vector2(
+                        _currentFacing == FacingDirection.Left ? -1f : 1f,
+                        -1f);
+                }
+                else if (_sovereignTransitDirection.LengthSquared() < .01f)
+                {
+                    float facing = _currentFacing == FacingDirection.Left
+                        ? -1f
+                        : 1f;
+                    _sovereignTransitDirection = new Vector2(-facing, 0f);
+                }
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.SovereignThroneManifestation)
+            {
+                _sovereignThroneTimeRemaining =
+                    AbyssRingTuning.ThroneDurationSeconds;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.SovereignEventHorizonPalm)
+            {
+                SetFeedback("EVENT HORIZON CHARGE");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm)
+            {
+                SetFeedback("GOLDEN SOVEREIGN CATACLYSM");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+        }
 
-        SetFeedback(technique.Name.ToUpperInvariant());
+        SetFeedback(_weapon.Family == WeaponFamily.GreatSword &&
+                technique.Effect ==
+                    WeaponTechniqueEffect.GreatswordWhirlingJudgment
+            ? Loc.Get("weapon.whirling_judgment.name")
+            : technique.Name.ToUpperInvariant());
         StartTechniqueStage();
         return true;
     }
@@ -1082,6 +1964,9 @@ public sealed class PlayerCombat
             return;
 
         _resourceGainAttackId = AttackId;
+
+        if (_weapon.Family == WeaponFamily.GreatSword)
+            return;
 
         if (_weapon.Family == WeaponFamily.SpikedMace)
         {
@@ -1146,6 +2031,8 @@ public sealed class PlayerCombat
         if (firstHitFromShot)
         {
             gain += RangerTuning.ConsistentHitGain;
+            if (MathF.Abs(_currentHorizontalDirection) > .1f)
+                gain += RangerTuning.MovingHitGain;
             if (safeSpacing)
                 gain += RangerTuning.SafeSpacingHitGain;
             if (drawState is RangerDrawState.Full or RangerDrawState.Perfect)
@@ -1160,13 +2047,72 @@ public sealed class PlayerCombat
                     SetFeedback("WINDRUNNER EVADE");
                 }
             }
+            if (effect is WeaponTechniqueEffect.RangerSlidingShot or
+                WeaponTechniqueEffect.RangerBackstepShot or
+                WeaponTechniqueEffect.RangerEvasiveShot or
+                WeaponTechniqueEffect.RangerTwinFang or
+                WeaponTechniqueEffect.RangerPhantomRetreat)
+                gain += RangerTuning.EvasiveHitGain;
+            if (effect == WeaponTechniqueEffect.RangerCounterShot)
+                gain += RangerTuning.CounterHitGain;
+            if (effect is WeaponTechniqueEffect.RangerAerialShot or
+                WeaponTechniqueEffect.RangerSkyfallVolley or
+                WeaponTechniqueEffect.RangerSkyfallShot)
+                gain += RangerTuning.AerialHitGain;
             _rangerFocusHitAttackId = sourceAttackId;
         }
 
+        float allowedFocus = MathF.Max(
+            0f,
+            RangerTuning.FlowGainPerTechniqueCap -
+                _rangerFlowGainThisTechnique);
+        gain = MathF.Min(gain, allowedFocus);
+        if (effect == WeaponTechniqueEffect.RangerPhantomHunt)
+            gain = 0f;
+
         if (gain > 0f)
+        {
             Resources.AddHunterFocus(gain);
+            _rangerFlowGainThisTechnique += gain;
+        }
         else
             Resources.MarkRangerCombatActivity();
+
+    }
+
+    public void RegisterRangerProjectileMiss(int sourceAttackId)
+    {
+        if (_weapon.Family != WeaponFamily.HunterBow ||
+            sourceAttackId < 0 || _rangerFocusHitAttackId == sourceAttackId)
+            return;
+
+        Resources.LoseHunterFocus(RangerTuning.MissFocusLoss);
+        Resources.MarkRangerCombatActivity();
+    }
+
+    public void RegisterRangerWeakPointHit()
+    {
+        if (_weapon.Family != WeaponFamily.HunterBow)
+            return;
+
+        if (CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.RangerPhantomHunt)
+        {
+            SetFeedback("WEAK POINT");
+            return;
+        }
+
+        float focus = MathF.Min(
+            RangerTuning.WeakPointHitGain,
+            MathF.Max(0f, RangerTuning.FlowGainPerTechniqueCap -
+                _rangerFlowGainThisTechnique));
+        if (focus > 0f)
+        {
+            Resources.AddHunterFocus(focus);
+            _rangerFlowGainThisTechnique += focus;
+        }
+        SetFeedback("WEAK POINT");
+        _hitstopRemaining = MathF.Max(_hitstopRemaining, .025f);
     }
 
     public void UpdateRangerClosePressure(float elapsedSeconds, bool pressured)
@@ -1209,6 +2155,15 @@ public sealed class PlayerCombat
 
         float duration = worldbreaker ? .11f : .058f;
         _hitstopRemaining = MathF.Max(_hitstopRemaining, duration);
+    }
+
+    public void RegisterGreatswordImpactFeedback(bool ultimate)
+    {
+        if (_weapon.Family != WeaponFamily.GreatSword)
+            return;
+        _hitstopRemaining = MathF.Max(
+            _hitstopRemaining,
+            ultimate ? .075f : .045f);
     }
 
     private float GetMomentumSpeedMultiplier()
@@ -1331,6 +2286,331 @@ public sealed class PlayerCombat
         _techniqueFeedbackRemaining = .85f;
     }
 
+    private void UpdateGreatswordInputState(
+        float elapsedSeconds,
+        CombatInput input)
+    {
+        if (_weapon.Family != WeaponFamily.GreatSword)
+        {
+            ClearGreatswordPendingInput();
+            _greatswordSkill1CurrentlyHeld = false;
+            _greatswordSkill2CurrentlyHeld = false;
+            _greatswordSkill3CurrentlyHeld = false;
+            return;
+        }
+
+        _greatswordSkill1CurrentlyHeld = input.Skill1Held;
+        _greatswordSkill2CurrentlyHeld = input.Skill2Held;
+        _greatswordSkill3CurrentlyHeld = input.Skill3Held;
+
+        int pressedMask = (input.Skill1Pressed ? 1 : 0) |
+            (input.Skill2Pressed ? 2 : 0) |
+            (input.Skill3Pressed ? 4 : 0);
+        if (pressedMask != 0 && !HasCommittedAction)
+        {
+            if (_greatswordInputMask == 0)
+            {
+                _greatswordChordRemaining =
+                    GreatswordTuning.ChordWindowSeconds;
+            }
+            _greatswordInputMask |= pressedMask;
+        }
+
+        if (_greatswordInputMask != 0)
+        {
+            _greatswordChordRemaining = MathF.Max(
+                0f,
+                _greatswordChordRemaining - elapsedSeconds);
+        }
+    }
+
+    private bool ResolveGreatswordActionInput()
+    {
+        if (_greatswordInputMask == 7)
+        {
+            ClearGreatswordPendingInput();
+            return TryStartTechnique(WeaponTechniqueInput.Ultimate);
+        }
+
+        if (_greatswordChordRemaining > 0f)
+            return false;
+
+        int mask = _greatswordInputMask;
+        ClearGreatswordPendingInput();
+        if (!_isGrounded && mask == 2)
+            return TryStartTechnique(WeaponTechniqueInput.Skill2);
+
+        return mask switch
+        {
+            3 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill2),
+            6 => TryStartTechnique(WeaponTechniqueInput.Skill2Skill3),
+            5 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill3),
+            1 => TryStartTechnique(WeaponTechniqueInput.Skill1),
+            2 => TryStartTechnique(WeaponTechniqueInput.Skill2),
+            4 => TryStartTechnique(WeaponTechniqueInput.Skill3),
+            _ => false
+        };
+    }
+
+    private void ClearGreatswordPendingInput()
+    {
+        _greatswordInputMask = 0;
+        _greatswordChordRemaining = 0f;
+    }
+
+    private void UpdateGreatswordChargeState(CombatInput input)
+    {
+        WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect == WeaponTechniqueEffect.GreatswordFinalVerdict)
+        {
+            if (_stateElapsed >= GreatswordTuning.FinalVerdictIntroSeconds)
+                StartTechniqueStage();
+            return;
+        }
+
+        bool titan = effect ==
+            WeaponTechniqueEffect.GreatswordTitanReckoning;
+        bool rupture = effect ==
+            WeaponTechniqueEffect.GreatswordKingsRupture;
+        if (!titan && !rupture)
+            return;
+
+        float maximum = titan
+            ? GreatswordTuning.TitanMaximumChargeSeconds
+            : GreatswordTuning.RuptureMaximumChargeSeconds;
+        float levelTwo = titan
+            ? GreatswordTuning.TitanLevelTwoSeconds
+            : GreatswordTuning.RuptureLevelTwoSeconds;
+        float levelThree = titan
+            ? GreatswordTuning.TitanLevelThreeSeconds
+            : GreatswordTuning.RuptureLevelThreeSeconds;
+        bool held = titan
+            ? _greatswordSkill1CurrentlyHeld &&
+                _greatswordSkill2CurrentlyHeld
+            : _greatswordSkill1CurrentlyHeld &&
+                _greatswordSkill3CurrentlyHeld;
+        _greatswordChargeRatio = Math.Clamp(
+            _stateElapsed / maximum,
+            0f,
+            1f);
+        if (held && _stateElapsed < maximum)
+            return;
+
+        _greatswordChargeLevel = _stateElapsed >= levelThree
+            ? 3
+            : _stateElapsed >= levelTwo ? 2 : 1;
+        _attackPowerMultiplier = _greatswordChargeLevel switch
+        {
+            3 => titan
+                ? GreatswordTuning.ChargeLevelThreeMultiplier
+                : GreatswordTuning.RuptureLevelThreeMultiplier,
+            2 => titan
+                ? GreatswordTuning.ChargeLevelTwoMultiplier
+                : GreatswordTuning.RuptureLevelTwoMultiplier,
+            _ => 1f
+        };
+        _poisePowerMultiplier = _greatswordChargeLevel switch
+        {
+            3 => GreatswordTuning.ChargeLevelThreePoiseMultiplier,
+            2 => GreatswordTuning.ChargeLevelTwoPoiseMultiplier,
+            _ => 1f
+        };
+        if (titan && _greatswordTitanBraced)
+        {
+            _poisePowerMultiplier *=
+                GreatswordTuning.TitanBracePoiseBonus;
+        }
+        _greatswordRecoveryBonusSeconds = _greatswordChargeLevel switch
+        {
+            3 => GreatswordTuning.ChargeLevelThreeRecoveryBonus,
+            2 => GreatswordTuning.ChargeLevelTwoRecoveryBonus,
+            _ => 0f
+        };
+        SetFeedback($"SOVEREIGN FORCE {_greatswordChargeLevel}");
+        StartTechniqueStage();
+    }
+
+    private void BeginGreatswordWhirlEndingSweep()
+    {
+        if (CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.GreatswordWhirlingJudgment ||
+            _greatswordWhirlStopping ||
+            _techniqueSequenceIndex >= CurrentTechnique.StageCount - 1)
+        {
+            return;
+        }
+
+        _techniqueSequenceIndex = CurrentTechnique.StageCount - 1;
+        SetFeedback("ENDING SWEEP");
+        StartTechniqueStage();
+    }
+
+    private void BeginGreatswordWhirlStop()
+    {
+        CurrentTechnique = WeaponTechniqueCatalog.IronVanguardSpinStop;
+        _techniqueSequenceIndex = 0;
+        _techniqueStageIndex = 0;
+        _effectiveTechniqueStageCount = 1;
+        _techniqueStageBuffered = false;
+        _greatswordWhirlStopping = true;
+        SetFeedback("CONTROLLED STOP");
+        StartTechniqueStage();
+    }
+
+    private float GetGreatswordRecoveryBonus()
+    {
+        if (_weapon.Family != WeaponFamily.GreatSword ||
+            CurrentTechnique?.Effect is not
+                (WeaponTechniqueEffect.GreatswordTitanReckoning or
+                 WeaponTechniqueEffect.GreatswordKingsRupture) ||
+            _techniqueSequenceIndex + 1 < _effectiveTechniqueStageCount)
+            return 0f;
+        return _greatswordRecoveryBonusSeconds;
+    }
+
+    private void ResetGreatswordActionState()
+    {
+        ClearGreatswordPendingInput();
+        _greatswordSkill1CurrentlyHeld = false;
+        _greatswordSkill2CurrentlyHeld = false;
+        _greatswordSkill3CurrentlyHeld = false;
+        _greatswordCounterWindowRemaining = 0f;
+        _greatswordFlowingMomentum = false;
+        _greatswordWhirlElapsed = 0f;
+        _greatswordWhirlEndRequested = false;
+        _greatswordWhirlStopping = false;
+        _greatswordFallingWasAirborne = false;
+        _greatswordFallingPoiseBonus = false;
+        _greatswordLandingPulseRemaining = 0f;
+        _greatswordChargeRatio = 0f;
+        _greatswordChargeLevel = 1;
+        _greatswordRecoveryBonusSeconds = 0f;
+        _greatswordTitanBraced = false;
+        _greatswordBraceProtectedHit = false;
+    }
+
+    private void UpdateSovereignInputState(
+        float elapsedSeconds,
+        CombatInput input)
+    {
+        if (_weapon.Family != WeaponFamily.AbyssRing)
+        {
+            ClearSovereignPendingInput();
+            return;
+        }
+
+        _sovereignSkill1Held = input.Skill1Held;
+        _sovereignSkill3Held = input.Skill3Held;
+        int pressedMask = (input.Skill1Pressed ? 1 : 0) |
+            (input.Skill2Pressed ? 2 : 0) |
+            (input.Skill3Pressed ? 4 : 0);
+        if (pressedMask != 0 && !HasCommittedAction)
+        {
+            if (_sovereignInputMask == 0)
+                _sovereignChordRemaining = AbyssRingTuning.ChordWindowSeconds;
+            _sovereignInputMask |= pressedMask;
+            if (input.Skill2Pressed)
+            {
+                float facing = _currentFacing == FacingDirection.Left ? -1f : 1f;
+                float horizontal = MathF.Abs(_currentHorizontalDirection) > .1f
+                    ? MathF.Sign(_currentHorizontalDirection)
+                    : 0f;
+                float vertical = input.VerticalDirection;
+                if (MathF.Abs(horizontal) < .1f &&
+                    MathF.Abs(vertical) < .1f)
+                {
+                    horizontal = -facing;
+                }
+                _sovereignTransitDirection = new Vector2(
+                    horizontal,
+                    vertical);
+            }
+        }
+
+        if (_sovereignInputMask != 0)
+            _sovereignChordRemaining = MathF.Max(
+                0f, _sovereignChordRemaining - elapsedSeconds);
+    }
+
+    private bool ResolveSovereignActionInput()
+    {
+        if (_sovereignInputMask == 7)
+        {
+            ClearSovereignPendingInput();
+            return TryStartTechnique(WeaponTechniqueInput.Ultimate);
+        }
+        if (_sovereignChordRemaining > 0f)
+            return false;
+
+        int mask = _sovereignInputMask;
+        ClearSovereignPendingInput();
+        if (!_isGrounded && mask == 2)
+            return TryStartTechnique(WeaponTechniqueInput.Skill2);
+        return mask switch
+        {
+            3 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill2),
+            6 => TryStartTechnique(WeaponTechniqueInput.Skill2Skill3),
+            5 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill3),
+            1 => TryStartTechnique(WeaponTechniqueInput.Skill1),
+            2 => TryStartTechnique(WeaponTechniqueInput.Skill2),
+            4 => TryStartTechnique(WeaponTechniqueInput.Skill3),
+            _ => false
+        };
+    }
+
+    private void ClearSovereignPendingInput()
+    {
+        _sovereignInputMask = 0;
+        _sovereignChordRemaining = 0f;
+    }
+
+    private void UpdateSovereignChargeState()
+    {
+        WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect == WeaponTechniqueEffect.SovereignGoldenCataclysm)
+        {
+            if (_stateElapsed >= AbyssRingTuning.UltimateIntroSeconds)
+                StartTechniqueStage();
+            return;
+        }
+        if (effect != WeaponTechniqueEffect.SovereignEventHorizonPalm)
+            return;
+
+        _sovereignChargeRatio = Math.Clamp(
+            _stateElapsed / AbyssRingTuning.EventHorizonMaximumSeconds,
+            0f, 1f);
+        bool held = _sovereignSkill1Held && _sovereignSkill3Held;
+        if (held && _stateElapsed < AbyssRingTuning.EventHorizonMaximumSeconds)
+            return;
+        _sovereignChargeLevel = _stateElapsed >=
+                AbyssRingTuning.EventHorizonLevelThreeSeconds
+            ? 3
+            : _stateElapsed >= AbyssRingTuning.EventHorizonLevelTwoSeconds
+                ? 2
+                : 1;
+        _attackPowerMultiplier = _sovereignChargeLevel switch
+        {
+            3 => 3.90f / 1.90f,
+            2 => 2.80f / 1.90f,
+            _ => 1f
+        };
+        _poisePowerMultiplier = 1f + (_sovereignChargeLevel - 1) * .20f;
+        SetFeedback($"EVENT HORIZON LEVEL {_sovereignChargeLevel}");
+        StartTechniqueStage();
+    }
+
+    private void ResetSovereignActionState()
+    {
+        ClearSovereignPendingInput();
+        _sovereignSkill1Held = false;
+        _sovereignSkill3Held = false;
+        _sovereignChargeRatio = 0f;
+        _sovereignChargeLevel = 1;
+        _sovereignTransitDirection = Vector2.Zero;
+    }
+
     private void UpdateRangerInputState(
         float elapsedSeconds,
         CombatInput input)
@@ -1338,10 +2618,43 @@ public sealed class PlayerCombat
         if (_weapon.Family != WeaponFamily.HunterBow)
             return;
 
+        _rangerEvadeCooldownRemaining = MathF.Max(
+            0f,
+            _rangerEvadeCooldownRemaining - elapsedSeconds);
+        _rangerBackstepWindowRemaining = MathF.Max(
+            0f,
+            _rangerBackstepWindowRemaining - elapsedSeconds);
+        _rangerCounterWindowRemaining = MathF.Max(
+            0f,
+            _rangerCounterWindowRemaining - elapsedSeconds);
+        if (_rangerCounterWindowRemaining <= 0f)
+            _rangerPerfectDodgeActive = false;
+
+        int pressedMask = (input.Skill1Pressed ? 1 : 0) |
+            (input.Skill2Pressed ? 2 : 0) |
+            (input.Skill3Pressed ? 4 : 0);
+        bool acceptsNewRangerAction = !HasCommittedAction ||
+            CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerEvasiveStep ||
+            CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerEvasiveShot;
+        if (pressedMask != 0 && acceptsNewRangerAction)
+        {
+            if (_rangerInputMask == 0)
+                _rangerChordRemaining = RangerTuning.UltimateChordWindowSeconds;
+            _rangerInputMask |= pressedMask;
+        }
+        if (_rangerInputMask != 0)
+            _rangerChordRemaining = MathF.Max(
+                0f,
+                _rangerChordRemaining - elapsedSeconds);
+
         if (input.Skill1Pressed)
+        {
             _rangerSkill1HoldSeconds = 0f;
+        }
         if (input.Skill3Pressed)
+        {
             _rangerSkill3HoldSeconds = 0f;
+        }
 
         _rangerSkill1CurrentlyHeld = input.Skill1Held;
         _rangerSkill3CurrentlyHeld = input.Skill3Held;
@@ -1350,7 +2663,8 @@ public sealed class PlayerCombat
         if (input.Skill3Held)
             _rangerSkill3HoldSeconds += elapsedSeconds;
 
-        if (CurrentTechnique?.Effect == WeaponTechniqueEffect.RangerHuntersDraw &&
+        if (CurrentTechnique?.Effect is WeaponTechniqueEffect.RangerHuntersDraw or
+                WeaponTechniqueEffect.RangerPiercingDraw &&
             State == CombatState.ChargingHeavy)
         {
             _rangerChargeRatio = Math.Clamp(
@@ -1371,12 +2685,76 @@ public sealed class PlayerCombat
         }
     }
 
+    private bool ResolveRangerActionInput(
+        float elapsedSeconds,
+        CombatInput input)
+    {
+        if (_rangerInputMask == 7)
+        {
+            ClearRangerPendingInput();
+            return TryStartTechnique(WeaponTechniqueInput.Ultimate);
+        }
+
+        if (_rangerChordRemaining > 0f)
+            return false;
+
+        int mask = _rangerInputMask;
+        ClearRangerPendingInput();
+        return mask switch
+        {
+            3 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill2),
+            6 => TryStartTechnique(WeaponTechniqueInput.Skill2Skill3),
+            5 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill3),
+            1 => TryStartTechnique(WeaponTechniqueInput.Skill1),
+            2 => TryStartTechnique(WeaponTechniqueInput.Skill2),
+            4 => TryStartTechnique(WeaponTechniqueInput.Skill3),
+            _ => false
+        };
+    }
+
+    private void ClearRangerPendingInput()
+    {
+        _rangerInputMask = 0;
+        _rangerChordRemaining = 0f;
+    }
+
+    private bool IsRangerMovementCompatibleAction()
+    {
+        if (_weapon.Family != WeaponFamily.HunterBow)
+            return false;
+
+        return CurrentTechnique?.Effect is
+            WeaponTechniqueEffect.RangerMobileShot or
+            WeaponTechniqueEffect.RangerPiercingVolley or
+            WeaponTechniqueEffect.RangerEvasiveShot or
+            WeaponTechniqueEffect.RangerTwinFang or
+            WeaponTechniqueEffect.RangerPhantomRetreat or
+            WeaponTechniqueEffect.RangerBackstepShot or
+            WeaponTechniqueEffect.RangerCounterShot or
+            WeaponTechniqueEffect.RangerSlidingShot or
+            WeaponTechniqueEffect.RangerPhantomBarrage or
+            WeaponTechniqueEffect.RangerArrowStorm or
+            WeaponTechniqueEffect.RangerAerialShot or
+            WeaponTechniqueEffect.RangerSkyfallVolley or
+            WeaponTechniqueEffect.RangerSkyfallShot;
+    }
+
     private void UpdateRangerChargeState(
         float elapsedSeconds,
         CombatInput input)
     {
         WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
             WeaponTechniqueEffect.None;
+
+        if (effect == WeaponTechniqueEffect.RangerPhantomHunt)
+        {
+            if (_stateElapsed >= RangerTuning.PhantomHuntIntroSeconds)
+            {
+                SetFeedback("I AM THE HUNTER!");
+                StartTechniqueStage();
+            }
+            return;
+        }
 
         if (effect == WeaponTechniqueEffect.RangerHeavensFury)
         {
@@ -1395,9 +2773,12 @@ public sealed class PlayerCombat
             return;
         }
 
-        if (effect == WeaponTechniqueEffect.RangerHuntersDraw)
+        if (effect is WeaponTechniqueEffect.RangerHuntersDraw or
+            WeaponTechniqueEffect.RangerPiercingDraw)
         {
-            if (input.Skill1Released || !input.Skill1Held)
+            if (input.Skill1Released || !input.Skill1Held ||
+                _rangerSkill1HoldSeconds >=
+                    RangerTuning.FullChargeStabilitySeconds)
                 ReleaseRangerDraw();
             return;
         }
@@ -1421,7 +2802,6 @@ public sealed class PlayerCombat
             _attackPowerMultiplier = RangerTuning.PerfectDrawDamageMultiplier;
             _projectileSpeedMultiplier = RangerTuning.PerfectDrawSpeedMultiplier;
             _poisePowerMultiplier = RangerTuning.PerfectDrawPoiseMultiplier;
-            Resources.AddHunterFocus(RangerTuning.PerfectDrawGain);
             SetFeedback("PERFECT DRAW");
         }
         else if (_rangerDrawState == RangerDrawState.Full)
@@ -1458,13 +2838,20 @@ public sealed class PlayerCombat
             : SkyfallDistance.Far;
     }
 
-    private void ResetRangerActionState()
+    private void ResetRangerActionState(bool preserveWindows = false)
     {
         _rangerChargeRatio = 0f;
         _rangerWindrunnerDirection = 0f;
         _rangerDrawState = RangerDrawState.Quick;
         _rangerUltimateFocusSnapshot = 0f;
         _poisePowerMultiplier = 1f;
+        ClearRangerPendingInput();
+        if (!preserveWindows)
+        {
+            _rangerBackstepWindowRemaining = 0f;
+            _rangerCounterWindowRemaining = 0f;
+            _rangerPerfectDodgeActive = false;
+        }
     }
 
     private void ResetRaiderActionState()
@@ -1909,6 +3296,10 @@ public sealed class PlayerCombat
         int damage = Math.Max(0, (int)MathF.Round(
             CurrentAttack.CalculateDamage(baseDamage) * _attackPowerMultiplier));
 
+        if (IsSovereignThroneActive)
+            damage = (int)MathF.Round(
+                damage * AbyssRingTuning.ThroneDamageMultiplier);
+
         if (CurrentTechnique?.Effect == WeaponTechniqueEffect.OathStance &&
             _techniqueStageIndex == CurrentTechnique.StageCount - 1)
         {
@@ -1938,16 +3329,31 @@ public sealed class PlayerCombat
         return damage;
     }
 
+    public float GetTargetDamageMultiplier(float healthRatio)
+    {
+        return 1f;
+    }
+
     public float CalculatePoiseDamage()
     {
         float powerMultiplier = _weapon.Family switch
         {
             WeaponFamily.HunterBow => _poisePowerMultiplier,
             WeaponFamily.SpikedMace => _breakerPoiseMultiplier,
+            WeaponFamily.GreatSword => _poisePowerMultiplier,
             _ => _attackPowerMultiplier
         };
         float poise = (CurrentAttack?.PoiseDamage ?? 0f) *
             _weapon.PoiseDamageModifier * powerMultiplier;
+        if (IsSovereignThroneActive)
+            poise *= AbyssRingTuning.ThronePoiseMultiplier;
+        if (_weapon.Family == WeaponFamily.GreatSword &&
+            CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFallingBastion &&
+            _greatswordFallingPoiseBonus)
+        {
+            poise *= 1.18f;
+        }
         if (CurrentTechnique?.Effect ==
                 WeaponTechniqueEffect.ReckonerChainsOfJudgment &&
             _techniqueStageIndex >= 6)
@@ -1983,6 +3389,8 @@ public sealed class PlayerCombat
                 _ => 1f
             };
         }
+        if (IsSovereignThroneActive)
+            momentumRange *= AbyssRingTuning.ThronePortalRangeMultiplier;
         return (attack?.Range ?? 1f) * _weapon.RangeModifier * momentumRange;
     }
 

@@ -259,7 +259,8 @@ public sealed class LastDiceTableSystem
                 if (Wins >= 2 && !_rewardGranted)
                 {
                     if (_rewardWeaponIndex < 0)
-                        _rewardWeaponIndex = _random.Next(7);
+                        _rewardWeaponIndex = _random.Next(
+                            EquipmentCatalog.RewardWeaponSampleCount);
                     _rewardRequestPending = true;
                 }
             }
@@ -329,7 +330,10 @@ public sealed class LastDiceTableSystem
             : 0f;
         _persistedRevealCheckpoint = RevealProgress;
         _rewardGranted = rewardGranted;
-        _rewardWeaponIndex = Math.Clamp(rewardWeaponIndex, -1, 6);
+        _rewardWeaponIndex = Math.Clamp(
+            rewardWeaponIndex,
+            -1,
+            EquipmentCatalog.RewardWeaponSampleCount - 1);
         _rewardRequestPending = !rewardGranted && Wins >= 2 &&
             _completionReached && RoundIndex == RoundCount - 1 && _roundResolved &&
             RevealProgress >= 1f;

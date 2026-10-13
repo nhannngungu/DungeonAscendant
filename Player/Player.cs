@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DungeonAscendant.Combat;
 using DungeonAscendant.Items;
 using DungeonAscendant.Lore;
@@ -151,13 +152,17 @@ public sealed class Player
         Appearance = appearance?.Clone() ?? CharacterAppearance.CreateDefault();
         Appearance.Normalize();
         EquippedItems.SetStartingItems(
-            EquipmentCatalog.CreateStartingWeapon(),
+            DebugGiveAllTestEquipment
+                ? EquipmentCatalog.CreateDevelopmentWeapon(0)
+                : EquipmentCatalog.CreateStartingWeapon(),
             EquipmentCatalog.CreateStartingArmor());
 
         if (DebugGiveAllTestEquipment)
         {
+            EnsureCanonicalTestWeapons();
             foreach (EquipmentItem item in EquipmentCatalog.CreateSampleInventory())
-                Inventory.TryAdd(item);
+                if (item.ArmorDefinition != null)
+                    Inventory.TryAdd(item);
         }
 
         ApplyEquipmentToCombat();
@@ -252,9 +257,15 @@ public sealed class Player
             : Combat.AttackAdvanceSpeed > 0f
                 ? attackAdvanceDirection * Combat.AttackAdvanceSpeed
             : horizontalInput * EffectiveMovementSpeed * Combat.MovementMultiplier;
+        float verticalVelocity = Velocity.Y + Gravity * elapsedSeconds;
+        if (Combat.IsGreatswordFallingBastion)
+        {
+            verticalVelocity +=
+                GreatswordTuning.FallingBastionDownwardBoost * elapsedSeconds;
+        }
         Velocity = new Vector2(
             horizontalVelocity,
-            MathF.Min(TerminalFallSpeed, Velocity.Y + Gravity * elapsedSeconds));
+            MathF.Min(TerminalFallSpeed, verticalVelocity));
         MovementResult result = SideScrollingCollision.Resolve(
             Position,
             Velocity,
@@ -282,7 +293,7 @@ public sealed class Player
                 Facing = FacingDirection.Right;
         }
 
-        Combat.Update(gameTime, input, IsGrounded, Facing);
+        Combat.Update(gameTime, input, IsGrounded, Facing, Velocity.Y);
 
         if (Combat.IsDodging)
         {
@@ -300,6 +311,15 @@ public sealed class Player
     }
 
     public void BeginRangerHop(float verticalVelocity)
+    {
+        if (!IsAlive || !IsGrounded || verticalVelocity >= 0f)
+            return;
+
+        Velocity = new Vector2(Velocity.X, verticalVelocity);
+        IsGrounded = false;
+    }
+
+    public void BeginGreatswordUltimateLeap(float verticalVelocity)
     {
         if (!IsAlive || !IsGrounded || verticalVelocity >= 0f)
             return;
@@ -394,6 +414,127 @@ public sealed class Player
         return true;
     }
 
+    public int GrantAllWeapons()
+    {
+        return EnsureCanonicalTestWeapons();
+    }
+
+    public int EnsureCanonicalTestWeapons()
+    {
+        int granted = 0;
+
+        for (int index = 0;
+             index < EquipmentCatalog.AllImplementedWeapons.Count;
+             index++)
+        {
+            WeaponDefinition definition =
+                EquipmentCatalog.AllImplementedWeapons[index];
+            if (EquippedItems.Weapon?.WeaponId == definition.WeaponId ||
+                Inventory.ContainsItemId(definition.WeaponId))
+            {
+                continue;
+            }
+
+            if (!Inventory.TryAdd(
+                    EquipmentCatalog.CreateDevelopmentWeapon(index)))
+                break;
+
+            granted++;
+        }
+
+        return granted;
+    }
+
+    public bool NormalizeDevelopmentTestWeapons()
+    {
+        var ownedCanonicalIds = new HashSet<string>(StringComparer.Ordinal);
+        if (EquipmentCatalog.GetImplementedWeaponOrder(
+                EquippedItems.Weapon?.WeaponId) != int.MaxValue)
+        {
+            ownedCanonicalIds.Add(EquippedItems.Weapon.WeaponId);
+        }
+
+        foreach (EquipmentItem item in Inventory.Items)
+        {
+            if (EquipmentCatalog.GetImplementedWeaponOrder(item.WeaponId) !=
+                int.MaxValue)
+            {
+                ownedCanonicalIds.Add(item.WeaponId);
+            }
+        }
+
+        // An old debug loadout owned every pre-Greatsword archetype. Only that
+        // recognizable test fixture is normalized; partial/earned inventories
+        // are left intact.
+        if (ownedCanonicalIds.Count <
+            EquipmentCatalog.AllImplementedWeapons.Count - 1)
+        {
+            return false;
+        }
+
+        bool equippedIsCanonical = EquipmentCatalog.GetImplementedWeaponOrder(
+            EquippedItems.Weapon?.WeaponId) != int.MaxValue;
+        var preserved = new List<EquipmentItem>();
+        foreach (EquipmentItem item in Inventory.Items)
+        {
+            if (EquipmentCatalog.GetImplementedWeaponOrder(item.WeaponId) ==
+                int.MaxValue)
+            {
+                preserved.Add(item);
+            }
+        }
+
+        int canonicalInventoryCount = EquipmentCatalog.AllImplementedWeapons.Count -
+            (equippedIsCanonical ? 1 : 0);
+        if (preserved.Count + canonicalInventoryCount > Inventory.Capacity)
+            return false;
+
+        string equippedId = EquippedItems.Weapon?.WeaponId ?? string.Empty;
+        if (equippedIsCanonical)
+        {
+            int equippedIndex = EquipmentCatalog.GetImplementedWeaponOrder(
+                equippedId);
+            EquippedItems.SetStartingItems(
+                EquipmentCatalog.CreateDevelopmentWeapon(equippedIndex),
+                EquippedItems.Armor);
+        }
+
+        var normalized = new List<EquipmentItem>(
+            preserved.Count + canonicalInventoryCount);
+        for (int index = 0;
+             index < EquipmentCatalog.AllImplementedWeapons.Count;
+             index++)
+        {
+            WeaponDefinition definition =
+                EquipmentCatalog.AllImplementedWeapons[index];
+            if (equippedIsCanonical && definition.WeaponId == equippedId)
+                continue;
+            normalized.Add(EquipmentCatalog.CreateDevelopmentWeapon(index));
+        }
+        normalized.AddRange(preserved);
+        Inventory.Restore(normalized);
+
+        ApplyEquipmentToCombat();
+        CurrentHealth = Math.Min(CurrentHealth, MaxHealth);
+        return true;
+    }
+
+    public int CountOwnedImplementedWeapons()
+    {
+        int count = 0;
+        foreach (WeaponDefinition definition in
+                 EquipmentCatalog.AllImplementedWeapons)
+        {
+            if (EquippedItems.Weapon?.WeaponId == definition.WeaponId ||
+                Inventory.ContainsItemId(definition.WeaponId))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     public void EquipDebugItem(EquipmentItem item)
     {
         EquippedItems.SetDebugItem(item);
@@ -413,15 +554,17 @@ public sealed class Player
 
     public AttackResolution ReceiveMeleeAttack(AttackContact contact)
     {
-        return ReceiveAttack(contact);
+        return ReceiveAttack(contact, isProjectile: false);
     }
 
     public AttackResolution ReceiveProjectileAttack(AttackContact contact)
     {
-        return ReceiveAttack(contact);
+        return ReceiveAttack(contact, isProjectile: true);
     }
 
-    private AttackResolution ReceiveAttack(AttackContact contact)
+    private AttackResolution ReceiveAttack(
+        AttackContact contact,
+        bool isProjectile)
     {
         if (!IsAlive || contact.Damage <= 0)
             return AttackResolution.Ignored;
@@ -429,7 +572,8 @@ public sealed class Player
         AttackResolution resolution = Combat.ResolveIncomingAttack(
             contact,
             Position,
-            Facing);
+            Facing,
+            isProjectile);
 
         if (resolution == AttackResolution.Damaged)
         {
@@ -439,6 +583,20 @@ public sealed class Player
             ApplyHealthDamage(
                 ApplyArmorDefense(contact.Damage),
                 hardInterrupt: contact.Unblockable);
+        }
+        else if (resolution == AttackResolution.BladeGuarded)
+        {
+            if (IsInvulnerable)
+                return AttackResolution.Ignored;
+
+            int guardedDamage = Math.Max(
+                1,
+                (int)MathF.Round(
+                    contact.Damage *
+                    GreatswordTuning.IronResolveDamageTakenMultiplier));
+            ApplyHealthDamage(
+                ApplyArmorDefense(guardedDamage),
+                hardInterrupt: false);
         }
         else if (resolution == AttackResolution.GuardBroken)
         {

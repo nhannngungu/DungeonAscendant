@@ -1,4 +1,5 @@
 using System;
+using DungeonAscendant.Items;
 using DungeonAscendant.Localization;
 using Microsoft.Xna.Framework.Input;
 
@@ -12,6 +13,7 @@ public enum DeveloperCommand
     ClearCurse,
     ClearCorruption,
     ResetPlayerCombat,
+    GrantAllWeapons,
     TeleportMap,
     TeleportZone,
     ResetCurrentEncounter,
@@ -27,6 +29,10 @@ public enum DeveloperCommand
     ResetCorruptionAnchors,
     ResetCurrentBoss,
     ResetEnemyIntroductions,
+    CycleBowFocus,
+    ToggleBowUltimate,
+    ForceBowPerfectDodge,
+    ResetBowRuntime,
     ToggleMapDebug,
     ToggleCombatDebug
 }
@@ -41,6 +47,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.ClearCurse,
         DeveloperCommand.ClearCorruption,
         DeveloperCommand.ResetPlayerCombat,
+        DeveloperCommand.GrantAllWeapons,
         DeveloperCommand.TeleportMap,
         DeveloperCommand.TeleportZone,
         DeveloperCommand.ResetCurrentEncounter,
@@ -56,6 +63,10 @@ public sealed class DeveloperPanel
         DeveloperCommand.ResetCorruptionAnchors,
         DeveloperCommand.ResetCurrentBoss,
         DeveloperCommand.ResetEnemyIntroductions,
+        DeveloperCommand.CycleBowFocus,
+        DeveloperCommand.ToggleBowUltimate,
+        DeveloperCommand.ForceBowPerfectDodge,
+        DeveloperCommand.ResetBowRuntime,
         DeveloperCommand.ToggleMapDebug,
         DeveloperCommand.ToggleCombatDebug
     };
@@ -165,7 +176,7 @@ public sealed class DeveloperPanel
 
     public static string GetSection(DeveloperCommand command) => command switch
     {
-        <= DeveloperCommand.ResetPlayerCombat => "PLAYER",
+        <= DeveloperCommand.GrantAllWeapons => "PLAYER",
         <= DeveloperCommand.ResetPigPhotoCollected => "WORLD",
         <= DeveloperCommand.ResetEnemyIntroductions => "PROGRESSION",
         _ => "DEBUG"
@@ -179,6 +190,7 @@ public sealed class DeveloperPanel
         DeveloperCommand.ClearCurse => "CLEAR CURSE",
         DeveloperCommand.ClearCorruption => "RESET CORRUPTION",
         DeveloperCommand.ResetPlayerCombat => "RESET COMBAT STATE",
+        DeveloperCommand.GrantAllWeapons => "GRANT ALL WEAPONS",
         DeveloperCommand.TeleportMap => "TELEPORT MAP",
         DeveloperCommand.TeleportZone => "TELEPORT ZONE",
         DeveloperCommand.ResetCurrentEncounter => "RESET CURRENT ENCOUNTER",
@@ -194,6 +206,10 @@ public sealed class DeveloperPanel
         DeveloperCommand.ResetCorruptionAnchors => "RESET CORRUPTION ANCHORS",
         DeveloperCommand.ResetCurrentBoss => "RESET CURRENT BOSS",
         DeveloperCommand.ResetEnemyIntroductions => "RESET ENEMY INTRODUCTIONS",
+        DeveloperCommand.CycleBowFocus => "BOW FOCUS 0 / 35 / 70 / 100",
+        DeveloperCommand.ToggleBowUltimate => "REFILL BOW ULTIMATE STAMINA",
+        DeveloperCommand.ForceBowPerfectDodge => "BOW FORCE PERFECT DODGE",
+        DeveloperCommand.ResetBowRuntime => "RESET BOW RUNTIME",
         DeveloperCommand.ToggleMapDebug => "MAP DEBUG",
         DeveloperCommand.ToggleCombatDebug => "COLLISION COMBAT DEBUG",
         _ => command.ToString().ToUpperInvariant()
@@ -211,6 +227,14 @@ public sealed class DeveloperPanel
             DeveloperCommand.ResetCitySystems => $"ALARM {session.CityAlarm.Level} / 3",
             DeveloperCommand.ResetPigPhotoCollected =>
                 session.Map2PigPhotoCollected ? "COLLECTED" : "AVAILABLE",
+            DeveloperCommand.GrantAllWeapons =>
+                $"{session.Player.CountOwnedImplementedWeapons()} / " +
+                EquipmentCatalog.WeaponSampleCount,
+            DeveloperCommand.CycleBowFocus =>
+                $"{session.Player.Combat.Resources.HunterFocus:0}",
+            DeveloperCommand.ToggleBowUltimate =>
+                $"{session.Player.Combat.Stamina.Current:0} / " +
+                $"{session.Player.Combat.Stamina.Maximum:0}",
             DeveloperCommand.ToggleMapDebug => OnOff(session.ShowMapDebug),
             DeveloperCommand.ToggleCombatDebug => OnOff(session.ShowCombatDebug),
             _ => string.Empty

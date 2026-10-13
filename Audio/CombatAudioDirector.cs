@@ -38,6 +38,12 @@ public sealed class CombatAudioDirector
     private int _playerHealth;
     private bool _playerDodging;
     private bool _playerBlockFeedback;
+    private int _greatswordLandingImpactId;
+    private bool _greatswordVerdictArming;
+    private bool _rangerUltimateCinematic;
+    private bool _sovereignUltimateCinematic;
+    private bool _sovereignExecutionCinematic;
+    private int _sovereignExecutionImpactId;
     private float _idleClock = 4f;
     private float _footstepClock;
     private float _worldOneShotClock = 7f;
@@ -338,6 +344,18 @@ public sealed class CombatAudioDirector
         _playerHealth = _player.CurrentHealth;
         _playerDodging = _player.Combat.IsDodging;
         _playerBlockFeedback = _player.Combat.IsBlockFeedbackActive;
+        _greatswordLandingImpactId =
+            _player.Combat.GreatswordLandingImpactId;
+        _greatswordVerdictArming =
+            _player.WeaponFamily == WeaponFamily.GreatSword &&
+            _player.Combat.GreatswordUltimateCinematicRatio >= .72f;
+        _rangerUltimateCinematic =
+            _player.Combat.RangerUltimateCinematicRatio >= .72f;
+        _sovereignUltimateCinematic =
+            _player.Combat.SovereignUltimateCinematicRatio >= .70f;
+        _sovereignExecutionCinematic =
+            session.IsSovereignExecutionActive;
+        _sovereignExecutionImpactId = session.SovereignExecutionImpactId;
         foreach (Projectile projectile in session.Projectiles.Projectiles)
             _knownProjectiles.Add(projectile);
     }
@@ -348,15 +366,71 @@ public sealed class CombatAudioDirector
         if (player.Combat.AttackId != _playerAttackId &&
             player.Combat.CurrentAttack != null)
         {
-            PlayerSoundEvent soundEvent = player.Combat.State == CombatState.HeavyAttack
-                ? PlayerSoundEvent.HeavyAttack
-                : PlayerSoundEvent.Swing;
-            _audio.PlayPlayer(soundEvent, player.WeaponFamily);
+            bool sovereignUltimate = player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm;
+            int stage = player.Combat.TechniqueStageIndex;
+            if (!sovereignUltimate)
+            {
+                PlayerSoundEvent soundEvent =
+                    player.Combat.State == CombatState.HeavyAttack
+                        ? PlayerSoundEvent.HeavyAttack
+                        : PlayerSoundEvent.Swing;
+                _audio.PlayPlayer(soundEvent, player.WeaponFamily);
+            }
+            else if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
+            {
+                _audio.PlayPlayer(PlayerSoundEvent.HeavyAttack,
+                    player.WeaponFamily);
+            }
+            else if (stage is 1 or 4 or 8 or 12 or 16)
+            {
+                _audio.PlayPlayer(PlayerSoundEvent.AttackRelease,
+                    player.WeaponFamily);
+            }
         }
         if (player.Combat.IsDodging && !_playerDodging)
             _audio.PlayPlayer(PlayerSoundEvent.Dash, player.WeaponFamily);
         if (player.Combat.IsBlockFeedbackActive && !_playerBlockFeedback)
             _audio.PlayPlayer(PlayerSoundEvent.BlockImpact, player.WeaponFamily);
+        if (player.Combat.GreatswordLandingImpactId !=
+            _greatswordLandingImpactId)
+        {
+            _audio.PlayPlayer(PlayerSoundEvent.HeavyAttack, player.WeaponFamily);
+            _audio.PlayImpact(
+                ImpactMaterial.Stone,
+                player.Position,
+                player.Position);
+        }
+        bool verdictArming = player.WeaponFamily == WeaponFamily.GreatSword &&
+            player.Combat.GreatswordUltimateCinematicRatio >= .72f;
+        if (verdictArming && !_greatswordVerdictArming)
+            _audio.PlayPlayer(PlayerSoundEvent.Special, player.WeaponFamily);
+        bool rangerCinematic =
+            player.Combat.RangerUltimateCinematicRatio >= .72f;
+        if (rangerCinematic && !_rangerUltimateCinematic)
+            _audio.PlayPlayer(PlayerSoundEvent.Special, player.WeaponFamily);
+        bool sovereignCinematic =
+            player.Combat.SovereignUltimateCinematicRatio >= .70f;
+        if (sovereignCinematic && !_sovereignUltimateCinematic)
+            _audio.PlayPlayer(PlayerSoundEvent.Special, player.WeaponFamily);
+        bool sovereignExecution =
+            session.IsSovereignExecutionActive;
+        if (sovereignExecution && !_sovereignExecutionCinematic)
+            _audio.PlayPlayer(PlayerSoundEvent.Special, player.WeaponFamily);
+        if (session.SovereignExecutionImpactId !=
+            _sovereignExecutionImpactId)
+        {
+            Rectangle target = session.SovereignExecutionTargetBounds;
+            Vector2 impactPosition = target.IsEmpty
+                ? player.Position
+                : target.Center.ToVector2();
+            _audio.PlayPlayer(PlayerSoundEvent.HeavyAttack,
+                player.WeaponFamily);
+            _audio.PlayImpact(
+                ImpactMaterial.Stone,
+                impactPosition,
+                player.Position);
+        }
         if (player.CurrentHealth < _playerHealth && player.IsAlive)
         {
             _audio.PlayPlayer(PlayerSoundEvent.Hit, player.WeaponFamily);
@@ -367,6 +441,13 @@ public sealed class CombatAudioDirector
         _playerHealth = player.CurrentHealth;
         _playerDodging = player.Combat.IsDodging;
         _playerBlockFeedback = player.Combat.IsBlockFeedbackActive;
+        _greatswordLandingImpactId =
+            player.Combat.GreatswordLandingImpactId;
+        _greatswordVerdictArming = verdictArming;
+        _rangerUltimateCinematic = rangerCinematic;
+        _sovereignUltimateCinematic = sovereignCinematic;
+        _sovereignExecutionCinematic = sovereignExecution;
+        _sovereignExecutionImpactId = session.SovereignExecutionImpactId;
     }
 
     private void ObserveProjectiles(GameSession session)
@@ -697,5 +778,8 @@ public sealed class CombatAudioDirector
         _map4CorruptionState=DemonicCorruptionState.Stable;
         _map4RiftClock=3f;
         _map4AmbientSerial=0;
+        _rangerUltimateCinematic=false;
+        _sovereignUltimateCinematic=false;
+        _sovereignExecutionCinematic=false;
     }
 }

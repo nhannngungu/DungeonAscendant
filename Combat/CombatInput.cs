@@ -9,6 +9,7 @@ public readonly struct CombatInput
     public bool DashHeld { get; }
     public bool BlockHeld { get; }
     public float HorizontalDirection { get; }
+    public float VerticalDirection { get; }
     public bool PerfectEvadeOpportunity { get; }
     public bool Skill1Held { get; }
     public bool Skill1Released { get; }
@@ -33,7 +34,8 @@ public readonly struct CombatInput
         bool skill3Released = false,
         bool skill2Held = false,
         bool skill2Released = false,
-        bool movementCancelPressed = false)
+        bool movementCancelPressed = false,
+        float verticalDirection = 0f)
     {
         Skill1Pressed = skill1Pressed;
         Skill2Pressed = skill2Pressed;
@@ -50,5 +52,6 @@ public readonly struct CombatInput
         Skill2Held = skill2Held;
         Skill2Released = skill2Released;
         MovementCancelPressed = movementCancelPressed;
+        VerticalDirection = verticalDirection;
     }
 }

@@ -75,6 +75,7 @@ public static class AudioProfiles
         [WeaponFamily.WarAxe]=Weapon("Raider","raider_axe_swing_01","raider_axe_swing_01","raider_hook_01","raider_buckler_01","raider_axe_heavy_01","raider_hook_01","raider_hook_01"),
         [WeaponFamily.ArcaneWarStaff]=Weapon("Spellblade","spellblade_arcane_slash_01","spellblade_lunge_01","spellblade_detonate_01","spellblade_rune_01","spellblade_detonate_01","spellblade_lunge_01","spellblade_rune_01"),
         [WeaponFamily.SpikedMace]=Weapon("Breaker","breaker_mace_swing_01","breaker_mace_swing_01","breaker_mace_impact_01","breaker_mace_impact_01","breaker_ground_slam_01","breaker_rush_01","breaker_ground_slam_01"),
+        [WeaponFamily.GreatSword]=Weapon("Breaker","breaker_mace_swing_01","breaker_mace_swing_01","breaker_mace_impact_01","breaker_mace_impact_01","breaker_ground_slam_01","breaker_rush_01","breaker_ground_slam_01"),
         [WeaponFamily.ChainFlail]=Weapon("Reckoner","reckoner_chain_swing_01","reckoner_chain_lash_01","reckoner_chain_lash_01","reckoner_chain_retract_01","reckoner_vortex_01","reckoner_chain_retract_01","reckoner_vortex_01")
     };
 

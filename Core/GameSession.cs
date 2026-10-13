@@ -109,6 +109,32 @@ public sealed class GameSession
     private int _spawnedPlayerProjectileAttackId = -1;
     private int _duelistMotionAttackId = -1;
     private int _rangerHopAttackId = -1;
+    private object _rangerUltimateCandidate;
+    private object _rangerUltimateLockedTarget;
+    private int _rangerUltimateTechniqueUseId = -1;
+    private bool _rangerUltimateLandingRequested;
+    private object _greatswordUltimateCandidate;
+    private object _greatswordUltimateLockedTarget;
+    private Vector2 _greatswordUltimateApproachPosition;
+    private Vector2 _greatswordUltimateLandingPosition;
+    private int _greatswordUltimateTechniqueUseId = -1;
+    private int _greatswordUltimateMotionAttackId = -1;
+    private bool _greatswordUltimateLandingRequested;
+    private int _greatswordWorldEffectAttackId = -1;
+    private object _sovereignUltimateCandidate;
+    private object _sovereignUltimateLockedTarget;
+    private object _sovereignActionTarget;
+    private int _sovereignUltimateTechniqueUseId = -1;
+    private int _sovereignActionTechniqueUseId = -1;
+    private int _sovereignMotionAttackId = -1;
+    private bool _sovereignSafeExitRequested;
+    private int _sovereignExecutionTechniqueUseId = -1;
+    private Vector2 _sovereignSafeExitPosition;
+    private float _sovereignExecutionFrameRemaining;
+    private bool _sovereignExecutionSuppressed;
+    private bool _sovereignExecutionImpactApplied;
+    private object _sovereignExecutionTarget;
+    private int _sovereignExecutionImpactId;
     private int _predatorFanTechniqueUseId = -1;
     private readonly Dictionary<Enemy, int> _predatorFanHits = new();
     private int _predatorBossFanHits;
@@ -122,6 +148,7 @@ public sealed class GameSession
     private int _arcaneDominionRuneSnapshot;
     private int _breakerWorldEffectAttackId = -1;
     private int _breakerImpactFeedbackAttackId = -1;
+    private int _greatswordLandingImpactId = -1;
     private readonly List<BreakerShockwave> _breakerShockwaves = new();
     private readonly List<BreakerImpactVisual> _breakerImpactVisuals = new();
     private Rectangle _recentDuelistDangerZone;
@@ -186,6 +213,7 @@ public sealed class GameSession
     public CorruptionAnchorSystem CorruptionAnchors { get; }
     public ProjectileManager Projectiles { get; }
     public GroundRuneManager GroundRunes { get; }
+    public SovereignPortalSystem SovereignPortals { get; } = new();
     public IReadOnlyList<BreakerShockwave> BreakerShockwaves =>
         _breakerShockwaves;
     public IReadOnlyList<BreakerImpactVisual> BreakerImpactVisuals =>
@@ -230,6 +258,11 @@ public sealed class GameSession
         SelectedInventoryIndex < _activeInventoryItems.Count
             ? _activeInventoryItems[SelectedInventoryIndex]
             : null;
+    public bool IsSelectedInventoryItemEquipped =>
+        ReferenceEquals(
+            SelectedInventoryItem,
+            Player?.EquippedItems.GetEquipped(
+                SelectedInventoryItem?.Slot ?? EquipmentSlot.Weapon));
     public IReadOnlyList<LoreNote> CollectedNotes => Player.Notes.Notes;
     public LoreNote SelectedLoreNote =>
         ActiveInventoryTab == InventoryTab.Notes &&
@@ -258,6 +291,55 @@ public sealed class GameSession
         DungeonDepth == 1;
     public bool IsSequentialEnemyTestMode => IsWildForestShowcaseMode;
     public bool IsMapEntryFallActive => _mapEntryFallActive;
+    public bool IsRangerUltimateTargetLocked =>
+        _rangerUltimateLockedTarget != null;
+    public Rectangle RangerUltimateTargetBounds =>
+        GetRangerTargetBounds(_rangerUltimateLockedTarget);
+    public bool IsGreatswordUltimateTargetLocked =>
+        _greatswordUltimateLockedTarget != null;
+    public Rectangle GreatswordUltimateTargetBounds =>
+        GetCombatTargetBounds(_greatswordUltimateLockedTarget);
+    public bool IsSovereignUltimateTargetLocked =>
+        _sovereignUltimateLockedTarget != null;
+    public Rectangle SovereignUltimateTargetBounds =>
+        GetCombatTargetBounds(_sovereignUltimateLockedTarget);
+    public bool IsSovereignUltimateActive =>
+        Player?.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.SovereignGoldenCataclysm;
+    public int SovereignUltimateStage => IsSovereignUltimateActive
+        ? Player.Combat.TechniqueStageIndex
+        : -1;
+    public float SovereignUltimateStageRatio =>
+        IsSovereignUltimateActive && Player.Combat.CurrentAttack != null
+            ? Math.Clamp(
+                Player.Combat.StateElapsed /
+                    Math.Max(.01f, Player.Combat.CurrentAttack.TotalTime),
+                0f,
+                1f)
+            : 0f;
+    public float SovereignExecutionFrameProgress =>
+        _sovereignExecutionFrameRemaining > 0f
+            ? 1f - _sovereignExecutionFrameRemaining /
+                AbyssRingTuning.ExecutionDurationSeconds
+            : 0f;
+    public bool IsSovereignExecutionActive =>
+        _sovereignExecutionFrameRemaining > 0f;
+    public float SovereignExecutionElapsedSeconds =>
+        IsSovereignExecutionActive
+            ? AbyssRingTuning.ExecutionDurationSeconds -
+                _sovereignExecutionFrameRemaining
+            : 0f;
+    public bool IsSovereignExecutionImpactActive =>
+        IsSovereignExecutionActive &&
+        SovereignExecutionElapsedSeconds >=
+            AbyssRingTuning.ExecutionImpactSeconds &&
+        SovereignExecutionElapsedSeconds <
+            AbyssRingTuning.ExecutionHitStopEndSeconds;
+    public int SovereignExecutionImpactId => _sovereignExecutionImpactId;
+    public Rectangle SovereignExecutionTargetBounds =>
+        GetCombatTargetBounds(_sovereignExecutionTarget);
+    public bool IsSovereignExecutionSuppressed =>
+        _sovereignExecutionSuppressed;
     public string CurrentMapName => CurrentDungeon?.IsDemonLands == true
         ? Loc.Get("hud.map_demon_lands")
         : CurrentDungeon?.IsFallenCity == true
@@ -385,6 +467,8 @@ public sealed class GameSession
             0f,
             _loreNoteFeedbackTimeRemaining -
                 (float)gameTime.ElapsedGameTime.TotalSeconds);
+        UpdateSovereignExecution(
+            (float)gameTime.ElapsedGameTime.TotalSeconds);
 
         if (State == GameState.Paused)
         {
@@ -482,7 +566,7 @@ public sealed class GameSession
         {
             if (restartPressed)
             {
-                ResetRun();
+                ResetRunPreservingEquipment();
                 SaveActiveSlot();
                 State = GameState.Playing;
             }
@@ -539,6 +623,9 @@ public sealed class GameSession
         {
             IsInventoryOpen = true;
             Player.Combat.CancelActions();
+            ClearRangerUltimateLock();
+            ClearGreatswordUltimateLock();
+            ClearSovereignState();
             RefreshInventoryView();
             RestoreActiveTabSelection();
             ClampInventorySelection();
@@ -551,6 +638,9 @@ public sealed class GameSession
         {
             SaveActiveSlot();
             Player.Combat.CancelActions(restoreStamina: false);
+            ClearRangerUltimateLock();
+            ClearGreatswordUltimateLock();
+            ClearSovereignState();
             PauseMenu.Begin();
             State = GameState.Paused;
             StoreInputStates(keyboardState, mouseState);
@@ -559,6 +649,9 @@ public sealed class GameSession
 
         if (!Player.IsAlive)
         {
+            ClearRangerUltimateLock();
+            ClearGreatswordUltimateLock();
+            ClearSovereignState();
             Projectiles.Clear();
             ClearBreakerEffects();
             RootHazards.Clear();
@@ -600,28 +693,69 @@ public sealed class GameSession
         Player.Combat.SetSpellbladeRuneCount(GroundRunes.CountWithin(
             Player.Position,
             SpellbladeTuning.ConvergenceMaximumRange));
+        UpdateRangerUltimateCandidate();
+        Player.Combat.SetRangerUltimateTargetAvailable(
+            _rangerUltimateCandidate != null);
+        UpdateGreatswordUltimateCandidate();
+        Player.Combat.SetGreatswordUltimateTargetAvailable(
+            _greatswordUltimateCandidate != null);
+        UpdateSovereignUltimateCandidate();
+        Player.Combat.SetSovereignUltimateTargetAvailable(
+            _sovereignUltimateCandidate != null);
         bool entryFallWasActive = _mapEntryFallActive;
+        GameTime playerCombatTime = IsSovereignExecutionActive
+            ? ScaleGameTime(
+                gameTime,
+                AbyssRingTuning.ExecutionWorldTimeScale)
+            : gameTime;
         Player.UpdateCombat(
-            gameTime,
-            entryFallWasActive
+            playerCombatTime,
+            entryFallWasActive || IsSovereignExecutionActive
                 ? default
                 : CreateCombatInput(keyboardState, mouseState));
+        UpdateRangerUltimateLock();
+        UpdateGreatswordUltimateLock();
+        UpdateSovereignTargetLock();
+        GameTime cinematicWorldTime = ScaleGameTime(
+            gameTime,
+            MathF.Min(
+                MathF.Min(
+                    Player.Combat.RangerUltimateWorldTimeScale,
+                    Player.Combat.GreatswordUltimateWorldTimeScale),
+                MathF.Min(
+                    Player.Combat.SovereignUltimateWorldTimeScale,
+                    IsSovereignExecutionActive
+                        ? AbyssRingTuning.ExecutionWorldTimeScale
+                        : 1f)));
+        if (_greatswordLandingImpactId !=
+            Player.Combat.GreatswordLandingImpactId)
+        {
+            _greatswordLandingImpactId =
+                Player.Combat.GreatswordLandingImpactId;
+            Camera.AddImpactFeedback(1.65f);
+        }
         UpdateDuelistTechniqueMovement();
         UpdateRangerTechniqueMovement();
+        UpdateGreatswordUltimateMovement(elapsedSeconds);
+        UpdateSovereignTechniqueMovement();
+        ResolvePerfectRiftCounter();
+        SovereignPortals.Update(elapsedSeconds);
         UpdateRangerFocusPressure(elapsedSeconds);
         if (Player.Combat.IsHitstopActive)
         {
             StoreInputStates(keyboardState, mouseState);
             return;
         }
-        KeyboardState movementInput = entryFallWasActive
+        KeyboardState movementInput =
+            entryFallWasActive || IsSovereignExecutionActive
             ? new KeyboardState()
             : keyboardState;
         bool jumpPressed = !entryFallWasActive &&
+            !IsSovereignExecutionActive &&
             keyboardState.IsKeyDown(Keys.Space) &&
             !_previousKeyboardState.IsKeyDown(Keys.Space);
         Player.UpdateSideScrollingMovement(
-            gameTime,
+            IsSovereignExecutionActive ? playerCombatTime : gameTime,
             movementInput,
             jumpPressed,
             CurrentDungeon);
@@ -761,7 +895,7 @@ public sealed class GameSession
             if (!insideScholarSafeZone)
             {
                 Enemies.UpdateCombatAndAi(
-                    gameTime,
+                    cinematicWorldTime,
                     Player,
                     CurrentDungeon,
                     Projectiles,
@@ -772,17 +906,17 @@ public sealed class GameSession
                     Enemies.Enemies);
                 ApplyCatacombEnemyCursePressure();
                 WildForestEncounters.EnforceArenaBounds();
-                Projectiles.Update(gameTime, Player, CurrentDungeon);
+                Projectiles.Update(cinematicWorldTime, Player, CurrentDungeon);
                 Curse.Add(Projectiles.ConsumeEnemyCursePressure());
                 ProcessPlayerProjectileImpacts();
                 ProcessPlayerProjectileHits();
                 ProcessSpellbladeRunePlacement();
-                RootHazards.Update(gameTime, Player);
+                RootHazards.Update(cinematicWorldTime, Player);
             }
             if (ShouldRenderBoss)
             {
                 Boss.Update(
-                    gameTime,
+                    cinematicWorldTime,
                     Player,
                     CurrentDungeon,
                     IsWildForestShowcaseMode
@@ -797,6 +931,9 @@ public sealed class GameSession
 
         if (!Player.IsAlive)
         {
+            ClearRangerUltimateLock();
+            ClearGreatswordUltimateLock();
+            ClearSovereignState();
             Projectiles.Clear();
             GroundRunes.Clear();
             ClearBreakerEffects();
@@ -1244,6 +1381,9 @@ public sealed class GameSession
 
     private void CleanupGameplayRuntime()
     {
+        ClearRangerUltimateLock();
+        ClearGreatswordUltimateLock();
+        ClearSovereignState();
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
@@ -1407,6 +1547,24 @@ public sealed class GameSession
         InitializeDungeonState();
     }
 
+    private void ResetRunPreservingEquipment()
+    {
+        EquipmentItem weapon = Player?.EquippedItems.Weapon;
+        EquipmentItem armor = Player?.EquippedItems.Armor;
+        int level = Player?.Level ?? 1;
+        int experience = Player?.CurrentExperience ?? 0;
+        var inventory = Player == null
+            ? new List<EquipmentItem>()
+            : new List<EquipmentItem>(Player.Inventory.Items);
+
+        ResetRun();
+        Player.RestoreSaveState(level, experience, weapon, armor);
+        Player.Inventory.Restore(inventory);
+        RefreshInventoryView();
+        ClampInventorySelection();
+        UpdatePlayerAttackArea();
+    }
+
     private void UpdateCharacterCreation(
         KeyboardState keyboardState,
         bool confirmPressed,
@@ -1522,6 +1680,7 @@ public sealed class GameSession
             foreach (SavedEquipmentItemData savedItem in slot.InventoryItems)
                 restoredInventory.Add(CharacterSelectState.CreateInventoryItem(savedItem));
             Player.Inventory.Restore(restoredInventory);
+            Player.NormalizeDevelopmentTestWeapons();
         }
         foreach (SavedLoreNoteData savedNote in slot.Notes)
         {
@@ -1746,6 +1905,9 @@ public sealed class GameSession
 
     private void InitializeDungeonState()
     {
+        ClearRangerUltimateLock();
+        ClearGreatswordUltimateLock();
+        ClearSovereignState();
         Player.ClearTemporaryStatus();
         _playerAttackHits.Clear();
         _trackedPlayerAttackId = -1;
@@ -2127,7 +2289,10 @@ public sealed class GameSession
     private void GrantLastDiceReward(int wins, int weaponIndex)
     {
         EquipmentItem sample = EquipmentCatalog.CreateWeaponSample(
-            Math.Clamp(weaponIndex, 0, EquipmentCatalog.WeaponSampleCount - 1));
+            Math.Clamp(
+                weaponIndex,
+                0,
+                EquipmentCatalog.RewardWeaponSampleCount - 1));
         var reward = new EquipmentItem(
             sample.WeaponDefinition,
             LastDiceTableSystem.GetRewardRarity(wins) ?? ItemRarity.Epic);
@@ -2225,8 +2390,107 @@ public sealed class GameSession
 
     private void FollowPlayerWithCamera(float elapsedSeconds)
     {
+        if (IsSovereignExecutionActive)
+        {
+            float executionTime = SovereignExecutionElapsedSeconds;
+            float eyeEase = MathHelper.SmoothStep(0f, 1f, Math.Clamp(
+                (executionTime - AbyssRingTuning.ExecutionSilenceEndSeconds) /
+                (AbyssRingTuning.ExecutionEyeEndSeconds -
+                    AbyssRingTuning.ExecutionSilenceEndSeconds),
+                0f,
+                1f));
+            float returnEase = MathHelper.SmoothStep(0f, 1f, Math.Clamp(
+                (executionTime - AbyssRingTuning.ExecutionShatterEndSeconds) /
+                (AbyssRingTuning.ExecutionDurationSeconds -
+                    AbyssRingTuning.ExecutionShatterEndSeconds),
+                0f,
+                1f));
+            float executionZoomTarget = MathHelper.Lerp(
+                MathHelper.Lerp(
+                    1f,
+                    AbyssRingTuning.ExecutionCameraZoom,
+                    eyeEase),
+                1f,
+                returnEase);
+            Vector2 executionCameraTarget = Player.Position;
+            Rectangle executionTarget = SovereignExecutionTargetBounds;
+            if (!executionTarget.IsEmpty)
+            {
+                Vector2 targetCenter = executionTarget.Center.ToVector2();
+                executionCameraTarget = Vector2.Lerp(
+                    Player.Position,
+                    targetCenter,
+                    .52f * eyeEase * (1f - returnEase));
+            }
+            Camera.SetCinematicZoom(executionZoomTarget, elapsedSeconds);
+            Camera.Follow(
+                executionCameraTarget,
+                Player.Facing,
+                CurrentDungeon.WorldBounds,
+                elapsedSeconds,
+                .42f);
+            return;
+        }
+
+        float rangerCinematic =
+            Player.Combat.RangerUltimateCinematicRatio;
+        float greatswordCinematic =
+            Player.Combat.GreatswordUltimateCinematicRatio;
+        float sovereignCinematic =
+            Player.Combat.SovereignUltimateCinematicRatio;
+        float cinematic = MathF.Max(
+            sovereignCinematic,
+            MathF.Max(rangerCinematic, greatswordCinematic));
+        float cinematicZoom = sovereignCinematic >=
+                MathF.Max(rangerCinematic, greatswordCinematic)
+            ? AbyssRingTuning.UltimateCameraZoom
+            : greatswordCinematic > rangerCinematic
+                ? GreatswordTuning.FinalVerdictCameraZoom
+                : RangerTuning.PhantomHuntCameraZoom;
+        float zoomTarget = cinematic <= 0f
+            ? 1f
+            : MathHelper.Lerp(
+                1f,
+                cinematicZoom,
+                MathF.Sin(cinematic * MathHelper.PiOver2));
+        Vector2 cameraTarget = Player.Position;
+        Rectangle sovereignTarget = SovereignUltimateTargetBounds;
+        if (IsSovereignUltimateActive && !sovereignTarget.IsEmpty)
+        {
+            Vector2 targetCenter = sovereignTarget.Center.ToVector2();
+            int stage = Player.Combat.TechniqueStageIndex;
+            if (Player.Combat.State == CombatState.ChargingHeavy)
+            {
+                cameraTarget = Vector2.Lerp(
+                    Player.Position,
+                    targetCenter,
+                    sovereignCinematic * .34f);
+            }
+            else if (stage == 0)
+            {
+                cameraTarget = Vector2.Lerp(Player.Position, targetCenter, .42f);
+                zoomTarget = 1.18f;
+            }
+            else if (stage <= AbyssRingTuning.UltimateStrikeCount)
+            {
+                cameraTarget = Vector2.Lerp(targetCenter, Player.Position, .16f);
+                zoomTarget = MathHelper.Lerp(1.16f, 1.08f,
+                    stage / (float)AbyssRingTuning.UltimateStrikeCount);
+            }
+            else if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
+            {
+                cameraTarget = targetCenter + new Vector2(0f, -42f);
+                zoomTarget = 1.28f;
+            }
+            else
+            {
+                cameraTarget = Vector2.Lerp(targetCenter, Player.Position, .35f);
+                zoomTarget = 1.10f;
+            }
+        }
+        Camera.SetCinematicZoom(zoomTarget, elapsedSeconds);
         Camera.Follow(
-            Player.Position,
+            cameraTarget,
             Player.Facing,
             CurrentDungeon.WorldBounds,
             elapsedSeconds,
@@ -2263,6 +2527,12 @@ public sealed class GameSession
                 break;
             case DeveloperCommand.ResetPlayerCombat:
                 Player.ClearTemporaryStatus();
+                break;
+            case DeveloperCommand.GrantAllWeapons:
+                Player.GrantAllWeapons();
+                RefreshInventoryView();
+                ClampInventorySelection();
+                SaveActiveSlot();
                 break;
             case DeveloperCommand.TeleportMap:
                 DeveloperLoadMap(targetMap);
@@ -2313,6 +2583,18 @@ public sealed class GameSession
                 break;
             case DeveloperCommand.ResetEnemyIntroductions:
                 EnemyIntroductions.Reset();
+                break;
+            case DeveloperCommand.CycleBowFocus:
+                Player.Combat.DebugCycleRangerFocus();
+                break;
+            case DeveloperCommand.ToggleBowUltimate:
+                Player.Combat.DebugToggleRangerUltimate();
+                break;
+            case DeveloperCommand.ForceBowPerfectDodge:
+                Player.Combat.DebugForceRangerPerfectDodge();
+                break;
+            case DeveloperCommand.ResetBowRuntime:
+                Player.Combat.DebugResetRanger();
                 break;
             case DeveloperCommand.ToggleMapDebug:
                 ShowMapDebug = !ShowMapDebug;
@@ -2596,6 +2878,9 @@ public sealed class GameSession
 
     private void ClearDeveloperTransientState()
     {
+        ClearRangerUltimateLock();
+        ClearGreatswordUltimateLock();
+        ClearSovereignState();
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
@@ -2814,6 +3099,84 @@ public sealed class GameSession
             return;
         }
 
+        if (Player.WeaponFamily == WeaponFamily.GreatSword &&
+            Player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordWhirlingJudgment &&
+            Player.Combat.TechniqueStageIndex < 6)
+        {
+            var arcFacing = Player.Combat.TechniqueStageIndex % 2 == 0
+                ? Player.Facing
+                : Player.Facing ==
+                    DungeonAscendant.Player.FacingDirection.Left
+                    ? DungeonAscendant.Player.FacingDirection.Right
+                    : DungeonAscendant.Player.FacingDirection.Left;
+            PlayerAttackArea = MeleeHitArea.Create(
+                Player.Position,
+                Player.Size,
+                arcFacing,
+                Player.Combat.CalculateRange(attack),
+                attack.Thickness,
+                attack.HitboxShape);
+            return;
+        }
+
+        if (Player.WeaponFamily == WeaponFamily.GreatSword &&
+            Player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordKingsRupture &&
+            Player.Combat.TechniqueStageIndex == 2)
+        {
+            PlayerAttackArea = CreateGreatswordGroundFractureBounds();
+            return;
+        }
+
+        if (Player.WeaponFamily == WeaponFamily.GreatSword &&
+            Player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFinalVerdict &&
+            Player.Combat.TechniqueStageIndex is >= 1 and <= 3)
+        {
+            Rectangle lockedBounds = GetCombatTargetBounds(
+                _greatswordUltimateLockedTarget);
+            float maximumContactDistance =
+                Player.Combat.CalculateRange(attack) +
+                lockedBounds.Width * .5f + Player.Size.X * .5f;
+            if (!lockedBounds.IsEmpty &&
+                Vector2.DistanceSquared(
+                    Player.Position,
+                    lockedBounds.Center.ToVector2()) <=
+                    maximumContactDistance * maximumContactDistance)
+            {
+                lockedBounds.Inflate(18, 14);
+                PlayerAttackArea = lockedBounds;
+                return;
+            }
+        }
+
+        if (Player.WeaponFamily == WeaponFamily.AbyssRing &&
+            Player.Combat.CurrentTechnique != null)
+        {
+            WeaponTechniqueEffect effect =
+                Player.Combat.CurrentTechnique.Effect;
+            int stage = Player.Combat.TechniqueStageIndex;
+            bool portalContact = effect ==
+                    WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                    stage <= 17 ||
+                effect == WeaponTechniqueEffect.SovereignMartialArts &&
+                    stage is 2 or 4 or 6 or 7 ||
+                effect == WeaponTechniqueEffect.SovereignParadoxImpact &&
+                    stage is >= 1 and <= 3;
+            object targetObject = effect ==
+                    WeaponTechniqueEffect.SovereignGoldenCataclysm
+                ? _sovereignUltimateLockedTarget
+                : _sovereignActionTarget;
+            Rectangle portalTarget = GetCombatTargetBounds(targetObject);
+            if (portalContact && !portalTarget.IsEmpty)
+            {
+                portalTarget.Inflate(14, 10);
+                PlayerAttackArea = portalTarget;
+                return;
+            }
+        }
+
         PlayerAttackArea = MeleeHitArea.Create(
             Player.Position,
             Player.Size,
@@ -2821,6 +3184,86 @@ public sealed class GameSession
             Player.Combat.CalculateRange(attack),
             attack.Thickness,
             attack.HitboxShape);
+    }
+
+    private Rectangle CreateGreatswordGroundFractureBounds()
+    {
+        float direction = Player.Facing ==
+            DungeonAscendant.Player.FacingDirection.Left ? -1f : 1f;
+        float reached = 0f;
+        float feetY = Player.Bounds.Bottom;
+        for (float distance = GreatswordTuning.GroundFractureProbeStep;
+             distance <= GreatswordTuning.GroundFractureRange;
+             distance += GreatswordTuning.GroundFractureProbeStep)
+        {
+            Vector2 probe = new(
+                Player.Position.X + direction * distance,
+                feetY - 5f);
+            Vector2 probeSize = new(8f, 8f);
+            if (!SideScrollingCollision.IsPositionFree(
+                    probe,
+                    probeSize,
+                    CurrentDungeon) ||
+                !SideScrollingCollision.IsSupported(
+                    probe,
+                    probeSize,
+                    CurrentDungeon))
+                break;
+            reached = distance;
+        }
+
+        int width = Math.Max(1, (int)MathF.Ceiling(reached));
+        int height = 34;
+        int y = (int)MathF.Round(feetY) - height;
+        return direction < 0f
+            ? new Rectangle(
+                (int)MathF.Round(Player.Position.X) - width,
+                y,
+                width,
+                height)
+            : new Rectangle(
+                (int)MathF.Round(Player.Position.X),
+                y,
+                width,
+                height);
+    }
+
+    private void ProcessGreatswordWorldEffect(WeaponTechnique technique)
+    {
+        if (Player.WeaponFamily != WeaponFamily.GreatSword ||
+            technique == null ||
+            _greatswordWorldEffectAttackId == Player.Combat.AttackId)
+            return;
+
+        WeaponTechniqueEffect effect = technique.Effect;
+        int stage = Player.Combat.TechniqueStageIndex;
+        if (effect == WeaponTechniqueEffect.GreatswordKingsRupture &&
+            stage == 2)
+        {
+            _greatswordWorldEffectAttackId = Player.Combat.AttackId;
+            Player.Combat.RegisterGreatswordImpactFeedback(ultimate: false);
+            Camera.AddImpactFeedback(2.1f);
+            return;
+        }
+
+        if (effect != WeaponTechniqueEffect.GreatswordFinalVerdict ||
+            stage != 4)
+            return;
+
+        _greatswordWorldEffectAttackId = Player.Combat.AttackId;
+        Player.Combat.RegisterGreatswordImpactFeedback(ultimate: true);
+        Camera.AddImpactFeedback(4.2f);
+        const float radius = 88f;
+        float radiusSquared = radius * radius;
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (!enemy.CanBeTargeted ||
+                enemy.WeightClass == EnemyWeightClass.Heavy ||
+                Vector2.DistanceSquared(Player.Position, enemy.Position) >
+                    radiusSquared)
+                continue;
+            enemy.ApplyKnockback(Player.Position, 24f, CurrentDungeon);
+        }
     }
 
     private void UpdateDuelistTechniqueMovement()
@@ -2922,15 +3365,957 @@ public sealed class GameSession
     private void UpdateRangerTechniqueMovement()
     {
         if (Player.WeaponFamily != WeaponFamily.HunterBow ||
-            Player.Combat.CurrentTechnique?.Effect !=
-                WeaponTechniqueEffect.RangerPredatorsHorizon ||
-            Player.Combat.TechniqueStageIndex != 0 ||
             Player.Combat.CurrentAttack == null ||
             _rangerHopAttackId == Player.Combat.AttackId)
             return;
 
+        WeaponTechniqueEffect effect =
+            Player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        bool shouldHop = effect ==
+                WeaponTechniqueEffect.RangerPredatorsHorizon &&
+                Player.Combat.TechniqueStageIndex == 0 ||
+            effect == WeaponTechniqueEffect.RangerPhantomHunt &&
+                Player.Combat.TechniqueStageIndex == 0;
+        if (!shouldHop)
+            return;
+
         _rangerHopAttackId = Player.Combat.AttackId;
-        Player.BeginRangerHop(-365f);
+        Player.BeginRangerHop(effect == WeaponTechniqueEffect.RangerPhantomHunt
+            ? -420f
+            : -365f);
+    }
+
+    private void UpdateRangerUltimateCandidate()
+    {
+        _rangerUltimateCandidate = null;
+        if (Player?.WeaponFamily != WeaponFamily.HunterBow ||
+            CurrentDungeon == null)
+            return;
+
+        float maximumDistanceSquared =
+            RangerTuning.PhantomHuntTargetRange *
+            RangerTuning.PhantomHuntTargetRange;
+        int bestMaximumHealth = -1;
+        float bestDistanceSquared = float.MaxValue;
+        int bestStableId = int.MaxValue;
+
+        for (int index = 0; index < Enemies.Enemies.Count; index++)
+        {
+            Enemy enemy = Enemies.Enemies[index];
+            if (!enemy.CanBeTargeted ||
+                !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
+                continue;
+
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position,
+                enemy.Position);
+            if (distanceSquared > maximumDistanceSquared ||
+                !HasClearRangerUltimatePath(enemy.MeleeTargetBounds))
+                continue;
+
+            if (IsBetterRangerUltimateTarget(
+                enemy.MaxHealth,
+                distanceSquared,
+                index,
+                bestMaximumHealth,
+                bestDistanceSquared,
+                bestStableId))
+            {
+                _rangerUltimateCandidate = enemy;
+                bestMaximumHealth = enemy.MaxHealth;
+                bestDistanceSquared = distanceSquared;
+                bestStableId = index;
+            }
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true && Boss.IsActivated &&
+            !Boss.IsPhaseTransitioning)
+        {
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position,
+                Boss.Position);
+            int stableId = Enemies.Enemies.Count;
+            if (distanceSquared <= maximumDistanceSquared &&
+                HasClearRangerUltimatePath(Boss.Bounds) &&
+                IsBetterRangerUltimateTarget(
+                    Boss.MaxHealth,
+                    distanceSquared,
+                    stableId,
+                    bestMaximumHealth,
+                    bestDistanceSquared,
+                    bestStableId))
+            {
+                _rangerUltimateCandidate = Boss;
+            }
+        }
+    }
+
+    private void UpdateRangerUltimateLock()
+    {
+        bool active = Player.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.RangerPhantomHunt;
+        if (!active)
+        {
+            ClearRangerUltimateLock();
+            return;
+        }
+
+        if (_rangerUltimateTechniqueUseId !=
+            Player.Combat.CurrentTechniqueUseId)
+        {
+            _rangerUltimateTechniqueUseId =
+                Player.Combat.CurrentTechniqueUseId;
+            _rangerUltimateLockedTarget = _rangerUltimateCandidate;
+            _rangerUltimateLandingRequested = false;
+        }
+
+        if (!_rangerUltimateLandingRequested &&
+            !IsRangerUltimateTargetValid(_rangerUltimateLockedTarget))
+        {
+            _rangerUltimateLandingRequested = true;
+            Player.Combat.RequestRangerUltimateLanding();
+        }
+    }
+
+    private bool IsRangerUltimateTargetValid(object target)
+    {
+        if (target is Enemy enemy)
+        {
+            for (int index = 0; index < Enemies.Enemies.Count; index++)
+                if (ReferenceEquals(Enemies.Enemies[index], enemy))
+                    return enemy.CanBeTargeted;
+            return false;
+        }
+
+        return target is AncientTreant boss &&
+            ReferenceEquals(boss, Boss) && ShouldRenderBoss && boss.IsAlive &&
+            !boss.IsPhaseTransitioning;
+    }
+
+    private bool HasClearRangerUltimatePath(Rectangle targetBounds)
+    {
+        Vector2 start = Player.Position + new Vector2(0f, -10f);
+        Vector2 end = targetBounds.Center.ToVector2();
+        float distance = Vector2.Distance(start, end);
+        int steps = Math.Max(2, (int)MathF.Ceiling(distance / 12f));
+        for (int step = 1; step < steps; step++)
+        {
+            Vector2 sample = Vector2.Lerp(start, end, step / (float)steps);
+            if (!SideScrollingCollision.IsPositionFree(
+                sample,
+                new Vector2(4f, 4f),
+                CurrentDungeon))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool IsBetterRangerUltimateTarget(
+        int maximumHealth,
+        float distanceSquared,
+        int stableId,
+        int bestMaximumHealth,
+        float bestDistanceSquared,
+        int bestStableId)
+    {
+        if (maximumHealth != bestMaximumHealth)
+            return maximumHealth > bestMaximumHealth;
+        if (MathF.Abs(distanceSquared - bestDistanceSquared) > .01f)
+            return distanceSquared < bestDistanceSquared;
+        return stableId < bestStableId;
+    }
+
+    private static Rectangle GetRangerTargetBounds(object target)
+    {
+        return target switch
+        {
+            Enemy enemy => enemy.MeleeTargetBounds,
+            AncientTreant boss => boss.Bounds,
+            _ => Rectangle.Empty
+        };
+    }
+
+    private static GameTime ScaleGameTime(GameTime gameTime, float scale)
+    {
+        scale = Math.Clamp(scale, .05f, 1f);
+        if (scale >= .999f)
+            return gameTime;
+        return new GameTime(
+            gameTime.TotalGameTime,
+            TimeSpan.FromTicks((long)(gameTime.ElapsedGameTime.Ticks * scale)));
+    }
+
+    private void ClearRangerUltimateLock()
+    {
+        _rangerUltimateCandidate = null;
+        _rangerUltimateLockedTarget = null;
+        _rangerUltimateTechniqueUseId = -1;
+        _rangerUltimateLandingRequested = false;
+        Player?.Combat.SetRangerUltimateTargetAvailable(false);
+        Camera?.ResetCinematicZoom();
+    }
+
+    private void UpdateGreatswordUltimateCandidate()
+    {
+        if (Player?.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.GreatswordFinalVerdict)
+            return;
+
+        _greatswordUltimateCandidate = null;
+        if (Player?.WeaponFamily != WeaponFamily.GreatSword ||
+            CurrentDungeon == null)
+            return;
+
+        float maximumDistanceSquared =
+            GreatswordTuning.FinalVerdictTargetRange *
+            GreatswordTuning.FinalVerdictTargetRange;
+        int bestMaximumHealth = -1;
+        float bestDistanceSquared = float.MaxValue;
+        int bestStableId = int.MaxValue;
+        Vector2 bestApproach = Vector2.Zero;
+        Vector2 bestLanding = Vector2.Zero;
+
+        for (int index = 0; index < Enemies.Enemies.Count; index++)
+        {
+            Enemy enemy = Enemies.Enemies[index];
+            if (!enemy.CanBeTargeted ||
+                !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
+                continue;
+
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position,
+                enemy.Position);
+            if (distanceSquared > maximumDistanceSquared ||
+                !TryPlanGreatswordUltimate(
+                    enemy.MeleeTargetBounds,
+                    out Vector2 approach,
+                    out Vector2 landing))
+                continue;
+
+            if (IsBetterRangerUltimateTarget(
+                enemy.MaxHealth,
+                distanceSquared,
+                index,
+                bestMaximumHealth,
+                bestDistanceSquared,
+                bestStableId))
+            {
+                _greatswordUltimateCandidate = enemy;
+                bestMaximumHealth = enemy.MaxHealth;
+                bestDistanceSquared = distanceSquared;
+                bestStableId = index;
+                bestApproach = approach;
+                bestLanding = landing;
+            }
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true && Boss.IsActivated &&
+            !Boss.IsPhaseTransitioning)
+        {
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position,
+                Boss.Position);
+            int stableId = Enemies.Enemies.Count;
+            if (distanceSquared <= maximumDistanceSquared &&
+                TryPlanGreatswordUltimate(
+                    Boss.Bounds,
+                    out Vector2 approach,
+                    out Vector2 landing) &&
+                IsBetterRangerUltimateTarget(
+                    Boss.MaxHealth,
+                    distanceSquared,
+                    stableId,
+                    bestMaximumHealth,
+                    bestDistanceSquared,
+                    bestStableId))
+            {
+                _greatswordUltimateCandidate = Boss;
+                bestApproach = approach;
+                bestLanding = landing;
+            }
+        }
+
+        if (_greatswordUltimateCandidate != null)
+        {
+            _greatswordUltimateApproachPosition = bestApproach;
+            _greatswordUltimateLandingPosition = bestLanding;
+        }
+    }
+
+    private void UpdateGreatswordUltimateLock()
+    {
+        bool active = Player.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.GreatswordFinalVerdict;
+        if (!active)
+        {
+            ClearGreatswordUltimateLock();
+            return;
+        }
+
+        if (_greatswordUltimateTechniqueUseId !=
+            Player.Combat.CurrentTechniqueUseId)
+        {
+            _greatswordUltimateTechniqueUseId =
+                Player.Combat.CurrentTechniqueUseId;
+            _greatswordUltimateLockedTarget =
+                _greatswordUltimateCandidate;
+            _greatswordUltimateLandingRequested = false;
+            _greatswordUltimateMotionAttackId = -1;
+        }
+
+        if (!_greatswordUltimateLandingRequested &&
+            !IsGreatswordUltimateTargetValid(
+                _greatswordUltimateLockedTarget))
+        {
+            _greatswordUltimateLandingRequested = true;
+            Player.Combat.RequestGreatswordUltimateLanding();
+        }
+    }
+
+    private bool IsGreatswordUltimateTargetValid(object target)
+    {
+        if (target is Enemy enemy)
+        {
+            for (int index = 0; index < Enemies.Enemies.Count; index++)
+            {
+                if (ReferenceEquals(Enemies.Enemies[index], enemy))
+                {
+                    return enemy.CanBeTargeted &&
+                        Enemies.IsActive(
+                            enemy,
+                            Player.Position,
+                            CurrentDungeon);
+                }
+            }
+            return false;
+        }
+
+        return target is AncientTreant boss &&
+            ReferenceEquals(boss, Boss) && ShouldRenderBoss && boss.IsAlive &&
+            boss.IsActivated && !boss.IsPhaseTransitioning;
+    }
+
+    private bool TryPlanGreatswordUltimate(
+        Rectangle targetBounds,
+        out Vector2 approach,
+        out Vector2 landing)
+    {
+        approach = Vector2.Zero;
+        landing = Vector2.Zero;
+        float preferredSide = Player.Position.X <= targetBounds.Center.X
+            ? -1f
+            : 1f;
+        float halfWidth = Player.Size.X * .5f;
+        float baseOffset = targetBounds.Width * .5f + halfWidth + 18f;
+        float startingY = targetBounds.Bottom - Player.Size.Y * .5f;
+        float maximumY = MathF.Min(
+            CurrentDungeon.WorldBounds.Bottom - Player.Size.Y * .5f,
+            startingY + 144f);
+
+        for (int sideIndex = 0; sideIndex < 2; sideIndex++)
+        {
+            float side = sideIndex == 0 ? preferredSide : -preferredSide;
+            for (int extra = 0; extra <= 48; extra += 16)
+            {
+                float x = targetBounds.Center.X +
+                    side * (baseOffset + extra);
+                for (float y = startingY; y <= maximumY; y += 4f)
+                {
+                    Vector2 candidate = new(x, y);
+                    Rectangle candidateBounds =
+                        DungeonCollision.CreateBounds(candidate, Player.Size);
+                    if (candidateBounds.Intersects(targetBounds) ||
+                        IsGreatswordLandingBlocked(
+                            candidateBounds,
+                            targetBounds) ||
+                        !SideScrollingCollision.IsPositionFree(
+                            candidate,
+                            Player.Size,
+                            CurrentDungeon) ||
+                        !SideScrollingCollision.IsSupported(
+                            candidate,
+                            Player.Size,
+                            CurrentDungeon) ||
+                        !HasClearGreatswordUltimatePath(candidate))
+                        continue;
+
+                    approach = candidate;
+                    landing = candidate;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsGreatswordLandingBlocked(
+        Rectangle candidateBounds,
+        Rectangle targetBounds)
+    {
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (!enemy.CanBeTargeted ||
+                enemy.MeleeTargetBounds == targetBounds)
+                continue;
+            if (candidateBounds.Intersects(enemy.MeleeTargetBounds))
+                return true;
+        }
+
+        return ShouldRenderBoss && Boss?.IsAlive == true &&
+            Boss.Bounds != targetBounds &&
+            candidateBounds.Intersects(Boss.Bounds);
+    }
+
+    private bool HasClearGreatswordUltimatePath(Vector2 destination)
+    {
+        Vector2 start = Player.Position - new Vector2(0f, 20f);
+        Vector2 end = destination - new Vector2(0f, 20f);
+        float distance = Vector2.Distance(start, end);
+        int steps = Math.Max(2, (int)MathF.Ceiling(distance / 10f));
+        Vector2 probeSize = new(
+            MathF.Max(12f, Player.Size.X * .72f),
+            MathF.Max(20f, Player.Size.Y * .62f));
+        for (int step = 1; step < steps; step++)
+        {
+            Vector2 sample = Vector2.Lerp(start, end, step / (float)steps);
+            if (!SideScrollingCollision.IsPositionFree(
+                sample,
+                probeSize,
+                CurrentDungeon))
+                return false;
+        }
+        return true;
+    }
+
+    private void UpdateGreatswordUltimateMovement(float elapsedSeconds)
+    {
+        if (Player.Combat.CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.GreatswordFinalVerdict ||
+            Player.Combat.CurrentAttack == null)
+            return;
+
+        int stage = Player.Combat.TechniqueStageIndex;
+        if (_greatswordUltimateLockedTarget != null)
+        {
+            Rectangle target = GetCombatTargetBounds(
+                _greatswordUltimateLockedTarget);
+            if (!target.IsEmpty)
+                Player.FaceToward(target.Center.X);
+        }
+
+        if (stage == 0 && _greatswordUltimateMotionAttackId !=
+                Player.Combat.AttackId)
+        {
+            _greatswordUltimateMotionAttackId = Player.Combat.AttackId;
+            Player.BeginGreatswordUltimateLeap(-365f);
+        }
+
+        if (stage != 0 && stage !=
+                Player.Combat.EffectiveTechniqueStageCount - 1)
+            return;
+
+        Vector2 destination = stage == 0
+            ? _greatswordUltimateApproachPosition
+            : ResolveGreatswordLandingFallback();
+        float horizontal = destination.X - Player.Position.X;
+        float movement = MathF.Min(
+            MathF.Abs(horizontal),
+            GreatswordTuning.FinalVerdictApproachSpeed *
+                MathF.Max(0f, elapsedSeconds));
+        if (movement > .01f)
+        {
+            Player.MoveThroughCombatTechnique(
+                Player.Position + new Vector2(
+                    MathF.Sign(horizontal) * movement,
+                    0f),
+                CurrentDungeon);
+        }
+    }
+
+    private Vector2 ResolveGreatswordLandingFallback()
+    {
+        Rectangle targetBounds = GetCombatTargetBounds(
+            _greatswordUltimateLockedTarget);
+        bool avoidsTarget = targetBounds.IsEmpty ||
+            !DungeonCollision.CreateBounds(
+                _greatswordUltimateLandingPosition,
+                Player.Size).Intersects(targetBounds);
+        bool plannedSafe = SideScrollingCollision.IsPositionFree(
+                _greatswordUltimateLandingPosition,
+                Player.Size,
+                CurrentDungeon) &&
+            SideScrollingCollision.IsSupported(
+                _greatswordUltimateLandingPosition,
+                Player.Size,
+                CurrentDungeon) && avoidsTarget;
+        if (plannedSafe)
+            return _greatswordUltimateLandingPosition;
+
+        bool lastAvoidsTarget = targetBounds.IsEmpty ||
+            !DungeonCollision.CreateBounds(
+                _lastSafePlayerPosition,
+                Player.Size).Intersects(targetBounds);
+        bool lastSafe = SideScrollingCollision.IsPositionFree(
+                _lastSafePlayerPosition,
+                Player.Size,
+                CurrentDungeon) &&
+            SideScrollingCollision.IsSupported(
+                _lastSafePlayerPosition,
+                Player.Size,
+                CurrentDungeon) && lastAvoidsTarget;
+        return lastSafe ? _lastSafePlayerPosition : Player.Position;
+    }
+
+    private void ClearGreatswordUltimateLock()
+    {
+        _greatswordUltimateCandidate = null;
+        _greatswordUltimateLockedTarget = null;
+        _greatswordUltimateApproachPosition = Vector2.Zero;
+        _greatswordUltimateLandingPosition = Vector2.Zero;
+        _greatswordUltimateTechniqueUseId = -1;
+        _greatswordUltimateMotionAttackId = -1;
+        _greatswordUltimateLandingRequested = false;
+        Player?.Combat.SetGreatswordUltimateTargetAvailable(false);
+        Camera?.ResetCinematicZoom();
+    }
+
+    private void UpdateSovereignUltimateCandidate()
+    {
+        if (Player?.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm)
+            return;
+
+        _sovereignUltimateCandidate = FindSovereignTarget(
+            AbyssRingTuning.UltimateTargetRange,
+            preferHighestHealth: true);
+    }
+
+    private object FindSovereignTarget(
+        float maximumRange,
+        bool preferHighestHealth)
+    {
+        if (Player?.WeaponFamily != WeaponFamily.AbyssRing ||
+            CurrentDungeon == null)
+            return null;
+
+        float maximumDistanceSquared = maximumRange * maximumRange;
+        object best = null;
+        int bestHealth = -1;
+        float bestDistance = float.MaxValue;
+        int bestStableId = int.MaxValue;
+        for (int index = 0; index < Enemies.Enemies.Count; index++)
+        {
+            Enemy enemy = Enemies.Enemies[index];
+            if (!enemy.CanBeTargeted ||
+                !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
+                continue;
+            float distance = Vector2.DistanceSquared(
+                Player.Position, enemy.Position);
+            if (distance > maximumDistanceSquared ||
+                !HasClearRangerUltimatePath(enemy.MeleeTargetBounds) ||
+                preferHighestHealth &&
+                    !HasSovereignSafeTransitPlan(enemy.MeleeTargetBounds))
+                continue;
+            bool better = preferHighestHealth
+                ? IsBetterRangerUltimateTarget(
+                    enemy.MaxHealth, distance, index,
+                    bestHealth, bestDistance, bestStableId)
+                : distance < bestDistance;
+            if (!better)
+                continue;
+            best = enemy;
+            bestHealth = enemy.MaxHealth;
+            bestDistance = distance;
+            bestStableId = index;
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true && Boss.IsActivated &&
+            !Boss.IsPhaseTransitioning)
+        {
+            float distance = Vector2.DistanceSquared(
+                Player.Position, Boss.Position);
+            int stableId = Enemies.Enemies.Count;
+            bool better = preferHighestHealth
+                ? IsBetterRangerUltimateTarget(
+                    Boss.MaxHealth, distance, stableId,
+                    bestHealth, bestDistance, bestStableId)
+                : distance < bestDistance;
+            if (distance <= maximumDistanceSquared && better &&
+                HasClearRangerUltimatePath(Boss.Bounds) &&
+                (!preferHighestHealth ||
+                    HasSovereignSafeTransitPlan(Boss.Bounds)))
+                best = Boss;
+        }
+        return best;
+    }
+
+    private bool HasSovereignSafeTransitPlan(Rectangle targetBounds)
+    {
+        if (targetBounds.IsEmpty || CurrentDungeon == null ||
+            !SideScrollingCollision.IsPositionFree(
+                Player.Position,
+                Player.Size,
+                CurrentDungeon))
+        {
+            return false;
+        }
+
+        Vector2 center = targetBounds.Center.ToVector2();
+        for (int index = 0; index < 8; index++)
+        {
+            float angle = MathHelper.TwoPi * index / 8f;
+            Vector2 desired = center + new Vector2(
+                MathF.Cos(angle) * 116f,
+                MathF.Sin(angle) * 64f);
+            if (TryResolveSovereignTransit(
+                desired,
+                targetBounds,
+                out _))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void UpdateSovereignTargetLock()
+    {
+        if (Player?.WeaponFamily != WeaponFamily.AbyssRing)
+        {
+            ClearSovereignState();
+            return;
+        }
+
+        WeaponTechnique technique = Player.Combat.CurrentTechnique;
+        bool ultimate = technique?.Effect ==
+            WeaponTechniqueEffect.SovereignGoldenCataclysm;
+        if (ultimate)
+        {
+            if (_sovereignExecutionTechniqueUseId ==
+                Player.Combat.CurrentTechniqueUseId)
+                return;
+
+            if (_sovereignUltimateTechniqueUseId !=
+                Player.Combat.CurrentTechniqueUseId)
+            {
+                _sovereignUltimateTechniqueUseId =
+                    Player.Combat.CurrentTechniqueUseId;
+                _sovereignUltimateLockedTarget = _sovereignUltimateCandidate;
+                _sovereignSafeExitPosition = Player.Position;
+                _sovereignSafeExitRequested = false;
+                Rectangle target = GetCombatTargetBounds(
+                    _sovereignUltimateLockedTarget);
+                if (!target.IsEmpty)
+                    SovereignPortals.OpenGoldenGateArray(
+                        target.Center.ToVector2());
+            }
+            if (!_sovereignSafeExitRequested &&
+                !IsSovereignTargetValid(_sovereignUltimateLockedTarget))
+            {
+                _sovereignSafeExitRequested = true;
+                Player.Combat.RequestSovereignSafeExit();
+            }
+            else if (SovereignPortals.Portals.Count < 8)
+            {
+                Rectangle target = GetCombatTargetBounds(
+                    _sovereignUltimateLockedTarget);
+                if (!target.IsEmpty)
+                    SovereignPortals.OpenGoldenGateArray(
+                        target.Center.ToVector2());
+            }
+            return;
+        }
+
+        if (_sovereignUltimateTechniqueUseId >= 0)
+        {
+            SovereignPortals.Clear();
+            Camera.ResetCinematicZoom();
+        }
+        _sovereignUltimateLockedTarget = null;
+        _sovereignUltimateTechniqueUseId = -1;
+        if (technique == null)
+        {
+            _sovereignActionTarget = null;
+            _sovereignActionTechniqueUseId = -1;
+            return;
+        }
+        if (_sovereignActionTechniqueUseId !=
+            Player.Combat.CurrentTechniqueUseId)
+        {
+            _sovereignActionTechniqueUseId =
+                Player.Combat.CurrentTechniqueUseId;
+            _sovereignActionTarget = FindSovereignTarget(
+                AbyssRingTuning.StrikePortalRange *
+                    (Player.Combat.IsSovereignThroneActive
+                        ? AbyssRingTuning.ThronePortalRangeMultiplier
+                        : 1f),
+                preferHighestHealth: false);
+        }
+        if (_sovereignActionTarget != null &&
+            !IsSovereignTargetValid(_sovereignActionTarget))
+        {
+            _sovereignActionTarget = null;
+            Player.Combat.CancelSovereignTargetedSequence();
+            _sovereignActionTechniqueUseId = -1;
+        }
+    }
+
+    private bool IsSovereignTargetValid(object target)
+    {
+        if (target is Enemy enemy)
+        {
+            foreach (Enemy active in Enemies.Enemies)
+                if (ReferenceEquals(active, enemy))
+                    return enemy.CanBeTargeted && enemy switch
+                    {
+                        CatacombEnemy catacomb =>
+                            !catacomb.IsPhaseTransitioning,
+                        FallenCityEnemy city =>
+                            !city.IsKingPhaseTransitioning,
+                        DemonLandsEnemy demon =>
+                            demon.FrontierCombatState !=
+                                DemonFrontierCombatState.GeneralPhaseTransition,
+                        _ => true
+                    };
+            return false;
+        }
+        return target is AncientTreant boss && ReferenceEquals(boss, Boss) &&
+            ShouldRenderBoss && boss.IsAlive && !boss.IsPhaseTransitioning;
+    }
+
+    private void UpdateSovereignTechniqueMovement()
+    {
+        if (Player?.WeaponFamily != WeaponFamily.AbyssRing ||
+            Player.Combat.CurrentAttack == null ||
+            _sovereignMotionAttackId == Player.Combat.AttackId)
+            return;
+
+        _sovereignMotionAttackId = Player.Combat.AttackId;
+        WeaponTechniqueEffect effect =
+            Player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        int stage = Player.Combat.TechniqueStageIndex;
+        object targetObject = effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm
+            ? _sovereignUltimateLockedTarget
+            : _sovereignActionTarget;
+        Rectangle target = GetCombatTargetBounds(targetObject);
+
+        if (effect == WeaponTechniqueEffect.SovereignInfiniteRiftTheatre &&
+            stage == 0 && !target.IsEmpty)
+        {
+            SovereignPortals.OpenTheatreArray(target.Center.ToVector2());
+        }
+
+        bool shouldTransit = effect is
+            WeaponTechniqueEffect.SovereignOmnipresentStep or
+            WeaponTechniqueEffect.SovereignHeavenReversal or
+            WeaponTechniqueEffect.SovereignZeroDistanceStrike ||
+            effect == WeaponTechniqueEffect.SovereignParadoxImpact && stage == 4 ||
+            effect == WeaponTechniqueEffect.SovereignInfiniteRiftTheatre && stage < 4 ||
+            effect == WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                stage is >= 1 and <= 18;
+        bool strikePortal = effect is
+            WeaponTechniqueEffect.SovereignMartialArts &&
+                stage is 2 or 4 or 6 or 7 ||
+            effect == WeaponTechniqueEffect.SovereignParadoxImpact &&
+                stage is >= 1 and <= 3 ||
+            effect == WeaponTechniqueEffect.SovereignGoldenCataclysm;
+
+        if (strikePortal && !target.IsEmpty)
+        {
+            Vector2 strikeOrigin = Player.Bounds.Center.ToVector2();
+            Vector2 strikeExit = target.Center.ToVector2();
+            SovereignPortals.OpenPair(
+                SovereignPortalType.Strike,
+                strikeOrigin,
+                strikeExit,
+                Player.Combat.IsSovereignThroneActive ? 1.15f : .92f);
+            if (effect == WeaponTechniqueEffect.SovereignMartialArts &&
+                stage == 6)
+            {
+                Vector2 strikeDirection = strikeExit - strikeOrigin;
+                if (strikeDirection.LengthSquared() > .001f)
+                    strikeDirection.Normalize();
+                SovereignPortals.Open(
+                    SovereignPortalType.Strike,
+                    strikeExit + new Vector2(24f, -10f),
+                    MathF.Atan2(strikeDirection.Y, strikeDirection.X),
+                    Player.Combat.IsSovereignThroneActive ? 1.05f : .84f,
+                    logical: false,
+                    SovereignPortalFlow.Exit,
+                    strikeDirection);
+            }
+        }
+        if (!shouldTransit)
+            return;
+
+        Vector2 desired = Player.Position;
+        if (effect == WeaponTechniqueEffect.SovereignOmnipresentStep)
+        {
+            Vector2 direction = Player.Combat.SovereignTransitDirection;
+            if (direction.LengthSquared() < .01f)
+                direction = new Vector2(Player.Facing ==
+                    FacingDirection.Left ? 1f : -1f, 0f);
+            direction.Normalize();
+            desired += new Vector2(
+                direction.X * AbyssRingTuning.TransitRange,
+                direction.Y * AbyssRingTuning.ElevatedTransit);
+        }
+        else if (effect == WeaponTechniqueEffect.SovereignHeavenReversal)
+        {
+            float side = Player.Facing == FacingDirection.Left ? -1f : 1f;
+            desired += new Vector2(side * 74f, -112f);
+        }
+        else if (effect == WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+            stage == 18)
+        {
+            desired = _sovereignSafeExitPosition;
+        }
+        else if (!target.IsEmpty)
+        {
+            int sequence = Math.Max(0, stage - 1);
+            float angle = MathHelper.TwoPi * sequence /
+                Math.Max(4, AbyssRingTuning.UltimateStrikeCount);
+            float radius = effect ==
+                    WeaponTechniqueEffect.SovereignGoldenCataclysm
+                ? 72f
+                : 56f;
+            desired = target.Center.ToVector2() + new Vector2(
+                MathF.Cos(angle) * radius,
+                MathF.Sin(angle) * radius * .35f);
+        }
+
+        if (!TryResolveSovereignTransit(desired, target, out Vector2 safe))
+            return;
+        Vector2 start = Player.Position;
+        SovereignPortals.OpenPair(
+            SovereignPortalType.Transit, start, safe, .9f);
+        Player.MoveTo(safe);
+        if (!target.IsEmpty)
+            Player.FaceToward(target.Center.X);
+    }
+
+    private bool TryResolveSovereignTransit(
+        Vector2 desired,
+        Rectangle target,
+        out Vector2 safe)
+    {
+        safe = Player.Position;
+        Rectangle world = CurrentDungeon.WorldBounds;
+        Rectangle destination = DungeonCollision.CreateBounds(
+            desired, Player.Size);
+        if (!world.Contains(destination) ||
+            !SideScrollingCollision.IsPositionFree(
+                desired, Player.Size, CurrentDungeon) ||
+            (!target.IsEmpty && destination.Intersects(target)))
+            return false;
+
+        if (ShouldRenderBoss && Boss?.IsActivated == true &&
+            CurrentDungeon.BossRoom != null &&
+            CurrentDungeon.BossRoom.Bounds.Contains(Player.Bounds) &&
+            !CurrentDungeon.BossRoom.Bounds.Contains(destination))
+            return false;
+
+        foreach (Enemy enemy in Enemies.Enemies)
+            if (enemy.CanBeTargeted && destination.Intersects(enemy.MeleeTargetBounds))
+                return false;
+        if (ShouldRenderBoss && Boss?.IsAlive == true &&
+            destination.Intersects(Boss.Bounds))
+            return false;
+
+        Vector2 start = Player.Position;
+        float distance = Vector2.Distance(start, desired);
+        int steps = Math.Max(2, (int)MathF.Ceiling(distance / 18f));
+        for (int index = 1; index < steps; index++)
+        {
+            Vector2 sample = Vector2.Lerp(start, desired, index / (float)steps);
+            if (!SideScrollingCollision.IsPositionFree(
+                sample, new Vector2(6f, 6f), CurrentDungeon))
+                return false;
+        }
+        safe = desired;
+        return true;
+    }
+
+    private void ResolvePerfectRiftCounter()
+    {
+        if (!Player.Combat.TryConsumePerfectRiftCounter(out Vector2 source))
+            return;
+        Enemy best = null;
+        float bestDistance = 132f * 132f;
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (!enemy.CanBeTargeted)
+                continue;
+            float distance = Vector2.DistanceSquared(enemy.Position, source);
+            if (distance < bestDistance)
+            {
+                best = enemy;
+                bestDistance = distance;
+            }
+        }
+        int damage = Math.Max(1, (int)MathF.Round(
+            Player.MeleeDamage * AbyssRingTuning.PerfectRiftDamageMultiplier));
+        if (best != null)
+        {
+            SovereignPortals.OpenPair(
+                SovereignPortalType.Strike,
+                source,
+                best.MeleeTargetBounds.Center.ToVector2(),
+                .8f);
+            best.ReceiveDamageFrom(damage, 26f, Player.Position);
+        }
+        else if (ShouldRenderBoss && Boss?.IsAlive == true &&
+            Vector2.DistanceSquared(Boss.Position, source) < 132f * 132f &&
+            !Boss.IsPhaseTransitioning)
+        {
+            SovereignPortals.OpenPair(
+                SovereignPortalType.Strike,
+                source,
+                Boss.Bounds.Center.ToVector2(),
+                .8f);
+            Boss.ReceiveDamage(damage, 26f);
+        }
+        else
+        {
+            SovereignPortals.Open(
+                SovereignPortalType.Strike,
+                source,
+                scale: .8f,
+                flow: SovereignPortalFlow.Entry);
+        }
+    }
+
+    private void ClearSovereignState()
+    {
+        _sovereignUltimateCandidate = null;
+        _sovereignUltimateLockedTarget = null;
+        _sovereignActionTarget = null;
+        _sovereignUltimateTechniqueUseId = -1;
+        _sovereignActionTechniqueUseId = -1;
+        _sovereignMotionAttackId = -1;
+        _sovereignSafeExitRequested = false;
+        _sovereignExecutionTechniqueUseId = -1;
+        _sovereignExecutionFrameRemaining = 0f;
+        _sovereignExecutionSuppressed = false;
+        _sovereignExecutionImpactApplied = false;
+        _sovereignExecutionTarget = null;
+        SovereignPortals.Clear();
+        Player?.Combat.SetSovereignUltimateTargetAvailable(false);
+        Camera?.ResetCinematicZoom();
+    }
+
+    private static Rectangle GetCombatTargetBounds(object target)
+    {
+        return target switch
+        {
+            Enemy enemy => enemy.MeleeTargetBounds,
+            AncientTreant boss => boss.Bounds,
+            _ => Rectangle.Empty
+        };
     }
 
     private void UpdateRangerFocusPressure(float elapsedSeconds)
@@ -3170,6 +4555,15 @@ public sealed class GameSession
 
         PrepareSpellbladeTechnique(technique);
         ProcessSpellbladeWorldEffect(technique);
+        ProcessGreatswordWorldEffect(technique);
+
+        if (Player.WeaponFamily == WeaponFamily.GreatSword &&
+            technique?.Effect ==
+                WeaponTechniqueEffect.GreatswordFinalVerdict &&
+            damage <= 0 && poiseDamage <= 0f)
+        {
+            return;
+        }
 
         if (Player.WeaponFamily == WeaponFamily.WarAxe &&
             Player.Combat.CurrentTechniqueUseId !=
@@ -3183,6 +4577,16 @@ public sealed class GameSession
         foreach (Enemy enemy in Enemies.Enemies)
         {
             if (!enemy.CanBeTargeted ||
+                technique?.Effect ==
+                    WeaponTechniqueEffect.GreatswordFinalVerdict &&
+                    !ReferenceEquals(
+                        _greatswordUltimateLockedTarget,
+                        enemy) ||
+                technique?.Effect ==
+                    WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                    !ReferenceEquals(
+                        _sovereignUltimateLockedTarget,
+                        enemy) ||
                 _playerAttackHits.Contains(enemy) ||
                 !PlayerAttackArea.Intersects(enemy.MeleeTargetBounds))
             {
@@ -3197,6 +4601,10 @@ public sealed class GameSession
             damageMultiplier *= GetReckonerDamageMultiplier(
                 technique,
                 enemy.Position);
+            damageMultiplier *= Player.Combat.GetTargetDamageMultiplier(
+                enemy.MaxHealth <= 0
+                    ? 1f
+                    : enemy.CurrentHealth / (float)enemy.MaxHealth);
 
             if (technique?.Effect ==
                 WeaponTechniqueEffect.DuelistFinalWaltz &&
@@ -3257,6 +4665,7 @@ public sealed class GameSession
                 targetDamage,
                 targetPoiseDamage,
                 Player.Position);
+            TryResolveSovereignExecution(enemy, technique);
             ApplyTechniqueEffect(enemy, technique?.Effect ?? WeaponTechniqueEffect.None);
             ResolveSpellbladeEnemyHit(
                 enemy,
@@ -3286,6 +4695,18 @@ public sealed class GameSession
                 else
                     enemy.PullToward(Player.Position, knockback, CurrentDungeon);
             }
+            else if (technique?.Effect ==
+                WeaponTechniqueEffect.SovereignEventHorizonPalm)
+            {
+                if (enemy.WeightClass != EnemyWeightClass.Heavy &&
+                    !enemy.IsHeavyPullAnchor)
+                {
+                    enemy.PullToward(
+                        Player.Position,
+                        MathF.Max(18f, knockback),
+                        CurrentDungeon);
+                }
+            }
             else
                 enemy.ApplyKnockback(Player.Position, knockback, CurrentDungeon);
 
@@ -3305,6 +4726,12 @@ public sealed class GameSession
             return;
 
         if (!_bossHitByPlayerAttack && ShouldRenderBoss && Boss.IsAlive &&
+            (technique?.Effect !=
+                WeaponTechniqueEffect.GreatswordFinalVerdict ||
+             ReferenceEquals(_greatswordUltimateLockedTarget, Boss)) &&
+            (technique?.Effect !=
+                WeaponTechniqueEffect.SovereignGoldenCataclysm ||
+             ReferenceEquals(_sovereignUltimateLockedTarget, Boss)) &&
             PlayerAttackArea.Intersects(Boss.Bounds))
         {
             _bossHitByPlayerAttack = true;
@@ -3318,6 +4745,10 @@ public sealed class GameSession
             bossDamageMultiplier *= GetReckonerDamageMultiplier(
                 technique,
                 Boss.Position);
+            bossDamageMultiplier *= Player.Combat.GetTargetDamageMultiplier(
+                Boss.MaxHealth <= 0
+                    ? 1f
+                    : Boss.CurrentHealth / (float)Boss.MaxHealth);
             bool bossWasUnstable = Boss.IsStaggered ||
                 Boss.CurrentPoise <=
                     Boss.MaxPoise * RaiderTuning.UnstablePoiseRatio;
@@ -3350,6 +4781,7 @@ public sealed class GameSession
                 ref bossDamage,
                 ref bossPoiseDamage);
             Boss.ReceiveDamage(bossDamage, bossPoiseDamage);
+            TryResolveSovereignBossExecution(technique);
             ResolveSpellbladeBossHit(
                 technique,
                 bossImprintStacks,
@@ -3361,7 +4793,8 @@ public sealed class GameSession
                 Player.Combat.TechniqueStageIndex < technique.StageCount - 1;
             suppressBossDisplacement |= technique?.Effect is
                 WeaponTechniqueEffect.ReckonerChainsOfJudgment or
-                WeaponTechniqueEffect.ReckonerVortexSnare;
+                WeaponTechniqueEffect.ReckonerVortexSnare or
+                WeaponTechniqueEffect.SovereignEventHorizonPalm;
             bool raiderTechnique = IsRaiderTechnique(
                 technique?.Effect ?? WeaponTechniqueEffect.None);
             if (!raiderTechnique &&
@@ -3402,6 +4835,148 @@ public sealed class GameSession
         }
 
         ProcessBreakerWorldEffect(technique);
+    }
+
+    private void TryResolveSovereignExecution(
+        Enemy enemy,
+        WeaponTechnique technique)
+    {
+        if (enemy == null || technique?.Effect !=
+                WeaponTechniqueEffect.SovereignGoldenCataclysm ||
+            Player.Combat.TechniqueStageIndex != 17 ||
+            _sovereignExecutionTechniqueUseId ==
+                Player.Combat.CurrentTechniqueUseId ||
+            !enemy.IsAlive || enemy.CurrentHealth * 10 >= enemy.MaxHealth)
+            return;
+
+        bool protectedPhase = enemy switch
+        {
+            CatacombEnemy catacomb when
+                catacomb.Type == EnemyType.FallenKnight =>
+                    catacomb.CombatPhase < 3 || catacomb.IsPhaseTransitioning,
+            FallenCityEnemy city when
+                city.Type == EnemyType.BrokenKing => city.CombatPhase < 3,
+            DemonLandsEnemy demon when
+                demon.Type == EnemyType.HornedGeneral => demon.CombatPhase < 3,
+            _ => false
+        };
+        _sovereignExecutionTechniqueUseId =
+            Player.Combat.CurrentTechniqueUseId;
+        BeginSovereignExecutionFrame(enemy, protectedPhase);
+        SovereignPortals.Open(
+            SovereignPortalType.Strike,
+            enemy.MeleeTargetBounds.Center.ToVector2(),
+            0f,
+            1.25f);
+    }
+
+    private void TryResolveSovereignBossExecution(WeaponTechnique technique)
+    {
+        if (technique?.Effect !=
+                WeaponTechniqueEffect.SovereignGoldenCataclysm ||
+            Player.Combat.TechniqueStageIndex != 17 ||
+            _sovereignExecutionTechniqueUseId ==
+                Player.Combat.CurrentTechniqueUseId ||
+            Boss?.IsAlive != true || Boss.CurrentHealth * 10 >= Boss.MaxHealth)
+            return;
+
+        _sovereignExecutionTechniqueUseId =
+            Player.Combat.CurrentTechniqueUseId;
+        bool protectedPhase = Boss.Phase != AncientTreantPhase.PhaseThree ||
+            Boss.IsPhaseTransitioning;
+        BeginSovereignExecutionFrame(Boss, protectedPhase);
+        SovereignPortals.Open(
+            SovereignPortalType.Strike,
+            Boss.Bounds.Center.ToVector2(),
+            0f,
+            1.4f);
+    }
+
+    private void BeginSovereignExecutionFrame(object target, bool suppressed)
+    {
+        SovereignPortals.Clear();
+        _sovereignExecutionFrameRemaining =
+            AbyssRingTuning.ExecutionDurationSeconds;
+        _sovereignExecutionSuppressed = suppressed;
+        _sovereignExecutionImpactApplied = false;
+        _sovereignExecutionTarget = target;
+    }
+
+    private void UpdateSovereignExecution(float elapsedSeconds)
+    {
+        if (_sovereignExecutionFrameRemaining <= 0f)
+            return;
+
+        if (!_sovereignExecutionImpactApplied &&
+            !IsSovereignExecutionTargetPresent())
+        {
+            _sovereignSafeExitRequested = true;
+            Player?.Combat.RequestSovereignSafeExit();
+            EndSovereignExecution();
+            return;
+        }
+
+        _sovereignExecutionFrameRemaining = MathF.Max(
+            0f,
+            _sovereignExecutionFrameRemaining - elapsedSeconds);
+        float executionTime = AbyssRingTuning.ExecutionDurationSeconds -
+            _sovereignExecutionFrameRemaining;
+        if (!_sovereignExecutionImpactApplied &&
+            executionTime >= AbyssRingTuning.ExecutionImpactSeconds)
+        {
+            _sovereignExecutionImpactApplied = true;
+            _sovereignExecutionImpactId++;
+            if (!_sovereignExecutionSuppressed)
+            {
+                if (_sovereignExecutionTarget is Enemy enemy &&
+                    enemy.IsAlive && IsActiveEnemy(enemy))
+                {
+                    enemy.ReceiveDamageFrom(
+                        enemy.CurrentHealth,
+                        0f,
+                        Player.Position);
+                }
+                else if (_sovereignExecutionTarget is AncientTreant boss &&
+                    ReferenceEquals(boss, Boss) && boss.IsAlive)
+                {
+                    boss.ReceiveDamage(boss.CurrentHealth, 0f);
+                }
+            }
+            Camera.AddImpactFeedback(
+                _sovereignExecutionSuppressed ? 2.4f :
+                _sovereignExecutionTarget is AncientTreant ? 4.8f : 4.4f);
+        }
+
+        if (_sovereignExecutionFrameRemaining > 0f)
+            return;
+
+        EndSovereignExecution();
+    }
+
+    private bool IsSovereignExecutionTargetPresent()
+    {
+        if (_sovereignExecutionTarget is Enemy enemy)
+            return enemy.IsAlive && IsActiveEnemy(enemy);
+        return _sovereignExecutionTarget is AncientTreant boss &&
+            ReferenceEquals(boss, Boss) && boss.IsAlive && ShouldRenderBoss;
+    }
+
+    private void EndSovereignExecution()
+    {
+        _sovereignExecutionFrameRemaining = 0f;
+        _sovereignExecutionTarget = null;
+        _sovereignExecutionSuppressed = false;
+        _sovereignExecutionImpactApplied = false;
+        SovereignPortals.Clear();
+        Camera.ResetCinematicZoom();
+    }
+
+    private bool IsActiveEnemy(Enemy enemy)
+    {
+        foreach (Enemy active in Enemies.Enemies)
+            if (ReferenceEquals(active, enemy))
+                return true;
+        return false;
     }
 
     private float GetReckonerDamageMultiplier(
@@ -4520,9 +6095,13 @@ public sealed class GameSession
             : 1f;
         WeaponTechniqueEffect effect = Player.Combat.CurrentTechnique?.Effect ??
             WeaponTechniqueEffect.None;
-        if (effect == WeaponTechniqueEffect.RangerHeavensFury)
+        if (effect is WeaponTechniqueEffect.RangerHeavensFury or
+            WeaponTechniqueEffect.RangerPhantomHunt)
             facing = Player.Combat.RangerLockedDirection;
         Vector2 direction = new(facing, 0f);
+        object lockedTarget = effect == WeaponTechniqueEffect.RangerPhantomHunt
+            ? _rangerUltimateLockedTarget
+            : null;
 
         direction = effect switch
         {
@@ -4530,11 +6109,24 @@ public sealed class GameSession
                 GetSkyfallDirection(Player.Combat.RangerSkyfallDistance, facing),
             WeaponTechniqueEffect.RangerFallingStar =>
                 Vector2.Normalize(new Vector2(facing * .48f, -.88f)),
+            WeaponTechniqueEffect.RangerArrowStorm =>
+                Vector2.Normalize(new Vector2(facing * .36f, -.93f)),
+            WeaponTechniqueEffect.RangerSkyfallVolley =>
+                Vector2.Normalize(new Vector2(facing * .34f, .94f)),
+            WeaponTechniqueEffect.RangerSkyfallShot =>
+                Vector2.Normalize(new Vector2(facing, 1f)),
             _ => direction
         };
 
         Vector2 spawnPosition = Player.Position + direction * 30f +
             new Vector2(0f, -10f);
+        if (lockedTarget != null)
+        {
+            Vector2 aim = GetRangerTargetBounds(lockedTarget).Center.ToVector2();
+            Vector2 aimDelta = aim - spawnPosition;
+            if (aimDelta.LengthSquared() > 1f)
+                direction = Vector2.Normalize(aimDelta);
+        }
         int roomId = CurrentDungeon.FindRoomContaining(Player.Position)?.Id ?? -1;
 
         if (effect is WeaponTechniqueEffect.RangerThreefoldHunt or
@@ -4544,7 +6136,8 @@ public sealed class GameSession
             return;
         }
 
-        float focusRatio = effect == WeaponTechniqueEffect.RangerHeavensFury
+        float focusRatio = effect is WeaponTechniqueEffect.RangerHeavensFury or
+                WeaponTechniqueEffect.RangerPhantomHunt
             ? Player.Combat.RangerUltimateFocusRatio
             : Player.Combat.Resources.HunterFocusRatio;
         int damage = Player.Combat.CalculateDamage(Player.MeleeDamage);
@@ -4573,12 +6166,14 @@ public sealed class GameSession
             Player.Combat.RangerDrawState,
             Player.Combat.AttackId,
             Player.Combat.CurrentTechniqueUseId,
-            additionalPierces: effect == WeaponTechniqueEffect.RangerHuntersDraw &&
+            additionalPierces: effect is WeaponTechniqueEffect.RangerHuntersDraw or
+                    WeaponTechniqueEffect.RangerPiercingDraw &&
                 Player.Combat.RangerDrawState == RangerDrawState.Perfect ? 1 : 0,
             placementDistance: effect == WeaponTechniqueEffect.SpellbladeRuneBrand
                 ? SpellbladeTuning.GetPlacementDistance(
                     Player.Combat.RunePlacementDistance)
-                : 0f);
+                : 0f,
+            lockedTarget: lockedTarget);
     }
 
     private void SpawnRangerSpread(
@@ -4684,6 +6279,8 @@ public sealed class GameSession
             foreach (Enemy enemy in Enemies.Enemies)
             {
                 if (!enemy.CanBeTargeted ||
+                    projectile.LockedTarget != null &&
+                        !ReferenceEquals(projectile.LockedTarget, enemy) ||
                     projectile.HitEnemies.Contains(enemy) ||
                     !projectile.SweptBounds.Intersects(enemy.MeleeTargetBounds))
                     continue;
@@ -4719,6 +6316,13 @@ public sealed class GameSession
                         projectile,
                         enemy,
                         isBoss: false);
+                    bool weakPoint = IsRangerWeakPointHit(projectile, enemy);
+                    if (weakPoint)
+                    {
+                        rangerDamage = Math.Max(1, (int)MathF.Round(
+                            rangerDamage * 1.12f));
+                        poiseDamage *= 1.45f;
+                    }
                     enemy.ReceiveDamageFrom(
                         rangerDamage,
                         poiseDamage,
@@ -4728,7 +6332,7 @@ public sealed class GameSession
                         projectile.Knockback,
                         CurrentDungeon);
                     RecordPredatorFanHit(projectile, enemy);
-                    RegisterRangerHit(projectile, enemy.Position);
+                    RegisterRangerHit(projectile, enemy.Position, weakPoint);
                     consumed = !AdvancePenetratingProjectile(projectile);
                     if (consumed)
                         break;
@@ -4787,6 +6391,8 @@ public sealed class GameSession
             }
 
             if (!consumed && ShouldRenderBoss && Boss.IsAlive &&
+                (projectile.LockedTarget == null ||
+                    ReferenceEquals(projectile.LockedTarget, Boss)) &&
                 !projectile.HasHitBoss &&
                 projectile.SweptBounds.Intersects(Boss.Bounds))
             {
@@ -4815,18 +6421,21 @@ public sealed class GameSession
                         Boss.Bounds,
                         isLarge: true,
                         isBoss: true);
-                    Boss.ReceiveDamage(
-                        rangerDamage,
-                        CalculateRangerProjectilePoise(
-                            projectile,
-                            enemy: null,
-                            isBoss: true));
+                    bool weakPoint = Boss.IsStaggered &&
+                        projectile.SweptBounds.Intersects(Boss.WeakPointBounds);
+                    if (weakPoint)
+                        rangerDamage = Math.Max(1, (int)MathF.Round(rangerDamage * 1.10f));
+                    float bossPoise = CalculateRangerProjectilePoise(
+                        projectile,
+                        enemy: null,
+                        isBoss: true) * (weakPoint ? 1.35f : 1f);
+                    Boss.ReceiveDamage(rangerDamage, bossPoise);
                     Boss.ApplyKnockback(
                         projectile.SourcePosition,
                         projectile.Knockback,
                         CurrentDungeon);
                     RecordPredatorBossFanHit(projectile);
-                    RegisterRangerHit(projectile, Boss.Position);
+                    RegisterRangerHit(projectile, Boss.Position, weakPoint);
                     consumed = !AdvancePenetratingProjectile(projectile);
                 }
                 else if (projectile.IsSpellbladeProjectile)
@@ -4894,6 +6503,9 @@ public sealed class GameSession
             if (!impact.Projectile.IsRangerProjectile)
                 continue;
 
+            if (!impact.Projectile.HasHitTarget)
+                Player.Combat.RegisterRangerProjectileMiss(
+                    impact.Projectile.SourceAttackId);
             ResolveRangerImpact(impact.Projectile, impact.Position);
         }
     }
@@ -5060,7 +6672,10 @@ public sealed class GameSession
         return projectile.PoiseDamage * multiplier;
     }
 
-    private void RegisterRangerHit(Projectile projectile, Vector2 targetPosition)
+    private void RegisterRangerHit(
+        Projectile projectile,
+        Vector2 targetPosition,
+        bool weakPoint = false)
     {
         projectile.HasHitTarget = true;
         projectile.TargetsHit++;
@@ -5070,19 +6685,33 @@ public sealed class GameSession
             projectile.DrawState,
             Vector2.Distance(projectile.SourcePosition, targetPosition) >=
                 RangerTuning.SafeSpacingDistance);
-        bool ultimate = projectile.TechniqueEffect ==
-            WeaponTechniqueEffect.RangerHeavensFury;
+        if (weakPoint)
+            Player.Combat.RegisterRangerWeakPointHit();
+        bool execution = projectile.TechniqueEffect ==
+                WeaponTechniqueEffect.RangerHeavensFury ||
+            projectile.TechniqueEffect ==
+                WeaponTechniqueEffect.RangerPhantomHunt &&
+            projectile.Size.X >= 28f;
         Player.Combat.RegisterRangerImpactFeedback(
-            strongHit: ultimate || projectile.DrawState == RangerDrawState.Perfect ||
+            strongHit: execution ||
+                projectile.DrawState == RangerDrawState.Perfect ||
                 projectile.TechniqueEffect is
                     WeaponTechniqueEffect.RangerDragonPiercer or
                     WeaponTechniqueEffect.RangerFallingStar,
-            ultimate);
-        if (ultimate || projectile.DrawState == RangerDrawState.Perfect)
+            execution);
+        if (execution || projectile.DrawState == RangerDrawState.Perfect)
         {
-            Camera.AddImpactFeedback(ultimate ? 4.8f : 1.5f);
+            Camera.AddImpactFeedback(execution ? 3.4f : 1.5f);
         }
         Player.Combat.RegisterExternalHit(projectile.WeaponResourceGain);
+    }
+
+    private static bool IsRangerWeakPointHit(
+        Projectile projectile,
+        Enemy enemy)
+    {
+        return (enemy.IsCombatAttackTelegraphing || enemy.IsStaggered) &&
+            projectile.SweptBounds.Intersects(enemy.WeakPointBounds);
     }
 
     private void RecordPredatorFanHit(Projectile projectile, Enemy enemy)
@@ -5193,12 +6822,18 @@ public sealed class GameSession
             (keyboardState.IsKeyDown(Keys.Right) &&
                 !_previousKeyboardState.IsKeyDown(Keys.Right));
         float horizontalDirection = 0f;
+        float verticalDirection = 0f;
 
         if (keyboardState.IsKeyDown(Keys.A) || keyboardState.IsKeyDown(Keys.Left))
             horizontalDirection -= 1f;
 
         if (keyboardState.IsKeyDown(Keys.D) || keyboardState.IsKeyDown(Keys.Right))
             horizontalDirection += 1f;
+
+        if (keyboardState.IsKeyDown(Keys.W) || keyboardState.IsKeyDown(Keys.Up))
+            verticalDirection -= 1f;
+        if (keyboardState.IsKeyDown(Keys.S) || keyboardState.IsKeyDown(Keys.Down))
+            verticalDirection += 1f;
 
         return new CombatInput(
             skill1Pressed,
@@ -5215,7 +6850,8 @@ public sealed class GameSession
             skill3Released,
             skill2Held,
             skill2Released,
-            movementCancelPressed);
+            movementCancelPressed,
+            verticalDirection);
     }
 
     private bool HasImmediateDuelistThreat()
@@ -5361,8 +6997,16 @@ public sealed class GameSession
         {
             EquipmentItem selectedItem = SelectedInventoryItem;
 
-            if (selectedItem != null && Player.EquipItem(selectedItem))
+            if (selectedItem != null &&
+                !ReferenceEquals(
+                    selectedItem,
+                    Player.EquippedItems.GetEquipped(selectedItem.Slot)) &&
+                Player.EquipItem(selectedItem))
+            {
                 RefreshInventoryView();
+                SelectedInventoryIndex = _activeInventoryItems.IndexOf(
+                    Player.EquippedItems.GetEquipped(selectedItem.Slot));
+            }
 
             ClampInventorySelection();
         }
@@ -5408,6 +7052,28 @@ public sealed class GameSession
             Player.Inventory.Items,
             ActiveInventoryTab,
             _activeInventoryItems);
+
+        if (ActiveInventoryTab == InventoryTab.Weapons &&
+            Player.EquippedItems.Weapon != null &&
+            !_activeInventoryItems.Contains(Player.EquippedItems.Weapon))
+        {
+            _activeInventoryItems.Add(Player.EquippedItems.Weapon);
+        }
+
+        if (ActiveInventoryTab == InventoryTab.Weapons)
+        {
+            _activeInventoryItems.Sort((left, right) =>
+            {
+                int leftOrder = EquipmentCatalog.GetImplementedWeaponOrder(
+                    left.WeaponId);
+                int rightOrder = EquipmentCatalog.GetImplementedWeaponOrder(
+                    right.WeaponId);
+                int order = leftOrder.CompareTo(rightOrder);
+                return order != 0
+                    ? order
+                    : string.CompareOrdinal(left.WeaponId, right.WeaponId);
+            });
+        }
     }
 
     private void RememberActiveTabSelection()
