@@ -54,6 +54,17 @@ public static class WeaponMoveSets
         Melee(AttackKind.Heavy, 1.60f, 52f, 18f, .18f, .12f, .34f,
             42f, 92f, 68f, AttackHitboxShape.Circular, 40f));
 
+    public static readonly WeaponMoveSet Scythe = new(
+        "shadow-reaper-scythe",
+        new[]
+        {
+            Melee(AttackKind.LightOne, .65f, 13f, 5f, .055f, .075f, .13f, 8f, 91f, 54f, AttackHitboxShape.WideArc, 62f),
+            Melee(AttackKind.LightTwo, .70f, 14f, 5f, .06f, .08f, .14f, 9f, 94f, 56f, AttackHitboxShape.WideArc, 58f),
+            Melee(AttackKind.LightThree, .85f, 18f, 6f, .07f, .09f, .15f, 11f, 97f, 68f, AttackHitboxShape.Circular, 68f)
+        },
+        Melee(AttackKind.Heavy, 1.55f, 38f, 18f, .14f, .12f, .30f,
+            28f, 104f, 72f, AttackHitboxShape.WideArc, 44f));
+
     public static readonly WeaponMoveSet BattleAxe = new(
         "battle-axe",
         new[]

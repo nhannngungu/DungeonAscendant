@@ -23,5 +23,6 @@ public enum WeaponFamily
     ChainFlail = 7,
     // Added after the original save values; never reuse an existing value.
     GreatSword = 8,
-    AbyssRing = 9
+    AbyssRing = 9,
+    Scythe = 10
 }

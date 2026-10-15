@@ -12,5 +12,6 @@ public enum CombatState
     Dodging,
     Hurt,
     Staggered,
-    Dead
+    Dead,
+    UmbralAttached
 }

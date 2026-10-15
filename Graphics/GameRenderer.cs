@@ -388,15 +388,41 @@ public sealed class GameRenderer : IDisposable
                 veilStrength * .48f,
                 purpleLayer: false);
         }
-        _playerSpriteRenderer.Draw(
-            gameSession.Player,
-            gameTime,
-            gameSession.Player.WeaponFamily == WeaponFamily.ChainFlail
-                ? gameSession.PlayerAttackArea.Center.ToVector2()
-                : null,
-            sovereignVisualPosition,
-            sovereignTravelDirection,
-            sovereignTransitionStrength);
+        Vector2? playerVisualPosition = sovereignVisualPosition;
+        if (gameSession.IsScytheUltimateActive &&
+            !gameSession.Player.Combat.IsUmbralAttached &&
+            gameSession.Player.Combat.State != CombatState.ChargingHeavy)
+        {
+            int stage = gameSession.ScytheUltimateStage;
+            float ratio = gameSession.ScytheUltimateStageRatio;
+            float arrival = stage switch
+            {
+                0 => Math.Clamp(ratio / .36f, 0f, 1f),
+                4 or 5 => Math.Clamp(ratio / .42f, 0f, 1f),
+                6 => Math.Clamp(ratio / .26f, 0f, 1f),
+                7 => Math.Clamp(ratio / .72f, 0f, 1f),
+                _ => 1f
+            };
+            arrival = MathHelper.SmoothStep(0f, 1f, arrival);
+            playerVisualPosition = Vector2.Lerp(
+                gameSession.ScytheUltimateVisualStartPosition,
+                gameSession.Player.Position,
+                arrival);
+        }
+        DrawScytheUltimateShadowField(gameSession, gameTime);
+        if (!(gameSession.IsScytheUltimateActive &&
+                gameSession.Player.Combat.IsUmbralAttached))
+        {
+            _playerSpriteRenderer.Draw(
+                gameSession.Player,
+                gameTime,
+                gameSession.Player.WeaponFamily == WeaponFamily.ChainFlail
+                    ? gameSession.PlayerAttackArea.Center.ToVector2()
+                    : null,
+                playerVisualPosition,
+                sovereignTravelDirection,
+                sovereignTransitionStrength);
+        }
         DrawFourthVeilOverlay(gameSession, gameTime);
 
         foreach (Enemy enemy in gameSession.Enemies.DefeatPresentations)
@@ -431,12 +457,22 @@ public sealed class GameRenderer : IDisposable
                     enemy,
                     gameSession.Camera.ViewBounds,
                     gameSession.IsWildForestShowcaseMode);
+                DrawReapMarks(enemy.MeleeTargetBounds,
+                    gameSession.PlayerHitEffectPosition,
+                    enemy.ReapMarkCount,
+                    enemy.ReapMarkLifetimeRatio,
+                    enemy.ReapMarkGainVisualRatio,
+                    enemy.ReapMarkRefreshVisualRatio,
+                    enemy.ReapMarkExitVisualRatio,
+                    enemy.ReapMarkExitVisualCount,
+                    enemy.ReapMarkExitWasConsumed);
             }
         }
 
         DrawRangerUltimateTargetLock(gameSession, gameTime);
         DrawGreatswordUltimateTargetLock(gameSession, gameTime);
         DrawSovereignUltimateTargetLock(gameSession, gameTime);
+        DrawScytheUltimateTargetLock(gameSession, gameTime);
 
         foreach (Projectile projectile in gameSession.Projectiles.Projectiles)
         {
@@ -468,6 +504,15 @@ public sealed class GameRenderer : IDisposable
             gameSession.Boss.Bounds.Intersects(gameSession.Camera.ViewBounds))
         {
             DrawAncientTreant(gameSession.Boss, gameTime);
+            DrawReapMarks(gameSession.Boss.Bounds,
+                gameSession.PlayerHitEffectPosition,
+                gameSession.Boss.ReapMarkCount,
+                gameSession.Boss.ReapMarkLifetimeRatio,
+                gameSession.Boss.ReapMarkGainVisualRatio,
+                gameSession.Boss.ReapMarkRefreshVisualRatio,
+                gameSession.Boss.ReapMarkExitVisualRatio,
+                gameSession.Boss.ReapMarkExitVisualCount,
+                gameSession.Boss.ReapMarkExitWasConsumed);
             DrawArcaneImprints(
                 gameSession.Boss.Bounds,
                 gameSession.Boss.ArcaneImprintCount,
@@ -527,11 +572,13 @@ public sealed class GameRenderer : IDisposable
         DrawSovereignAssaultOverlay(gameSession);
         DrawSovereignUltimateCinematic(gameSession);
         DrawAncientStaffUltimateCinematic(gameSession, gameTime);
+        DrawScytheUltimateCinematic(gameSession);
         DrawSovereignExecutionFrame(gameSession);
         bool hideSovereignHud =
             gameSession.Player.Combat.SovereignUltimateCinematicRatio > 0f ||
             gameSession.IsSovereignExecutionActive ||
-            gameSession.Player.Combat.AncientStaffUltimateCinematicRatio > 0f;
+            gameSession.Player.Combat.AncientStaffUltimateCinematicRatio > 0f ||
+            gameSession.IsScytheUltimateActive;
         if (!hideSovereignHud)
         {
             DrawHudPanel();
@@ -6746,6 +6793,20 @@ public sealed class GameRenderer : IDisposable
                 return;
             }
 
+            if (item.WeaponDefinition.Family == WeaponFamily.Scythe)
+            {
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX - 2, top + 5, 5, height + 6),
+                    new Color(67, 42, 74));
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX + 1, top - 1, 13, 5), color);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX + 10, top - 1, 5, 13), color);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(centerX + 5, top + 8, 9, 4), color);
+                return;
+            }
+
             int bladeWidth = item.WeaponDefinition.Family == WeaponFamily.GreatSword
                 ? 9
                 : 5;
@@ -9393,6 +9454,508 @@ public sealed class GameRenderer : IDisposable
         color.G,
         color.B,
         (byte)Math.Clamp((int)MathF.Round(color.A * opacity), 0, 255));
+
+    private void DrawReapMarks(
+        Rectangle target,
+        Vector2 consumeDestination,
+        int count,
+        float lifetime,
+        float gain,
+        float refresh,
+        float exit,
+        int exitCount,
+        bool consumed)
+    {
+        count = Math.Clamp(count, 0, ScytheTuning.MaximumReapMarks);
+        int visibleCount = count > 0
+            ? count
+            : Math.Clamp(exitCount, 0,
+                ScytheTuning.MaximumReapMarks);
+        if (visibleCount <= 0 || count <= 0 && exit <= 0f)
+            return;
+
+        Vector2 markCenter = new(
+            target.Center.X + Math.Clamp(target.Width * .20f, 4f, 15f),
+            target.Top + Math.Clamp(target.Height * .30f, 12f, 27f));
+        float opacity = count > 0
+            ? Math.Clamp(lifetime / .07f, 0f, 1f)
+            : exit;
+        float scale = 1f;
+
+        if (count <= 0 && consumed)
+        {
+            float travel = MathHelper.SmoothStep(0f, 1f, 1f - exit);
+            Vector2 destination = consumeDestination == Vector2.Zero
+                ? markCenter
+                : consumeDestination;
+            markCenter = Vector2.Lerp(markCenter, destination, travel);
+            scale = MathHelper.Lerp(1f, .42f, travel);
+            DrawWorldLine(
+                Vector2.Lerp(markCenter, destination, -.18f),
+                markCenter,
+                2f,
+                new Color(58, 19, 76, (int)(150f * exit)));
+        }
+        else if (count <= 0)
+        {
+            scale = MathHelper.Lerp(.28f, 1f, exit);
+            DrawWorldLine(markCenter + new Vector2(-7f * exit, -5f),
+                markCenter + new Vector2(-2f, -1f), 1f,
+                new Color(119, 61, 151, (int)(110f * exit)));
+            DrawWorldLine(markCenter + new Vector2(3f, 1f),
+                markCenter + new Vector2(8f * exit, 5f), 1f,
+                new Color(45, 14, 57, (int)(145f * exit)));
+        }
+
+        float pulse = refresh > 0f
+            ? MathF.Sin((1f - refresh) * MathHelper.Pi)
+            : 0f;
+        scale *= 1f + pulse * .10f;
+        Color dark = new(40, 14, 52, (int)(215f * opacity));
+        Color violet = new(151, 77, 196,
+            (int)(220f * Math.Clamp(opacity + pulse * .18f, 0f, 1f)));
+        Color cold = new(193, 151, 219,
+            (int)(145f * opacity));
+
+        for (int index = 0; index < visibleCount; index++)
+        {
+            Vector2 offset = visibleCount switch
+            {
+                1 => Vector2.Zero,
+                2 => new Vector2(index == 0 ? -3.5f : 3.5f,
+                    index == 0 ? 2f : -2f),
+                _ => index switch
+                {
+                    0 => new Vector2(-4.5f, 2.5f),
+                    1 => new Vector2(4.5f, 2.5f),
+                    _ => new Vector2(0f, -4.5f)
+                }
+            };
+            float angle = visibleCount < 3
+                ? -.28f + index * .56f
+                : index * MathHelper.TwoPi / 3f - MathHelper.PiOver2;
+            float reveal = count > 0 && index == count - 1 && gain > 0f
+                ? Math.Clamp((1f - gain) * 1.45f, .12f, 1f)
+                : 1f;
+            DrawReapMarkCrescent(markCenter + offset * scale,
+                angle, 6.5f * scale, reveal, dark, violet);
+        }
+
+        if (visibleCount == ScytheTuning.MaximumReapMarks)
+        {
+            DrawWorldLine(markCenter + new Vector2(-2.5f, 2f) * scale,
+                markCenter + new Vector2(0f, -2.5f) * scale,
+                1f, cold);
+            DrawWorldLine(markCenter + new Vector2(0f, -2.5f) * scale,
+                markCenter + new Vector2(2.5f, 2f) * scale,
+                1f, cold);
+        }
+
+        if (gain > 0f && count > 0)
+        {
+            float trace = 1f - gain;
+            DrawWorldLine(markCenter + new Vector2(-11f + trace * 6f, 5f),
+                markCenter + new Vector2(4f + trace * 8f, -6f),
+                1f,
+                new Color(127, 58, 173, (int)(155f * gain)));
+        }
+        if (refresh > 0f)
+        {
+            float ripple = 5f + (1f - refresh) * 7f;
+            Vector2 shadow = new(target.Center.X, target.Bottom - 2f);
+            DrawWorldLine(shadow + new Vector2(-ripple, 0f),
+                shadow + new Vector2(ripple, 0f), 1f,
+                new Color(55, 19, 67, (int)(80f * refresh)));
+        }
+    }
+
+    private void DrawReapMarkCrescent(
+        Vector2 center,
+        float angle,
+        float radius,
+        float reveal,
+        Color dark,
+        Color violet)
+    {
+        const int segments = 5;
+        float start = angle - 1.12f;
+        Vector2 previous = center + new Vector2(
+            MathF.Cos(start), MathF.Sin(start)) * radius;
+        int visibleSegments = Math.Max(1,
+            (int)MathF.Ceiling(segments * reveal));
+        for (int index = 1; index <= visibleSegments; index++)
+        {
+            float t = Math.Min(reveal, index / (float)segments);
+            float sample = start + 2.24f * t;
+            Vector2 next = center + new Vector2(
+                MathF.Cos(sample), MathF.Sin(sample)) * radius;
+            DrawWorldLine(previous, next, 3f, dark);
+            DrawWorldLine(previous, next, 1f, violet);
+            previous = next;
+        }
+    }
+
+    private void DrawScytheUltimateShadowField(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsScytheUltimateActive ||
+            !gameSession.IsScytheUltimateTargetLocked)
+            return;
+        Rectangle target = gameSession.ScytheUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+
+        int stage = gameSession.ScytheUltimateStage;
+        float ratio = gameSession.ScytheUltimateStageRatio;
+        float intro = gameSession.Player.Combat.ScytheUltimateCinematicRatio;
+        float formation = gameSession.Player.Combat.State ==
+                CombatState.ChargingHeavy
+            ? MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(intro / .34f, 0f, 1f))
+            : 1f;
+        if (stage == 7)
+            formation *= 1f - ratio;
+        Vector2 shadow = new(target.Center.X, target.Bottom - 3f);
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 5.4f);
+        float pressure = stage is >= 1 and <= 3
+            ? (stage + ratio) / 4f
+            : stage >= 4 ? 1f : .18f + formation * .22f;
+        float halfWidth = (target.Width * .42f + 14f) * formation;
+        DrawWorldLine(shadow + new Vector2(-halfWidth, 1f),
+            shadow + new Vector2(halfWidth, 1f),
+            9f + pressure * 6f,
+            new Color(12, 5, 17, (int)(105f + pressure * 55f)));
+        DrawWorldLine(shadow + new Vector2(-halfWidth * .82f, -1f),
+            shadow + new Vector2(halfWidth * .82f, -1f), 3f,
+            new Color(55, 19, 72, (int)(80f + pulse * 34f)));
+
+        if (stage == 0)
+        {
+            Vector2 origin = gameSession.ScytheUltimateVisualStartPosition +
+                new Vector2(0f, gameSession.Player.Size.Y * .5f - 3f);
+            float approach = Math.Clamp(ratio / .70f, 0f, 1f);
+            Vector2 seamEnd = Vector2.Lerp(origin, shadow, approach);
+            DrawWorldLine(origin, seamEnd, 3f,
+                new Color(35, 11, 46, (int)(145f * (1f - ratio * .45f))));
+            DrawWorldLine(Vector2.Lerp(origin, seamEnd, .35f), seamEnd, 1f,
+                new Color(117, 54, 148, (int)(115f * (1f - ratio * .35f))));
+        }
+
+        if (stage is >= 1 and <= 3)
+        {
+            float squeeze = stage == 3
+                ? 1f - MathF.Sin(ratio * MathHelper.Pi) * .22f
+                : 1f;
+            DrawScytheUltimateArcWorld(shadow, halfWidth * squeeze, 9f,
+                MathHelper.Pi, MathHelper.Pi, 8, 2f,
+                new Color(93, 37, 119, 135));
+            for (int index = 0; index < stage + 1; index++)
+            {
+                float x = (index - stage * .5f) * 7f;
+                float rise = 10f + index * 6f + ratio * 5f;
+                DrawWorldLine(shadow + new Vector2(x, 0f),
+                    shadow + new Vector2(x * .65f, -rise), 1f,
+                    new Color(70, 25, 88,
+                        (int)(75f + pressure * 55f)));
+            }
+        }
+
+        if (stage is 4 or 5)
+        {
+            float tear = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(ratio / .42f, 0f, 1f));
+            DrawWorldLine(shadow + new Vector2(0f, 4f),
+                shadow + new Vector2((stage == 4 ? -1f : 1f) *
+                    (10f + tear * 17f), -target.Height * .72f),
+                7f, new Color(15, 5, 20, (int)(190f * (1f - ratio * .35f))));
+            DrawWorldLine(shadow + new Vector2(1f, 2f),
+                shadow + new Vector2((stage == 4 ? -1f : 1f) *
+                    (10f + tear * 17f), -target.Height * .72f),
+                2f, new Color(132, 60, 168, (int)(175f * (1f - ratio * .45f))));
+        }
+
+        if (stage == 6 && ratio > .52f)
+        {
+            float breaking = Math.Clamp((ratio - .52f) / .48f, 0f, 1f);
+            float ripple = halfWidth * (.55f + breaking * .95f);
+            DrawWorldLine(shadow + new Vector2(-ripple, 0f),
+                shadow + new Vector2(ripple, 0f), 2f,
+                new Color(69, 22, 84, (int)(145f * (1f - breaking))));
+            for (int piece = -2; piece <= 2; piece++)
+            {
+                float x = piece * (5f + breaking * 7f);
+                DrawWorldLine(shadow + new Vector2(x, -2f),
+                    shadow + new Vector2(x + piece * 2f, -5f - breaking * 7f),
+                    1f, new Color(48, 14, 60,
+                        (int)(125f * (1f - breaking))));
+            }
+        }
+    }
+
+    private void DrawScytheUltimateTargetLock(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsScytheUltimateTargetLocked)
+            return;
+        Rectangle target = gameSession.ScytheUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+        int stage = gameSession.ScytheUltimateStage;
+        float ratio = gameSession.ScytheUltimateStageRatio;
+        float intro = gameSession.Player.Combat.ScytheUltimateCinematicRatio;
+        float formation = gameSession.Player.Combat.State ==
+                CombatState.ChargingHeavy
+            ? MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(intro / .38f, 0f, 1f))
+            : 1f;
+        if (stage == 7)
+            formation *= 1f - ratio;
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 6f);
+        Vector2 seal = new(
+            target.Center.X + Math.Clamp(target.Width * .20f, 6f, 18f),
+            target.Top + Math.Clamp(target.Height * .28f, 15f, 33f));
+        float sealFlash = stage == 6
+            ? MathF.Sin(Math.Clamp(ratio / .42f, 0f, 1f) * MathHelper.Pi)
+            : 0f;
+        float sealRadius = (11f + pulse * 1.2f + sealFlash * 3f) * formation;
+        DrawScytheUltimateArcWorld(seal, sealRadius, sealRadius * .72f,
+            -2.28f, 4.20f, 9, 4f,
+            new Color(27, 8, 36, (int)(220f * formation)));
+        DrawScytheUltimateArcWorld(seal, sealRadius, sealRadius * .72f,
+            -2.28f, 4.20f * formation, 9, 1f,
+            new Color(155, 75, 194,
+                (int)((175f + sealFlash * 60f) * formation)));
+        DrawWorldLine(seal + new Vector2(-sealRadius * .36f, -2f),
+            seal + new Vector2(sealRadius * .32f, 3f), 1f,
+            new Color(144, 39, 61,
+                (int)((90f + sealFlash * 95f) * formation)));
+
+        if (stage is >= 1 and <= 3)
+        {
+            Vector2 soul = target.Center.ToVector2() +
+                new Vector2(stage % 2 == 0 ? 3f : -3f, -2f);
+            Color soulColor = new(151, 112, 177,
+                (int)(42f + stage * 12f));
+            DrawWorldLine(soul + new Vector2(-target.Width * .22f,
+                    -target.Height * .34f),
+                soul + new Vector2(target.Width * .18f,
+                    -target.Height * .34f), 2f, soulColor);
+            DrawWorldLine(soul + new Vector2(-target.Width * .20f,
+                    -target.Height * .30f),
+                soul + new Vector2(-target.Width * .13f,
+                    target.Height * .28f), 2f, soulColor);
+            DrawWorldLine(soul + new Vector2(target.Width * .18f,
+                    -target.Height * .30f),
+                soul + new Vector2(target.Width * .14f,
+                    target.Height * .28f), 2f, soulColor);
+
+            float cut = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((ratio - .18f) / .48f, 0f, 1f));
+            Vector2 from;
+            Vector2 to;
+            if (stage == 1)
+            {
+                from = new Vector2(target.Left + 5f, target.Center.Y + 5f);
+                to = Vector2.Lerp(from,
+                    new Vector2(target.Right - 5f, target.Center.Y - 7f), cut);
+            }
+            else if (stage == 2)
+            {
+                from = new Vector2(target.Right - 4f, target.Top + 10f);
+                to = Vector2.Lerp(from,
+                    new Vector2(target.Left + 7f, target.Bottom - 12f), cut);
+            }
+            else
+            {
+                float arcSpan = MathHelper.TwoPi * cut;
+                DrawScytheUltimateArcWorld(target.Center.ToVector2(),
+                    target.Width * .38f, target.Height * .30f,
+                    -1.4f, arcSpan, 11, 5f,
+                    new Color(31, 8, 40, (int)(170f * (1f - ratio * .35f))));
+                DrawScytheUltimateArcWorld(target.Center.ToVector2(),
+                    target.Width * .38f, target.Height * .30f,
+                    -1.4f, arcSpan, 11, 1.5f,
+                    new Color(166, 85, 207, (int)(190f * (1f - ratio * .25f))));
+                return;
+            }
+            DrawWorldLine(from, to, 5f,
+                new Color(30, 8, 39, (int)(180f * (1f - ratio * .35f))));
+            DrawWorldLine(from, to, 1.5f,
+                new Color(163, 82, 202, (int)(205f * (1f - ratio * .28f))));
+        }
+        else if (stage is 4 or 5)
+        {
+            float cut = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((ratio - .12f) / .58f, 0f, 1f));
+            Vector2 from = stage == 4
+                ? new Vector2(target.Left - 9f, target.Bottom - 3f)
+                : new Vector2(target.Right + 9f, target.Bottom - 3f);
+            Vector2 finish = stage == 4
+                ? new Vector2(target.Right + 7f, target.Top + 4f)
+                : new Vector2(target.Left - 7f, target.Top + 4f);
+            DrawWorldLine(from, Vector2.Lerp(from, finish, cut), 2f,
+                new Color(116, 48, 147, (int)(145f * (1f - ratio * .35f))));
+        }
+        else if (stage == 6 && ratio > .44f)
+        {
+            float fracture = Math.Clamp((ratio - .44f) / .56f, 0f, 1f);
+            Vector2 center = target.Center.ToVector2();
+            DrawWorldLine(center + new Vector2(-target.Width * .34f, -3f),
+                center + new Vector2(target.Width * .34f, 4f), 2f,
+                new Color(126, 35, 57, (int)(180f * (1f - fracture))));
+            DrawWorldLine(center + new Vector2(-4f, 0f),
+                center + new Vector2(-12f - fracture * 9f,
+                    target.Height * .28f), 1f,
+                new Color(83, 27, 101, (int)(150f * (1f - fracture))));
+        }
+    }
+
+    private void DrawScytheUltimateArcWorld(
+        Vector2 center,
+        float radiusX,
+        float radiusY,
+        float start,
+        float span,
+        int segments,
+        float thickness,
+        Color color)
+    {
+        Vector2 previous = center + new Vector2(
+            MathF.Cos(start) * radiusX,
+            MathF.Sin(start) * radiusY);
+        for (int index = 1; index <= segments; index++)
+        {
+            float angle = start + span * index / segments;
+            Vector2 next = center + new Vector2(
+                MathF.Cos(angle) * radiusX,
+                MathF.Sin(angle) * radiusY);
+            DrawWorldLine(previous, next, thickness, color);
+            previous = next;
+        }
+    }
+
+    private void DrawScytheUltimateCinematic(GameSession gameSession)
+    {
+        float ratio = gameSession.Player.Combat.ScytheUltimateCinematicRatio;
+        if (ratio <= 0f && !gameSession.IsScytheUltimateActive)
+            return;
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        if (ratio > 0f)
+        {
+            float fade = MathF.Sin(ratio * MathHelper.Pi);
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                new Color(7, 5, 9, (int)(126f * fade)));
+
+            float portrait = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((ratio - .08f) / .30f, 0f, 1f)) *
+                (1f - MathHelper.SmoothStep(0f, 1f,
+                    Math.Clamp((ratio - .76f) / .22f, 0f, 1f)));
+            if (portrait > 0f)
+            {
+                float scale = MathHelper.Lerp(3.7f, 4.35f,
+                    Math.Clamp(ratio / .58f, 0f, 1f));
+                Vector2 portraitAnchor = new(width * .30f, height * .90f);
+                _spriteBatch.End();
+                _spriteBatch.Begin(
+                    samplerState: SamplerState.PointClamp,
+                    transformMatrix: Matrix.CreateScale(scale) *
+                        Matrix.CreateTranslation(
+                            portraitAnchor.X, portraitAnchor.Y, 0f));
+                _playerSpriteRenderer.DrawScytheCinematicCutIn(
+                    gameSession.Player,
+                    Vector2.Zero,
+                    ratio);
+                _spriteBatch.End();
+                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+            }
+
+            float sweep = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((ratio - .28f) / .28f, 0f, 1f));
+            float exit = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((ratio - .82f) / .18f, 0f, 1f));
+            if (sweep > 0f)
+            {
+                Vector2 center = new(width * (.60f + exit * .36f),
+                    height * .49f);
+                _spriteBatch.Draw(_pixel, center, null,
+                    new Color(25, 7, 34, (int)(220f * fade)), -.17f,
+                    new Vector2(.5f, .5f),
+                    new Vector2(width * .76f * sweep,
+                        Math.Max(76f, height * .15f)),
+                    SpriteEffects.None, 0f);
+                DrawWorldLine(new Vector2(width * (.16f + exit * .74f),
+                        height * .68f),
+                    new Vector2(width * (.95f + exit * .44f),
+                        height * .25f), 4f,
+                    new Color(122, 56, 157, (int)(205f * fade)));
+                DrawWorldLine(new Vector2(width * (.25f + exit * .68f),
+                        height * .72f),
+                    new Vector2(width * (.88f + exit * .50f),
+                        height * .38f), 2f,
+                    new Color(140, 40, 65, (int)(130f * fade)));
+                for (int strip = 0; strip < 4; strip++)
+                {
+                    float y = height * (.31f + strip * .09f);
+                    DrawWorldLine(
+                        new Vector2(width * (.54f + exit * .52f), y + 22f),
+                        new Vector2(width * (.91f + exit * .64f), y - 18f),
+                        strip == 1 ? 3f : 2f,
+                        new Color(48, 16, 61, (int)(130f * fade)));
+                }
+            }
+            if (ratio >= .48f && ratio < .94f)
+                DrawCenteredDebugText("UMBRA DEVOURER", width * 2 / 3,
+                    height / 2 - 58, new Color(194, 139, 215), 3);
+            if (ratio >= .68f && ratio < .94f)
+                DrawCenteredDebugText("YOUR SHADOW IS MINE.", width * 2 / 3,
+                    height / 2 - 13, new Color(198, 185, 203), 2);
+            return;
+        }
+
+        int stage = gameSession.ScytheUltimateStage;
+        float stageRatio = gameSession.ScytheUltimateStageRatio;
+        if (stage is >= 1 and <= 3)
+        {
+            int shade = 22 + stage * 7;
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                new Color(4, 2, 7, shade));
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, 42),
+                new Color(7, 2, 10, 68));
+            _spriteBatch.Draw(_pixel, new Rectangle(0, height - 42, width, 42),
+                new Color(7, 2, 10, 68));
+        }
+        else if (stage == 6)
+        {
+            AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+            float active = attack == null
+                ? -1f
+                : gameSession.Player.Combat.StateElapsed - attack.StartupTime;
+            float impact = active >= 0f && active <= .055f
+                ? 1f - active / .055f
+                : 0f;
+            float silence = 1f - Math.Clamp(stageRatio / .34f, 0f, 1f);
+            int shade = (int)(44f * silence + 112f * impact);
+            if (shade > 0)
+            {
+                _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                    new Color(4, 2, 6, shade));
+                Vector2 impactCenter = new(width * .54f, height * .50f);
+                DrawWorldLine(impactCenter + new Vector2(-width * .38f,
+                        height * .24f),
+                    impactCenter + new Vector2(width * .38f,
+                        -height * .25f), 4f,
+                    new Color(163, 91, 194, (int)(220f * impact)));
+                DrawWorldLine(impactCenter + new Vector2(-18f, 4f),
+                    impactCenter + new Vector2(18f, -4f), 2f,
+                    new Color(151, 37, 60, (int)(190f * impact)));
+            }
+        }
+    }
 
     private void DrawRangerUltimateCinematic(GameSession gameSession)
     {

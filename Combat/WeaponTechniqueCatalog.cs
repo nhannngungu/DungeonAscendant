@@ -647,6 +647,92 @@ public static class WeaponTechniqueCatalog
                 M(AttackKind.Heavy, 4.35f, 245, 1.55f, .18f, 1.05f, 138, 92, 96, AttackHitboxShape.Chop)
             }));
 
+    public static readonly WeaponTechnique ScytheCrescentDive =
+        T("crescent-dive", "Crescent Dive", WeaponTechniqueInput.Skill2, 14,
+            effect: WeaponTechniqueEffect.ScytheCrescentDive,
+            stages: new[] {
+                M(AttackKind.Heavy, 1.25f, 32, .08f, .12f, .22f, 18, 96, 76, AttackHitboxShape.WideArc, 235)
+            });
+
+    public static readonly WeaponTechnique ScytheWraithCut =
+        T("wraith-cut", "Wraith Cut", WeaponTechniqueInput.Skill1, 0,
+            effect: WeaponTechniqueEffect.ScytheWraithCut,
+            stages: new[] {
+                M(AttackKind.LightFive, 1.45f, 28, .045f, .10f, .18f, 16, 105, 68, AttackHitboxShape.WideArc, 115)
+            });
+
+    public static readonly WeaponCombatProfile Scythe = new(
+        "shadow-reaper", WeaponTechniqueInput.Skill1,
+        T("reapers-dance", "Reaper's Dance", WeaponTechniqueInput.Skill1, 4,
+            effect: WeaponTechniqueEffect.ScytheReapersDance,
+            manual: true, stageCost: 4,
+            stages: new[] {
+                M(AttackKind.LightOne, .65f, 12, .05f, .075f, .13f, 7, 92, 54, AttackHitboxShape.WideArc, 68),
+                M(AttackKind.LightTwo, .70f, 13, .055f, .08f, .14f, 8, 94, 56, AttackHitboxShape.WideArc, 62),
+                M(AttackKind.LightThree, .85f, 16, .065f, .09f, .15f, 9, 98, 70, AttackHitboxShape.Circular, 72),
+                M(AttackKind.LightFour, .95f, 18, .07f, .10f, .16f, 10, 102, 74, AttackHitboxShape.Circular, 58),
+                M(AttackKind.LightFive, 1.05f, 22, .08f, .10f, .19f, 12, 96, 62, AttackHitboxShape.WideArc, 38),
+                M(AttackKind.Heavy, 1.55f, 36, .09f, .12f, .24f, 22, 108, 78, AttackHitboxShape.WideArc, 34)
+            }),
+        T("shadow-slip", "Shadow Slip", WeaponTechniqueInput.Skill2, 12,
+            effect: WeaponTechniqueEffect.ScytheShadowSlip,
+            stages: new[] {
+                M(AttackKind.LightTwo, 0f, 0, .02f, .14f, .10f, 0, 68, 42, AttackHitboxShape.ShortArc, 520)
+            }),
+        T("death-spiral", "Death Spiral", WeaponTechniqueInput.Skill3, 24,
+            effect: WeaponTechniqueEffect.ScytheDeathSpiral,
+            stages: new[] {
+                M(AttackKind.LightOne, .40f, 10, .12f, .10f, .08f, 4, 91, 72, AttackHitboxShape.Circular, 24),
+                M(AttackKind.LightTwo, .40f, 10, .07f, .10f, .08f, 4, 92, 72, AttackHitboxShape.Circular, 22),
+                M(AttackKind.LightThree, .40f, 10, .07f, .10f, .08f, 4, 93, 74, AttackHitboxShape.Circular, 22),
+                M(AttackKind.LightFour, .40f, 11, .07f, .10f, .08f, 4, 94, 74, AttackHitboxShape.Circular, 20),
+                M(AttackKind.LightFive, .40f, 11, .07f, .10f, .08f, 4, 96, 76, AttackHitboxShape.Circular, 18),
+                M(AttackKind.Heavy, .70f, 22, .08f, .12f, .24f, 14, 104, 78, AttackHitboxShape.WideArc, 18)
+            }),
+        T("shadow-pass", "Shadow Pass", WeaponTechniqueInput.DashSkill, 20,
+            effect: WeaponTechniqueEffect.ScytheShadowPass,
+            stages: new[] {
+                M(AttackKind.LightOne, .85f, 18, .045f, .09f, .08f, 7, 91, 48, AttackHitboxShape.WideArc, 410),
+                M(AttackKind.LightFive, 1.05f, 25, .06f, .10f, .18f, 13, 98, 60, AttackHitboxShape.WideArc, 110)
+            }),
+        T("phantom-cross", "Phantom Cross", WeaponTechniqueInput.Skill1Skill2, 26,
+            effect: WeaponTechniqueEffect.ScythePhantomCross,
+            stages: new[] {
+                M(AttackKind.LightTwo, .80f, 17, .08f, .10f, .10f, 8, 92, 58, AttackHitboxShape.WideArc, 185),
+                M(AttackKind.Heavy, 1.20f, 29, .09f, .12f, .23f, 18, 104, 70, AttackHitboxShape.Cross, 95)
+            }),
+        T("abyssal-requiem", "Abyssal Requiem", WeaponTechniqueInput.Skill1Skill3, 34,
+            effect: WeaponTechniqueEffect.ScytheAbyssalRequiem,
+            stages: new[] {
+                M(AttackKind.LightOne, .40f, 12, .08f, .09f, .08f, 0, 118, 40, AttackHitboxShape.Thrust, 80),
+                M(AttackKind.LightThree, .90f, 23, .08f, .10f, .09f, 8, 96, 70, AttackHitboxShape.WideArc, 105),
+                M(AttackKind.LightFour, .65f, 16, .06f, .09f, .07f, 6, 94, 72, AttackHitboxShape.Circular, 38),
+                M(AttackKind.LightFour, .65f, 16, .06f, .09f, .07f, 6, 94, 72, AttackHitboxShape.Circular, 34),
+                M(AttackKind.Heavy, 1.50f, 42, .09f, .12f, .24f, 24, 108, 78, AttackHitboxShape.WideArc, 42),
+                M(AttackKind.LightFive, .65f, 20, .045f, .08f, .16f, 10, 112, 68, AttackHitboxShape.WideArc, 20)
+            }),
+        T("eclipse-waltz", "Eclipse Waltz", WeaponTechniqueInput.Skill2Skill3, 32,
+            effect: WeaponTechniqueEffect.ScytheEclipseWaltz,
+            stages: new[] {
+                M(AttackKind.LightOne, .55f, 12, .06f, .09f, .08f, 5, 88, 64, AttackHitboxShape.Circular, 115),
+                M(AttackKind.LightTwo, .65f, 14, .06f, .09f, .08f, 5, 92, 68, AttackHitboxShape.Circular, 90),
+                M(AttackKind.LightThree, .60f, 14, .055f, .09f, .07f, 5, 94, 70, AttackHitboxShape.Circular, 70),
+                M(AttackKind.LightFour, .60f, 14, .055f, .09f, .08f, 5, 96, 72, AttackHitboxShape.Circular, 66),
+                M(AttackKind.Heavy, .90f, 28, .08f, .12f, .22f, 16, 104, 76, AttackHitboxShape.WideArc, 48)
+            }),
+        T("umbra-devourer", "UMBRA DEVOURER", WeaponTechniqueInput.Ultimate, 100,
+            full: true, effect: WeaponTechniqueEffect.ScytheUmbraDevourer,
+            stages: new[] {
+                M(AttackKind.LightOne, .70f, 24, .08f, .10f, .08f, 0, 104, 70, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightTwo, .45f, 16, .08f, .09f, .07f, 0, 104, 70, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightThree, .45f, 16, .07f, .09f, .07f, 0, 104, 70, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightFour, .45f, 16, .07f, .09f, .08f, 0, 104, 70, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightOne, .90f, 28, .07f, .10f, .07f, 0, 108, 74, AttackHitboxShape.Cross),
+                M(AttackKind.LightTwo, .90f, 28, .06f, .10f, .08f, 0, 108, 74, AttackHitboxShape.Cross),
+                M(AttackKind.Heavy, 1.40f, 46, .10f, .12f, .28f, 0, 116, 82, AttackHitboxShape.WideArc),
+                M(AttackKind.LightOne, 0f, 0, .02f, .02f, .18f, 0, 1, 1, AttackHitboxShape.ShortArc)
+            }));
+
     public static readonly WeaponCombatProfile Reckoner = new(
         "reckoner", WeaponTechniqueInput.Skill1,
         T("chain-lash", "Chain Lash", WeaponTechniqueInput.Skill1, 7,

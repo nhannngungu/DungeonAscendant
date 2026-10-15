@@ -43,6 +43,13 @@ public abstract class Enemy
     private float _arcaneStunTimeRemaining;
     private bool _lastHitWasHeavy;
     private float _healthBarTimeRemaining;
+    private int _reapMarkCount;
+    private float _reapMarkTimeRemaining;
+    private float _reapMarkGainVisualRemaining;
+    private float _reapMarkRefreshVisualRemaining;
+    private float _reapMarkExitVisualRemaining;
+    private int _reapMarkExitVisualCount;
+    private bool _reapMarkExitWasConsumed;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
@@ -89,6 +96,22 @@ public abstract class Enemy
     public bool HasBothOpeningUltimateShots =>
         IsUltimateHuntMarked && (_ultimateHuntShotMask & 3) == 3;
     public bool HasBrokenArmor => _brokenArmorTimeRemaining > 0f;
+    public int ReapMarkCount => _reapMarkTimeRemaining > 0f
+        ? _reapMarkCount
+        : 0;
+    public float ReapMarkLifetimeRatio => Math.Clamp(
+        _reapMarkTimeRemaining / ScytheTuning.ReapMarkDurationSeconds,
+        0f,
+        1f);
+    public float ReapMarkGainVisualRatio => Math.Clamp(
+        _reapMarkGainVisualRemaining / .22f, 0f, 1f);
+    public float ReapMarkRefreshVisualRatio => Math.Clamp(
+        _reapMarkRefreshVisualRemaining / .12f, 0f, 1f);
+    public float ReapMarkExitVisualRatio => Math.Clamp(
+        _reapMarkExitVisualRemaining / .18f, 0f, 1f);
+    public int ReapMarkExitVisualCount => _reapMarkExitVisualCount;
+    public bool ReapMarkExitWasConsumed =>
+        _reapMarkExitWasConsumed && _reapMarkExitVisualRemaining > 0f;
     public bool IsHeavyPullAnchor => Type is EnemyType.CorruptedTreant or
         EnemyType.MotherSpider or EnemyType.RottenCorpse or
         EnemyType.CursedKnight or EnemyType.DeathKnight or
@@ -295,6 +318,24 @@ public abstract class Enemy
         _arcaneStunTimeRemaining = MathF.Max(
             0f,
             _arcaneStunTimeRemaining - elapsedSeconds);
+        float reapMarkTimeBeforeUpdate = _reapMarkTimeRemaining;
+        _reapMarkTimeRemaining = MathF.Max(
+            0f,
+            _reapMarkTimeRemaining - elapsedSeconds);
+        _reapMarkGainVisualRemaining = MathF.Max(
+            0f, _reapMarkGainVisualRemaining - elapsedSeconds);
+        _reapMarkRefreshVisualRemaining = MathF.Max(
+            0f, _reapMarkRefreshVisualRemaining - elapsedSeconds);
+        _reapMarkExitVisualRemaining = MathF.Max(
+            0f, _reapMarkExitVisualRemaining - elapsedSeconds);
+        if (reapMarkTimeBeforeUpdate > 0f &&
+            _reapMarkTimeRemaining <= 0f && _reapMarkCount > 0)
+        {
+            _reapMarkExitVisualCount = _reapMarkCount;
+            _reapMarkExitWasConsumed = false;
+            _reapMarkExitVisualRemaining = .18f;
+            _reapMarkCount = 0;
+        }
         if (_arcaneImprintTimeRemaining <= 0f)
             _arcaneImprintCount = 0;
 
@@ -360,10 +401,54 @@ public abstract class Enemy
             _arcaneImprintCount = 0;
             _arcaneImprintTimeRemaining = 0f;
             _arcaneStunTimeRemaining = 0f;
+            _reapMarkCount = 0;
+            _reapMarkTimeRemaining = 0f;
+            _reapMarkGainVisualRemaining = 0f;
+            _reapMarkRefreshVisualRemaining = 0f;
+            _reapMarkExitVisualRemaining = 0f;
+            _reapMarkExitVisualCount = 0;
             VisualVelocityX = 0f;
             _deathPresentationTimeRemaining =
                 DeathPresentationDurationSeconds;
         }
+    }
+
+    public void AddReapMark()
+    {
+        if (!IsAlive)
+            return;
+        int previousCount = ReapMarkCount;
+        _reapMarkCount = Math.Min(
+            ScytheTuning.MaximumReapMarks,
+            _reapMarkCount + 1);
+        _reapMarkTimeRemaining = ScytheTuning.ReapMarkDurationSeconds;
+        _reapMarkExitVisualRemaining = 0f;
+        _reapMarkExitVisualCount = 0;
+        if (_reapMarkCount > previousCount)
+        {
+            _reapMarkGainVisualRemaining = .22f;
+            _reapMarkRefreshVisualRemaining = 0f;
+        }
+        else
+        {
+            _reapMarkRefreshVisualRemaining = .12f;
+        }
+    }
+
+    public int ConsumeReapMarks()
+    {
+        int consumed = ReapMarkCount;
+        if (consumed > 0)
+        {
+            _reapMarkExitVisualCount = consumed;
+            _reapMarkExitWasConsumed = true;
+            _reapMarkExitVisualRemaining = .18f;
+        }
+        _reapMarkCount = 0;
+        _reapMarkTimeRemaining = 0f;
+        _reapMarkGainVisualRemaining = 0f;
+        _reapMarkRefreshVisualRemaining = 0f;
+        return consumed;
     }
 
     public virtual void ReceiveDamageFrom(

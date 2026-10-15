@@ -110,5 +110,15 @@ public enum WeaponTechniqueEffect
     SovereignEventHorizonPalm,
     SovereignHeavenReversal,
     SovereignZeroDistanceStrike,
-    SovereignGoldenCataclysm
+    SovereignGoldenCataclysm,
+    ScytheReapersDance,
+    ScytheShadowSlip,
+    ScytheDeathSpiral,
+    ScythePhantomCross,
+    ScytheEclipseWaltz,
+    ScytheAbyssalRequiem,
+    ScytheCrescentDive,
+    ScytheShadowPass,
+    ScytheWraithCut,
+    ScytheUmbraDevourer
 }

@@ -149,6 +149,18 @@ public sealed class GameSession
     private object _ancientStaffCandidate;
     private object _ancientStaffUltimateCandidate;
     private object _ancientStaffLockedTarget;
+    private object _scytheUltimateCandidate;
+    private object _scytheUltimateLockedTarget;
+    private object _scytheShadowSeverTarget;
+    private int _scytheUltimateTechniqueUseId = -1;
+    private int _scytheUltimateMotionAttackId = -1;
+    private bool _scytheSafeReturnRequested;
+    private Vector2 _scytheSafeReturnPosition;
+    private Vector2 _scytheUltimateVisualStartPosition;
+    private int _scytheCrossTechniqueUseId = -1;
+    private readonly Dictionary<Enemy, int> _scytheCrossEnemyHits = new();
+    private int _scytheCrossBossHits;
+    private int _scytheEnhancedMarkTechniqueUseId = -1;
     private Vector2 _ancientStaffLockedCenter;
     private int _ancientStaffTechniqueUseId = -1;
     private int _ancientStaffWorldEffectAttackId = -1;
@@ -320,6 +332,26 @@ public sealed class GameSession
         _sovereignUltimateLockedTarget != null;
     public Rectangle SovereignUltimateTargetBounds =>
         GetCombatTargetBounds(_sovereignUltimateLockedTarget);
+    public bool IsScytheUltimateTargetLocked =>
+        _scytheUltimateLockedTarget != null;
+    public Rectangle ScytheUltimateTargetBounds =>
+        GetCombatTargetBounds(_scytheUltimateLockedTarget);
+    public bool IsScytheUltimateActive =>
+        Player?.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.ScytheUmbraDevourer;
+    public int ScytheUltimateStage => IsScytheUltimateActive
+        ? Player.Combat.TechniqueStageIndex
+        : -1;
+    public float ScytheUltimateStageRatio =>
+        IsScytheUltimateActive && Player.Combat.CurrentAttack != null
+            ? Math.Clamp(
+                Player.Combat.StateElapsed /
+                    Math.Max(.01f, Player.Combat.CurrentAttack.TotalTime),
+                0f,
+                1f)
+            : 0f;
+    public Vector2 ScytheUltimateVisualStartPosition =>
+        _scytheUltimateVisualStartPosition;
     public bool IsSovereignUltimateActive =>
         Player?.Combat.CurrentTechnique?.Effect ==
             WeaponTechniqueEffect.SovereignGoldenCataclysm;
@@ -779,6 +811,9 @@ public sealed class GameSession
             _sovereignUltimateCandidate != null);
         Player.Combat.SetAncientStaffUltimateTargetAvailable(
             _ancientStaffUltimateCandidate != null);
+        UpdateScytheUltimateCandidate();
+        Player.Combat.SetScytheUltimateTargetAvailable(
+            _scytheUltimateCandidate != null);
         bool entryFallWasActive = _mapEntryFallActive;
         GameTime playerCombatTime = IsSovereignExecutionActive
             ? ScaleGameTime(
@@ -794,6 +829,7 @@ public sealed class GameSession
         UpdateGreatswordUltimateLock();
         UpdateSovereignTargetLock();
         UpdateAncientStaffTargetLock();
+        UpdateScytheUltimateLock();
         GameTime cinematicWorldTime = ScaleGameTime(
             gameTime,
             MathF.Min(
@@ -803,7 +839,9 @@ public sealed class GameSession
                 MathF.Min(
                     MathF.Min(
                         Player.Combat.SovereignUltimateWorldTimeScale,
-                        Player.Combat.AncientStaffUltimateWorldTimeScale),
+                        MathF.Min(
+                            Player.Combat.AncientStaffUltimateWorldTimeScale,
+                            Player.Combat.ScytheUltimateWorldTimeScale)),
                     IsSovereignExecutionActive
                         ? AbyssRingTuning.ExecutionWorldTimeScale
                         : 1f)));
@@ -819,6 +857,7 @@ public sealed class GameSession
         UpdateGreatswordUltimateMovement(elapsedSeconds);
         UpdateSovereignTechniqueMovement();
         UpdateAncientStaffTechniqueMovement();
+        UpdateScytheTechniqueMovement();
         ResolvePerfectRiftCounter();
         SovereignPortals.Update(elapsedSeconds);
         UpdateRangerFocusPressure(elapsedSeconds);
@@ -2587,12 +2626,17 @@ public sealed class GameSession
             Player.Combat.GreatswordUltimateCinematicRatio;
         float sovereignCinematic =
             Player.Combat.SovereignUltimateCinematicRatio;
+        float scytheCinematic =
+            Player.Combat.ScytheUltimateCinematicRatio;
         float cinematic = MathF.Max(
-            sovereignCinematic,
+            MathF.Max(sovereignCinematic, scytheCinematic),
             MathF.Max(rangerCinematic, greatswordCinematic));
         float cinematicZoom = sovereignCinematic >=
-                MathF.Max(rangerCinematic, greatswordCinematic)
+                MathF.Max(scytheCinematic,
+                    MathF.Max(rangerCinematic, greatswordCinematic))
             ? AbyssRingTuning.UltimateCameraZoom
+            : scytheCinematic >= MathF.Max(rangerCinematic, greatswordCinematic)
+                ? ScytheTuning.UltimateCameraZoom
             : greatswordCinematic > rangerCinematic
                 ? GreatswordTuning.FinalVerdictCameraZoom
                 : RangerTuning.PhantomHuntCameraZoom;
@@ -2603,6 +2647,54 @@ public sealed class GameSession
                 cinematicZoom,
                 MathF.Sin(cinematic * MathHelper.PiOver2));
         Vector2 cameraTarget = Player.Position;
+        Rectangle scytheTarget = ScytheUltimateTargetBounds;
+        if (IsScytheUltimateActive && !scytheTarget.IsEmpty)
+        {
+            Vector2 targetCenter = scytheTarget.Center.ToVector2();
+            int stage = ScytheUltimateStage;
+            float stageRatio = ScytheUltimateStageRatio;
+            if (Player.Combat.State == CombatState.ChargingHeavy)
+            {
+                float anticipation = MathHelper.SmoothStep(0f, 1f,
+                    scytheCinematic);
+                cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+                    .26f + anticipation * .16f);
+                zoomTarget = MathHelper.Lerp(1f,
+                    ScytheTuning.UltimateCameraZoom, anticipation);
+            }
+            else if (stage == 0)
+            {
+                cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+                    .46f);
+                zoomTarget = 1.13f;
+            }
+            else if (stage is >= 1 and <= 3)
+            {
+                cameraTarget = targetCenter + new Vector2(0f, -12f);
+                zoomTarget = stage == 3 ? 1.24f : 1.21f;
+            }
+            else if (stage is 4 or 5)
+            {
+                cameraTarget = Vector2.Lerp(targetCenter, Player.Position,
+                    .22f);
+                zoomTarget = 1.12f;
+            }
+            else if (stage == 6)
+            {
+                float apex = MathF.Sin(stageRatio * MathHelper.Pi);
+                cameraTarget = Vector2.Lerp(targetCenter, Player.Position,
+                    .30f) + new Vector2(0f, -34f * apex);
+                zoomTarget = MathHelper.Lerp(1.16f, 1.27f, apex);
+            }
+            else
+            {
+                float returnEase = MathHelper.SmoothStep(0f, 1f,
+                    stageRatio);
+                cameraTarget = Vector2.Lerp(targetCenter, Player.Position,
+                    .40f + returnEase * .60f);
+                zoomTarget = MathHelper.Lerp(1.10f, 1f, returnEase);
+            }
+        }
         Rectangle sovereignTarget = SovereignUltimateTargetBounds;
         if (IsSovereignUltimateActive && !sovereignTarget.IsEmpty)
         {
@@ -3328,6 +3420,20 @@ public sealed class GameSession
             }
         }
 
+        if (Player.WeaponFamily == WeaponFamily.Scythe &&
+            Player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.ScytheUmbraDevourer)
+        {
+            Rectangle lockedBounds = GetCombatTargetBounds(
+                _scytheUltimateLockedTarget);
+            if (!lockedBounds.IsEmpty)
+            {
+                lockedBounds.Inflate(16, 12);
+                PlayerAttackArea = lockedBounds;
+                return;
+            }
+        }
+
         PlayerAttackArea = MeleeHitArea.Create(
             Player.Position,
             Player.Size,
@@ -3600,6 +3706,134 @@ public sealed class GameSession
                 _rangerUltimateCandidate = Boss;
             }
         }
+    }
+
+    private void UpdateScytheUltimateCandidate()
+    {
+        _scytheUltimateCandidate = null;
+        if (Player?.WeaponFamily != WeaponFamily.Scythe || CurrentDungeon == null)
+            return;
+
+        float maximumDistanceSquared = ScytheTuning.UltimateTargetRange *
+            ScytheTuning.UltimateTargetRange;
+        int bestMaximumHealth = -1;
+        float bestDistanceSquared = float.MaxValue;
+        int bestStableId = int.MaxValue;
+        for (int index = 0; index < Enemies.Enemies.Count; index++)
+        {
+            Enemy enemy = Enemies.Enemies[index];
+            if (!enemy.CanBeTargeted ||
+                !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
+                continue;
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position, enemy.Position);
+            if (distanceSquared > maximumDistanceSquared ||
+                !HasClearRangerUltimatePath(enemy.MeleeTargetBounds))
+                continue;
+            if (!IsBetterRangerUltimateTarget(
+                enemy.MaxHealth, distanceSquared, index,
+                bestMaximumHealth, bestDistanceSquared, bestStableId))
+                continue;
+            _scytheUltimateCandidate = enemy;
+            bestMaximumHealth = enemy.MaxHealth;
+            bestDistanceSquared = distanceSquared;
+            bestStableId = index;
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true && Boss.IsActivated &&
+            !Boss.IsPhaseTransitioning)
+        {
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position, Boss.Position);
+            if (distanceSquared <= maximumDistanceSquared &&
+                HasClearRangerUltimatePath(Boss.Bounds) &&
+                IsBetterRangerUltimateTarget(
+                    Boss.MaxHealth, distanceSquared, Enemies.Enemies.Count,
+                    bestMaximumHealth, bestDistanceSquared, bestStableId))
+                _scytheUltimateCandidate = Boss;
+        }
+    }
+
+    private void UpdateScytheUltimateLock()
+    {
+        bool active = Player.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.ScytheUmbraDevourer;
+        if (!active)
+        {
+            ClearScytheUltimateLock();
+            return;
+        }
+
+        if (_scytheUltimateTechniqueUseId !=
+            Player.Combat.CurrentTechniqueUseId)
+        {
+            _scytheUltimateTechniqueUseId = Player.Combat.CurrentTechniqueUseId;
+            _scytheUltimateLockedTarget = _scytheUltimateCandidate;
+            _scytheSafeReturnPosition = Player.Position;
+            _scytheUltimateVisualStartPosition = Player.Position;
+            _scytheSafeReturnRequested = false;
+            _scytheUltimateMotionAttackId = -1;
+        }
+
+        bool valid = IsScytheUltimateTargetValid(_scytheUltimateLockedTarget);
+        if (!valid && !_scytheSafeReturnRequested)
+        {
+            _scytheSafeReturnRequested = true;
+            Player.Combat.RequestScytheSafeReturn();
+        }
+    }
+
+    private bool IsScytheUltimateTargetValid(object target)
+    {
+        if (target is Enemy enemy)
+            return enemy.CanBeTargeted && IsActiveEnemy(enemy);
+        return target is AncientTreant boss && ReferenceEquals(boss, Boss) &&
+            ShouldRenderBoss && boss.IsAlive && !boss.IsPhaseTransitioning;
+    }
+
+    private void UpdateScytheTechniqueMovement()
+    {
+        if (Player?.Combat.CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.ScytheUmbraDevourer ||
+            CurrentDungeon == null ||
+            _scytheUltimateMotionAttackId == Player.Combat.AttackId)
+            return;
+
+        _scytheUltimateMotionAttackId = Player.Combat.AttackId;
+        int stage = Player.Combat.TechniqueStageIndex;
+        _scytheUltimateVisualStartPosition = Player.Position;
+        if (stage == 7)
+        {
+            Player.MoveThroughCombatTechnique(
+                _scytheSafeReturnPosition, CurrentDungeon);
+            return;
+        }
+
+        Rectangle target = GetCombatTargetBounds(_scytheUltimateLockedTarget);
+        if (target.IsEmpty || stage is >= 1 and <= 3)
+            return;
+
+        float side = Player.Position.X <= target.Center.X ? -1f : 1f;
+        if (stage is 4 or 5)
+            side = -side;
+        Vector2 desired = new(
+            target.Center.X + side *
+                (target.Width * .5f + ScytheTuning.UltimateSafeOffset),
+            Player.Position.Y);
+        Player.MoveThroughCombatTechnique(desired, CurrentDungeon);
+        Player.FaceToward(target.Center.X);
+    }
+
+    private void ClearScytheUltimateLock()
+    {
+        _scytheUltimateCandidate = null;
+        _scytheUltimateLockedTarget = null;
+        _scytheUltimateTechniqueUseId = -1;
+        _scytheUltimateMotionAttackId = -1;
+        _scytheSafeReturnRequested = false;
+        _scytheUltimateVisualStartPosition = Vector2.Zero;
+        Player?.Combat.SetScytheUltimateTargetAvailable(false);
+        Camera?.ResetCinematicZoom();
     }
 
     private void UpdateRangerUltimateLock()
@@ -4765,6 +4999,20 @@ public sealed class GameSession
         {
             return;
         }
+        if (Player.WeaponFamily == WeaponFamily.Scythe &&
+            damage <= 0 && poiseDamage <= 0f)
+            return;
+
+        if (technique?.Effect == WeaponTechniqueEffect.ScythePhantomCross &&
+            _scytheCrossTechniqueUseId != Player.Combat.CurrentTechniqueUseId)
+        {
+            _scytheCrossTechniqueUseId = Player.Combat.CurrentTechniqueUseId;
+            _scytheCrossEnemyHits.Clear();
+            _scytheCrossBossHits = 0;
+        }
+        if (technique?.Effect == WeaponTechniqueEffect.ScytheAbyssalRequiem &&
+            Player.Combat.TechniqueStageIndex == 0)
+            _scytheShadowSeverTarget = null;
 
         if (Player.WeaponFamily == WeaponFamily.WarAxe &&
             Player.Combat.CurrentTechniqueUseId !=
@@ -4788,6 +5036,14 @@ public sealed class GameSession
                     !ReferenceEquals(
                         _sovereignUltimateLockedTarget,
                         enemy) ||
+                technique?.Effect ==
+                    WeaponTechniqueEffect.ScytheUmbraDevourer &&
+                    !ReferenceEquals(_scytheUltimateLockedTarget, enemy) ||
+                technique?.Effect ==
+                    WeaponTechniqueEffect.ScytheAbyssalRequiem &&
+                    Player.Combat.TechniqueStageIndex == 5 &&
+                    (!Player.Combat.ScytheShadowSeverEnabled ||
+                     !ReferenceEquals(_scytheShadowSeverTarget, enemy)) ||
                 _playerAttackHits.Contains(enemy) ||
                 !PlayerAttackArea.Intersects(enemy.MeleeTargetBounds))
             {
@@ -4806,6 +5062,8 @@ public sealed class GameSession
                 enemy.MaxHealth <= 0
                     ? 1f
                     : enemy.CurrentHealth / (float)enemy.MaxHealth);
+            damageMultiplier *= GetScytheDamageMultiplier(
+                technique, enemy.ReapMarkCount);
 
             if (technique?.Effect ==
                 WeaponTechniqueEffect.DuelistFinalWaltz &&
@@ -4874,6 +5132,7 @@ public sealed class GameSession
                 imprintStacks,
                 targetDamage);
             ResolveBreakerEnemyHit(enemy, technique, wasUnstable);
+            bool scytheHandled = ResolveScytheEnemyHit(enemy, technique);
 
             if (IsRaiderTechnique(technique?.Effect ?? WeaponTechniqueEffect.None))
             {
@@ -4885,6 +5144,9 @@ public sealed class GameSession
                     heavyImpact);
                 if (heavyImpact)
                     Camera.AddImpactFeedback(1.8f);
+            }
+            else if (scytheHandled)
+            {
             }
             else if (ResolveReckonerEnemyHit(enemy, technique))
             {
@@ -4933,6 +5195,14 @@ public sealed class GameSession
             (technique?.Effect !=
                 WeaponTechniqueEffect.SovereignGoldenCataclysm ||
              ReferenceEquals(_sovereignUltimateLockedTarget, Boss)) &&
+            (technique?.Effect !=
+                WeaponTechniqueEffect.ScytheUmbraDevourer ||
+             ReferenceEquals(_scytheUltimateLockedTarget, Boss)) &&
+            (technique?.Effect !=
+                WeaponTechniqueEffect.ScytheAbyssalRequiem ||
+             Player.Combat.TechniqueStageIndex != 5 ||
+             Player.Combat.ScytheShadowSeverEnabled &&
+                ReferenceEquals(_scytheShadowSeverTarget, Boss)) &&
             PlayerAttackArea.Intersects(Boss.Bounds))
         {
             _bossHitByPlayerAttack = true;
@@ -4950,6 +5220,8 @@ public sealed class GameSession
                 Boss.MaxHealth <= 0
                     ? 1f
                     : Boss.CurrentHealth / (float)Boss.MaxHealth);
+            bossDamageMultiplier *= GetScytheDamageMultiplier(
+                technique, Boss.ReapMarkCount);
             bool bossWasUnstable = Boss.IsStaggered ||
                 Boss.CurrentPoise <=
                     Boss.MaxPoise * RaiderTuning.UnstablePoiseRatio;
@@ -4989,13 +5261,18 @@ public sealed class GameSession
                 bossDamage);
             ResolveBreakerBossHit(technique);
             ResolveReckonerBossHit(technique);
+            ResolveScytheBossHit(technique);
             bool suppressBossDisplacement = technique?.Effect ==
                 WeaponTechniqueEffect.DuelistFinalWaltz &&
                 Player.Combat.TechniqueStageIndex < technique.StageCount - 1;
             suppressBossDisplacement |= technique?.Effect is
                 WeaponTechniqueEffect.ReckonerChainsOfJudgment or
                 WeaponTechniqueEffect.ReckonerVortexSnare or
-                WeaponTechniqueEffect.SovereignEventHorizonPalm;
+                WeaponTechniqueEffect.SovereignEventHorizonPalm or
+                WeaponTechniqueEffect.ScytheUmbraDevourer or
+                WeaponTechniqueEffect.ScytheAbyssalRequiem or
+                WeaponTechniqueEffect.ScythePhantomCross or
+                WeaponTechniqueEffect.ScytheEclipseWaltz;
             bool raiderTechnique = IsRaiderTechnique(
                 technique?.Effect ?? WeaponTechniqueEffect.None);
             if (!raiderTechnique &&
@@ -5200,6 +5477,181 @@ public sealed class GameSession
         return 1f + ReckonerTuning.CrescentOuterEdgeDamageBonus +
             Player.Combat.Resources.ChainMomentumRatio *
                 ReckonerTuning.CrescentMomentumDamageBonus;
+    }
+
+    private float GetScytheDamageMultiplier(
+        WeaponTechnique technique,
+        int reapMarks)
+    {
+        if (Player.WeaponFamily != WeaponFamily.Scythe || technique == null)
+            return 1f;
+        if (technique.Effect == WeaponTechniqueEffect.ScytheReapersDance &&
+            Player.Combat.TechniqueStageIndex == 5)
+        {
+            return 1f + Math.Min(
+                ScytheTuning.J6MaximumMarkBonus,
+                Math.Clamp(reapMarks, 0, ScytheTuning.MaximumReapMarks) * .05f);
+        }
+        return 1f;
+    }
+
+    private bool ResolveScytheEnemyHit(Enemy enemy, WeaponTechnique technique)
+    {
+        if (Player.WeaponFamily != WeaponFamily.Scythe ||
+            enemy == null || technique == null)
+            return false;
+
+        int stage = Player.Combat.TechniqueStageIndex;
+        bool enhanced = Player.Combat.IsScytheEnhancedAttack;
+        if (enhanced && _scytheEnhancedMarkTechniqueUseId !=
+                Player.Combat.CurrentTechniqueUseId)
+        {
+            enemy.AddReapMark();
+            _scytheEnhancedMarkTechniqueUseId =
+                Player.Combat.CurrentTechniqueUseId;
+        }
+        if (technique.Effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+            AddScytheUltimateImpactFeedback(stage);
+        if (!enemy.IsAlive)
+            return true;
+
+        switch (technique.Effect)
+        {
+            case WeaponTechniqueEffect.ScytheReapersDance when stage is 2 or 4:
+                enemy.AddReapMark();
+                if (stage == 4 && !enemy.IsElite && !enemy.IsHeavyPullAnchor &&
+                    enemy.WeightClass is EnemyWeightClass.Light or
+                        EnemyWeightClass.Normal)
+                {
+                    enemy.PullTowardSafe(
+                        Player.Position, 22f, 28f, CurrentDungeon);
+                    return true;
+                }
+                return false;
+            case WeaponTechniqueEffect.ScytheReapersDance when stage == 5:
+                enemy.ConsumeReapMarks();
+                return false;
+            case WeaponTechniqueEffect.ScytheWraithCut:
+                enemy.AddReapMark();
+                return false;
+            case WeaponTechniqueEffect.ScytheShadowPass when stage == 1:
+                enemy.AddReapMark();
+                return false;
+            case WeaponTechniqueEffect.ScythePhantomCross:
+                int mask = _scytheCrossEnemyHits.TryGetValue(enemy, out int value)
+                    ? value
+                    : 0;
+                mask |= stage == 0 ? 1 : 2;
+                _scytheCrossEnemyHits[enemy] = mask;
+                if (mask == 3)
+                    enemy.AddReapMark();
+                return true;
+            case WeaponTechniqueEffect.ScytheAbyssalRequiem when stage == 0:
+                if (!enemy.IsElite && !enemy.IsHeavyPullAnchor &&
+                    enemy.WeightClass is EnemyWeightClass.Light or
+                        EnemyWeightClass.Normal)
+                {
+                    enemy.PullTowardSafe(
+                        Player.Position, 34f, 26f, CurrentDungeon);
+                }
+                else
+                {
+                    float side = Player.Position.X <= enemy.Position.X ? -1f : 1f;
+                    Vector2 desired = enemy.Position + new Vector2(
+                        side * (enemy.Size.X * .5f + Player.Size.X * .5f + 18f),
+                        Player.Position.Y - enemy.Position.Y);
+                    Player.MoveThroughCombatTechnique(desired, CurrentDungeon);
+                    Player.FaceToward(enemy.Position.X);
+                }
+                return true;
+            case WeaponTechniqueEffect.ScytheAbyssalRequiem when stage == 4:
+                if (enemy.ReapMarkCount >= ScytheTuning.MaximumReapMarks)
+                {
+                    enemy.ConsumeReapMarks();
+                    _scytheShadowSeverTarget = enemy;
+                    Player.Combat.EnableScytheShadowSever();
+                }
+                return true;
+            case WeaponTechniqueEffect.ScytheAbyssalRequiem:
+            case WeaponTechniqueEffect.ScytheEclipseWaltz:
+            case WeaponTechniqueEffect.ScytheUmbraDevourer:
+                return true;
+        }
+
+        return false;
+    }
+
+    private void ResolveScytheBossHit(WeaponTechnique technique)
+    {
+        if (Player.WeaponFamily != WeaponFamily.Scythe || technique == null ||
+            Boss == null || !Boss.IsAlive)
+            return;
+
+        int stage = Player.Combat.TechniqueStageIndex;
+        if (technique.Effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+            AddScytheUltimateImpactFeedback(stage);
+        if (Player.Combat.IsScytheEnhancedAttack &&
+            _scytheEnhancedMarkTechniqueUseId !=
+                Player.Combat.CurrentTechniqueUseId)
+        {
+            Boss.AddReapMark();
+            _scytheEnhancedMarkTechniqueUseId =
+                Player.Combat.CurrentTechniqueUseId;
+        }
+
+        if (technique.Effect == WeaponTechniqueEffect.ScytheReapersDance)
+        {
+            if (stage is 2 or 4)
+                Boss.AddReapMark();
+            else if (stage == 5)
+                Boss.ConsumeReapMarks();
+        }
+        else if (technique.Effect == WeaponTechniqueEffect.ScytheWraithCut ||
+            technique.Effect == WeaponTechniqueEffect.ScytheShadowPass && stage == 1)
+        {
+            Boss.AddReapMark();
+        }
+        else if (technique.Effect == WeaponTechniqueEffect.ScythePhantomCross)
+        {
+            _scytheCrossBossHits |= stage == 0 ? 1 : 2;
+            if (_scytheCrossBossHits == 3)
+                Boss.AddReapMark();
+        }
+        else if (technique.Effect == WeaponTechniqueEffect.ScytheAbyssalRequiem)
+        {
+            if (stage == 0)
+            {
+                float side = Player.Position.X <= Boss.Position.X ? -1f : 1f;
+                Vector2 desired = Boss.Position + new Vector2(
+                    side * (Boss.Size.X * .5f + Player.Size.X * .5f + 20f),
+                    Player.Position.Y - Boss.Position.Y);
+                Player.MoveThroughCombatTechnique(desired, CurrentDungeon);
+                Player.FaceToward(Boss.Position.X);
+            }
+            else if (stage == 4 &&
+                Boss.ReapMarkCount >= ScytheTuning.MaximumReapMarks)
+            {
+                Boss.ConsumeReapMarks();
+                _scytheShadowSeverTarget = Boss;
+                Player.Combat.EnableScytheShadowSever();
+            }
+        }
+    }
+
+    private void AddScytheUltimateImpactFeedback(int stage)
+    {
+        float strength = stage switch
+        {
+            0 => 1.25f,
+            1 => 1.05f,
+            2 => 1.25f,
+            3 => 1.65f,
+            4 or 5 => 2.35f,
+            6 => 4.8f,
+            _ => 0f
+        };
+        if (strength > 0f)
+            Camera.AddImpactFeedback(strength);
     }
 
     private bool ResolveReckonerEnemyHit(

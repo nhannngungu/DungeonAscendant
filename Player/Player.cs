@@ -80,8 +80,11 @@ public sealed class Player
         BaseExperienceRequirement + (Level - 1) * ExperienceRequirementPerLevel;
     public FacingDirection Facing { get; private set; }
     public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f ||
-        Combat.IsDodgeInvulnerable || Combat.IsFourthVeilActive;
-    public bool IsTargetable => IsAlive && !Combat.IsFourthVeilActive;
+        Combat.IsDodgeInvulnerable || Combat.IsFourthVeilActive ||
+        Combat.IsScytheShadowEvading || Combat.IsScytheDodgeWeaving ||
+        Combat.IsUmbralAttached;
+    public bool IsTargetable => IsAlive && !Combat.IsFourthVeilActive &&
+        !Combat.IsUmbralAttached;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
     public bool IsSlowed => _slowTimeRemaining > 0f;
     public float SlowMovementMultiplier => IsSlowed
@@ -112,7 +115,8 @@ public sealed class Player
                             ? PlayerVisualState.HeavyCharge
                         : Combat.State == CombatState.HeavyAttack
                             ? PlayerVisualState.HeavyAttack
-                            : Combat.State == CombatState.LightAttack
+                            : Combat.State is CombatState.LightAttack or
+                                CombatState.UmbralAttached
                                 ? Combat.CurrentAttack?.Kind switch
                                 {
                                     AttackKind.LightTwo => PlayerVisualState.LightAttack2,
@@ -251,6 +255,11 @@ public sealed class Player
         float attackAdvanceDirection =
             MathF.Abs(Combat.RangerWindrunnerDirection) > .1f
                 ? Combat.RangerWindrunnerDirection
+                : WeaponFamily == WeaponFamily.Scythe &&
+                    Combat.CurrentTechnique?.Effect is
+                        WeaponTechniqueEffect.ScytheShadowSlip or
+                        WeaponTechniqueEffect.ScytheShadowPass
+                    ? Combat.ScytheMoveDirection
                 : facingSign;
         float horizontalVelocity = Combat.IsDodging
             ? Combat.DodgeDirection * PlayerCombat.DodgeSpeed *
@@ -266,6 +275,9 @@ public sealed class Player
         }
         if (Combat.IsAstralDescending)
             verticalVelocity = MathF.Max(verticalVelocity, 760f);
+        if (Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.ScytheCrescentDive)
+            verticalVelocity = MathF.Max(verticalVelocity, 690f);
         Velocity = new Vector2(
             horizontalVelocity,
             MathF.Min(TerminalFallSpeed, verticalVelocity));

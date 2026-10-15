@@ -141,6 +141,19 @@ public sealed class PlayerCombat
     private bool _sovereignSkill1Held;
     private bool _sovereignSkill3Held;
     private bool _sovereignUltimateTargetAvailable;
+    private int _scytheInputMask;
+    private float _scytheChordRemaining;
+    private bool _scytheDashSkill1Pending;
+    private bool _scytheAirSkill2Pending;
+    private bool _scytheUltimateTargetAvailable;
+    private float _scytheWraithCutWindowRemaining;
+    private float _scythePerfectDodgeVisualRemaining;
+    private Vector2 _scythePerfectDodgeSource;
+    private float _scytheDodgeWeaveRewardRemaining;
+    private bool _scytheEnhancedAttackPending;
+    private bool _scytheEnhancedThisTechnique;
+    private float _scytheMoveDirection = 1f;
+    private bool _scytheShadowSeverEnabled;
     private Vector2 _sovereignTransitDirection;
     private bool _sovereignPerfectRiftCounterPending;
     private Vector2 _sovereignPerfectRiftSource;
@@ -394,12 +407,40 @@ public sealed class PlayerCombat
     public bool IsDodgeInvulnerable => State == CombatState.Dodging &&
         _stateElapsed >= DodgeStartupSeconds &&
         _stateElapsed < DodgeStartupSeconds + DodgeInvulnerabilitySeconds;
+    public bool IsScytheShadowEvading =>
+        CurrentTechnique?.Effect == WeaponTechniqueEffect.ScytheShadowSlip &&
+        _stateElapsed >= ScytheTuning.ShadowSlipIframeStartSeconds &&
+        _stateElapsed <= ScytheTuning.ShadowSlipIframeEndSeconds;
+    public bool IsScytheDodgeWeaving =>
+        CurrentTechnique?.Effect == WeaponTechniqueEffect.ScytheEclipseWaltz &&
+        _techniqueStageIndex is 0 or 2 &&
+        _stateElapsed <= ScytheTuning.DodgeWeaveWindowSeconds;
+    public bool IsUmbralAttached => State == CombatState.UmbralAttached;
+    public bool IsScytheUltimateReady =>
+        _weapon.Family == WeaponFamily.Scythe && Stamina.IsFull &&
+        _scytheUltimateTargetAvailable;
+    public float ScytheUltimateCinematicRatio =>
+        CurrentTechnique?.Effect == WeaponTechniqueEffect.ScytheUmbraDevourer &&
+        State == CombatState.ChargingHeavy
+            ? Math.Clamp(_stateElapsed / ScytheTuning.UltimateIntroSeconds, 0f, 1f)
+            : 0f;
+    public float ScytheUltimateWorldTimeScale =>
+        ScytheUltimateCinematicRatio > 0f
+            ? ScytheTuning.UltimateWorldSlowScale
+            : 1f;
+    public float ScytheMoveDirection => _scytheMoveDirection;
+    public float ScythePerfectDodgeVisualRatio => Math.Clamp(
+        _scythePerfectDodgeVisualRemaining / .18f, 0f, 1f);
+    public Vector2 ScythePerfectDodgeSource => _scythePerfectDodgeSource;
+    public bool ScytheShadowSeverEnabled => _scytheShadowSeverEnabled;
+    public bool IsScytheEnhancedAttack => _scytheEnhancedThisTechnique;
     public bool IsPhantomStepEvading =>
         CurrentTechnique?.Effect == WeaponTechniqueEffect.DuelistPhantomStep &&
         _techniqueSequenceIndex == 0 &&
         _stateElapsed <= .20f;
     public bool IsAttackActive => CurrentAttack != null &&
-        (State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
+        (State == CombatState.LightAttack || State == CombatState.HeavyAttack ||
+            State == CombatState.UmbralAttached) &&
         !(CurrentTechnique?.Effect ==
                 WeaponTechniqueEffect.GreatswordFallingBastion &&
             _greatswordFallingWasAirborne) &&
@@ -411,6 +452,7 @@ public sealed class PlayerCombat
     public bool IsChargingHeavy => State == CombatState.ChargingHeavy;
     public bool HasCommittedAction =>
         State == CombatState.ChargingHeavy ||
+        State == CombatState.UmbralAttached ||
         CurrentAttack != null &&
             State is CombatState.LightAttack or CombatState.HeavyAttack;
     public float HeavyChargeProgress => _weapon.Family == WeaponFamily.HunterBow
@@ -606,6 +648,7 @@ public sealed class PlayerCombat
         UpdateRangerInputState(elapsedSeconds, input);
         UpdateSovereignInputState(elapsedSeconds, input);
         UpdateAncientStaffInputState(elapsedSeconds, input);
+        UpdateScytheInputState(elapsedSeconds, input);
         _sovereignStepCooldownRemaining = MathF.Max(
             0f, _sovereignStepCooldownRemaining - elapsedSeconds);
         _sovereignThroneTimeRemaining = MathF.Max(
@@ -813,6 +856,14 @@ public sealed class PlayerCombat
         _greatswordLandingPulseRemaining = MathF.Max(
             0f,
             _greatswordLandingPulseRemaining - elapsedSeconds);
+        _scytheWraithCutWindowRemaining = MathF.Max(
+            0f, _scytheWraithCutWindowRemaining - elapsedSeconds);
+        _scythePerfectDodgeVisualRemaining = MathF.Max(
+            0f, _scythePerfectDodgeVisualRemaining - elapsedSeconds);
+        _scytheDodgeWeaveRewardRemaining = MathF.Max(
+            0f, _scytheDodgeWeaveRewardRemaining - elapsedSeconds);
+        if (_scytheDodgeWeaveRewardRemaining <= 0f)
+            _scytheEnhancedAttackPending = false;
         Resources.Update(elapsedSeconds);
 
         if (State == CombatState.ChargingHeavy &&
@@ -861,6 +912,22 @@ public sealed class PlayerCombat
             _weapon.Family == WeaponFamily.AbyssRing)
         {
             UpdateSovereignChargeState();
+            Stamina.Update(
+                elapsedSeconds,
+                regenerationAllowed: false,
+                _armorItem.StaminaRegenModifier);
+            return;
+        }
+        if (State == CombatState.ChargingHeavy &&
+            _weapon.Family == WeaponFamily.Scythe)
+        {
+            if (CurrentTechnique?.Effect ==
+                    WeaponTechniqueEffect.ScytheUmbraDevourer &&
+                _stateElapsed >= ScytheTuning.UltimateIntroSeconds)
+            {
+                SetFeedback("YOUR SHADOW IS MINE.");
+                StartTechniqueStage();
+            }
             Stamina.Update(
                 elapsedSeconds,
                 regenerationAllowed: false,
@@ -957,6 +1024,11 @@ public sealed class PlayerCombat
         {
             _inputBuffer.Clear();
             techniqueStarted = ResolveAncientStaffActionInput(input);
+        }
+        else if (canStartAction && _weapon.Family == WeaponFamily.Scythe)
+        {
+            _inputBuffer.Clear();
+            techniqueStarted = ResolveScytheActionInput();
         }
         else if (canStartAction && input.DashHeld && dashSkillPressed && isGrounded)
         {
@@ -1159,6 +1231,30 @@ public sealed class PlayerCombat
             _weapon.Family == WeaponFamily.GreatSword && available;
     }
 
+    public void SetScytheUltimateTargetAvailable(bool available)
+    {
+        _scytheUltimateTargetAvailable =
+            _weapon.Family == WeaponFamily.Scythe && available;
+    }
+
+    public void RequestScytheSafeReturn()
+    {
+        if (CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.ScytheUmbraDevourer)
+            return;
+        _techniqueSequenceIndex = Math.Max(0, _effectiveTechniqueStageCount - 1);
+        _hitstopRemaining = 0f;
+        StartTechniqueStage();
+        SetFeedback("SAFE SHADOW RETURN");
+    }
+
+    public void EnableScytheShadowSever()
+    {
+        if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.ScytheAbyssalRequiem)
+            _scytheShadowSeverEnabled = true;
+    }
+
     public void RequestGreatswordUltimateLanding()
     {
         if (CurrentTechnique?.Effect !=
@@ -1190,6 +1286,28 @@ public sealed class PlayerCombat
                 AbyssRingTuning.PerfectRiftVisualSeconds;
             _hitstopRemaining = MathF.Max(_hitstopRemaining, .035f);
             SetFeedback("PERFECT RIFT");
+            return AttackResolution.Ignored;
+        }
+
+        if ((IsScytheShadowEvading || IsScytheDodgeWeaving) &&
+            !contact.Unblockable)
+        {
+            if (IsScytheShadowEvading)
+            {
+                _scytheWraithCutWindowRemaining =
+                    ScytheTuning.WraithCutWindowSeconds;
+                _scythePerfectDodgeVisualRemaining = .18f;
+                _scythePerfectDodgeSource = contact.SourcePosition;
+                SetFeedback("PERFECT DODGE — WRAITH CUT READY");
+            }
+            else
+            {
+                _scytheEnhancedAttackPending = true;
+                _scytheDodgeWeaveRewardRemaining =
+                    ScytheTuning.DodgeWeaveFollowupSeconds;
+                SetFeedback("DODGE WEAVE");
+            }
+            _hitstopRemaining = MathF.Max(_hitstopRemaining, .03f);
             return AttackResolution.Ignored;
         }
 
@@ -1523,13 +1641,15 @@ public sealed class PlayerCombat
         ResetReckonerActionState();
         ResetGreatswordActionState();
         ResetSovereignActionState();
+        ResetScytheActionState();
         IsBlockInputHeld = false;
         _hitstopRemaining = 0f;
     }
 
     private void CompleteExpiredAction(bool isGrounded)
     {
-        if ((State == CombatState.LightAttack || State == CombatState.HeavyAttack) &&
+        if ((State == CombatState.LightAttack || State == CombatState.HeavyAttack ||
+                State == CombatState.UmbralAttached) &&
             CurrentAttack != null &&
             _stateElapsed >= CurrentAttack.TotalTime +
                 GetGreatswordRecoveryBonus())
@@ -1655,7 +1775,8 @@ public sealed class PlayerCombat
             bool cinematicLanding = CurrentTechnique?.Effect is
                 WeaponTechniqueEffect.RangerPhantomHunt or
                 WeaponTechniqueEffect.GreatswordFinalVerdict or
-                WeaponTechniqueEffect.SovereignGoldenCataclysm;
+                WeaponTechniqueEffect.SovereignGoldenCataclysm or
+                WeaponTechniqueEffect.ScytheUmbraDevourer;
             CurrentAttack = null;
             CurrentTechnique = null;
             _techniqueStageIndex = 0;
@@ -1741,6 +1862,16 @@ public sealed class PlayerCombat
             else
                 technique = _weapon.CombatProfile.Get(techniqueInput);
         }
+        else if (_weapon.Family == WeaponFamily.Scythe)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill1 &&
+                _scytheWraithCutWindowRemaining > 0f)
+                technique = WeaponTechniqueCatalog.ScytheWraithCut;
+            else if (techniqueInput == WeaponTechniqueInput.Skill2 && !_isGrounded)
+                technique = WeaponTechniqueCatalog.ScytheCrescentDive;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
         else
         {
             technique = _weapon.CombatProfile.Get(techniqueInput);
@@ -1798,6 +1929,13 @@ public sealed class PlayerCombat
         if (ancientStaffUltimate && !_ancientStaffUltimateTargetAvailable)
         {
             SetFeedback("NO VALID DEPLOYMENT AREA");
+            return false;
+        }
+        bool scytheUltimate = _weapon.Family == WeaponFamily.Scythe &&
+            technique.Effect == WeaponTechniqueEffect.ScytheUmbraDevourer;
+        if (scytheUltimate && !_scytheUltimateTargetAvailable)
+        {
+            SetFeedback("NO SAFE TARGET IN RANGE");
             return false;
         }
         if (_weapon.Family == WeaponFamily.AbyssRing &&
@@ -1860,6 +1998,9 @@ public sealed class PlayerCombat
         _rangerFlowGainThisTechnique = 0f;
         _sovereignChargeRatio = 0f;
         _sovereignChargeLevel = 1;
+        _scytheEnhancedThisTechnique = _scytheEnhancedAttackPending;
+        if (_scytheEnhancedThisTechnique)
+            _attackPowerMultiplier *= 1f + ScytheTuning.DodgeWeaveDamageBonus;
 
         if (_weapon.Family == WeaponFamily.GreatSword)
         {
@@ -2162,6 +2303,25 @@ public sealed class PlayerCombat
                 return true;
             }
         }
+        else if (_weapon.Family == WeaponFamily.Scythe)
+        {
+            float facing = _currentFacing == FacingDirection.Left ? -1f : 1f;
+            _scytheMoveDirection = MathF.Abs(_currentHorizontalDirection) > .1f
+                ? MathF.Sign(_currentHorizontalDirection)
+                : -facing;
+            _scytheShadowSeverEnabled = false;
+            if (technique.Effect == WeaponTechniqueEffect.ScytheWraithCut)
+                _scytheWraithCutWindowRemaining = 0f;
+            if (technique.Effect == WeaponTechniqueEffect.ScytheShadowPass)
+                _scytheMoveDirection = facing;
+            if (technique.Effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+            {
+                _scytheEnhancedThisTechnique = false;
+                SetFeedback("UMBRA DEVOURER");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+        }
 
         SetFeedback(_weapon.Family == WeaponFamily.GreatSword &&
                 technique.Effect ==
@@ -2190,6 +2350,10 @@ public sealed class PlayerCombat
         CombatState state = stage.Kind == AttackKind.Heavy
             ? CombatState.HeavyAttack
             : CombatState.LightAttack;
+        if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.ScytheUmbraDevourer &&
+            _techniqueStageIndex is >= 1 and <= 3)
+            state = CombatState.UmbralAttached;
         StartAttack(stage, state);
         _techniqueStageBuffered = false;
     }
@@ -2200,6 +2364,14 @@ public sealed class PlayerCombat
             return;
 
         _resourceGainAttackId = AttackId;
+
+        if (_weapon.Family == WeaponFamily.Scythe &&
+            _scytheEnhancedThisTechnique)
+        {
+            _scytheEnhancedThisTechnique = false;
+            _scytheEnhancedAttackPending = false;
+            _scytheDodgeWeaveRewardRemaining = 0f;
+        }
 
         if (_weapon.Family == WeaponFamily.GreatSword)
             return;
@@ -3462,6 +3634,81 @@ public sealed class PlayerCombat
         _reckonerMomentumSnapshot = 0f;
         _reckonerCurveSide = 1;
         _reckonerHarpoonOutboundHits = 0;
+    }
+
+    private void UpdateScytheInputState(float elapsedSeconds, CombatInput input)
+    {
+        if (_weapon.Family != WeaponFamily.Scythe)
+        {
+            ClearScythePendingInput();
+            return;
+        }
+
+        if (HasCommittedAction)
+            return;
+
+        int pressedMask = (input.Skill1Pressed ? 1 : 0) |
+            (input.Skill2Pressed ? 2 : 0) |
+            (input.Skill3Pressed ? 4 : 0);
+        if (pressedMask != 0)
+        {
+            if (_scytheInputMask == 0)
+                _scytheChordRemaining = ScytheTuning.ChordWindowSeconds;
+            _scytheInputMask |= pressedMask;
+            if (input.Skill1Pressed && input.DashHeld)
+                _scytheDashSkill1Pending = true;
+            if (input.Skill2Pressed && !_isGrounded)
+                _scytheAirSkill2Pending = true;
+        }
+
+        if (_scytheInputMask != 0)
+            _scytheChordRemaining = MathF.Max(
+                0f, _scytheChordRemaining - elapsedSeconds);
+    }
+
+    private bool ResolveScytheActionInput()
+    {
+        if (_scytheInputMask == 7)
+        {
+            ClearScythePendingInput();
+            return TryStartTechnique(WeaponTechniqueInput.Ultimate);
+        }
+        if (_scytheChordRemaining > 0f)
+            return false;
+
+        int mask = _scytheInputMask;
+        bool dashJ = _scytheDashSkill1Pending;
+        bool airK = _scytheAirSkill2Pending;
+        ClearScythePendingInput();
+        if (airK)
+            return TryStartTechnique(WeaponTechniqueInput.Skill2);
+        return mask switch
+        {
+            3 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill2),
+            6 => TryStartTechnique(WeaponTechniqueInput.Skill2Skill3),
+            5 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill3),
+            1 when dashJ => TryStartTechnique(WeaponTechniqueInput.DashSkill),
+            1 => TryStartTechnique(WeaponTechniqueInput.Skill1),
+            2 => TryStartTechnique(WeaponTechniqueInput.Skill2),
+            4 => TryStartTechnique(WeaponTechniqueInput.Skill3),
+            _ => false
+        };
+    }
+
+    private void ClearScythePendingInput()
+    {
+        _scytheInputMask = 0;
+        _scytheChordRemaining = 0f;
+        _scytheDashSkill1Pending = false;
+        _scytheAirSkill2Pending = false;
+    }
+
+    private void ResetScytheActionState()
+    {
+        ClearScythePendingInput();
+        _scytheMoveDirection = 1f;
+        _scytheShadowSeverEnabled = false;
+        _scytheEnhancedThisTechnique = false;
     }
 
     private void UpdateSpellbladeInputState(

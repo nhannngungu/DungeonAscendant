@@ -6,8 +6,8 @@ namespace DungeonAscendant.Items;
 
 public static class EquipmentCatalog
 {
-    public const int WeaponSampleCount = 9;
-    public const int RewardWeaponSampleCount = 8;
+    public const int WeaponSampleCount = 10;
+    public const int RewardWeaponSampleCount = 9;
     public const int ArmorSampleCount = 3;
     public const ItemRarity DevelopmentWeaponRarity = ItemRarity.Legendary;
 
@@ -34,6 +34,9 @@ public static class EquipmentCatalog
     public static readonly WeaponDefinition ForbiddenSovereignAbyssRing = CreateWeapon(
         "forbidden-sovereign-abyss-ring", "Abyss Ring — The Forbidden Sovereign",
         WeaponFamily.AbyssRing, 5, 18);
+    public static readonly WeaponDefinition ShadowReaperScythe = CreateWeapon(
+        "shadow-reaper-scythe", "Scythe — The Shadow Reaper",
+        WeaponFamily.Scythe, 4, 13);
 
     private static readonly IReadOnlyList<WeaponDefinition>
         ImplementedWeaponDefinitions = Array.AsReadOnly(new[]
@@ -46,6 +49,7 @@ public static class EquipmentCatalog
             BreakerSpikedMace,
             ReckonerChainFlail,
             ArcaneWarStaff,
+            ShadowReaperScythe,
             ForbiddenSovereignAbyssRing
         });
 
@@ -96,6 +100,7 @@ public static class EquipmentCatalog
             CreateDevelopmentWeapon(6),
             CreateDevelopmentWeapon(7),
             CreateDevelopmentWeapon(8),
+            CreateDevelopmentWeapon(9),
             new(ScoutArmor, ItemRarity.Common),
             new(ScoutArmor, ItemRarity.Common),
             new(ScoutArmor, ItemRarity.Common),
@@ -160,6 +165,7 @@ public static class EquipmentCatalog
             "reckoner-chain-flail" => ReckonerChainFlail,
             "forbidden-sovereign-abyss-ring" or "abyss-ring" =>
                 ForbiddenSovereignAbyssRing,
+            "shadow-reaper-scythe" or "scythe" => ShadowReaperScythe,
             _ => null
         };
         return definition != null;
@@ -306,6 +312,10 @@ public static class EquipmentCatalog
                 1.18f, .92f, 1.10f, .82f, 1.06f, false, .78f,
                 "Dimensional martial arts and validated portal transit",
                 WeaponMoveSets.AbyssRing, WeaponTechniqueCatalog.Sovereign),
+            WeaponFamily.Scythe => Definition(id, name, family, tier, damageBonus,
+                1.16f, .92f, 1.08f, .72f, .88f, false, .66f,
+                "Fast rotational pressure, evasive regrips, and shadow momentum",
+                WeaponMoveSets.Scythe, WeaponTechniqueCatalog.Scythe),
             _ => Definition(id, name, WeaponFamily.LongSword, tier, damageBonus,
                 1f, 1f, 1f, 1f, 1f, true, .35f,
                 "Balanced defense and counterplay", WeaponMoveSets.LongSword,

@@ -23,7 +23,8 @@ public static class WeaponArchetypeValidation
             EquipmentCatalog.BreakerSpikedMace,
             EquipmentCatalog.ReckonerChainFlail,
             EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.ForbiddenSovereignAbyssRing
+            EquipmentCatalog.ForbiddenSovereignAbyssRing,
+            EquipmentCatalog.ShadowReaperScythe
         };
         var families = new HashSet<WeaponFamily>();
 
@@ -92,6 +93,17 @@ public static class WeaponArchetypeValidation
                 cataclysm.StaminaCost == 100f &&
                 cataclysm.StageCount == 19,
             "Golden Sovereign Cataclysm must use full Stamina and its bounded sequence.");
+
+        WeaponCombatProfile scythe = EquipmentCatalog.ShadowReaperScythe.CombatProfile;
+        Require(scythe.Get(WeaponTechniqueInput.Skill1).StageCount == 6,
+            "Reaper's Dance must retain all six linked cuts.");
+        Require(scythe.Get(WeaponTechniqueInput.Skill3).StageCount == 6,
+            "Death Spiral must retain five ticks and its finishing sweep.");
+        WeaponTechnique devourer = scythe.Get(WeaponTechniqueInput.Ultimate);
+        Require(devourer.Effect == WeaponTechniqueEffect.ScytheUmbraDevourer &&
+                devourer.RequiresFullStamina && devourer.StaminaCost == 100f &&
+                devourer.StageCount == 8,
+            "Umbra Devourer must remain a bounded full-Stamina sequence.");
     }
 
     private static void Require(bool condition, string message)

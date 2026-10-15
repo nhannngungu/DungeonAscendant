@@ -137,6 +137,7 @@ public sealed class PlayerSpriteRenderer
             DrawDuelistAfterimages(player, anchor, flip, pose);
             DrawRangerAfterimages(player, anchor, flip, pose);
             DrawSovereignAfterimages(player, anchor, flip, pose);
+            DrawScytheMovementAfterimage(player, anchor, flip, pose);
             DrawStanding(player, anchor, flip, pose);
         }
 
@@ -372,6 +373,59 @@ public sealed class PlayerSpriteRenderer
             flip);
     }
 
+    public void DrawScytheCinematicCutIn(
+        PlayerCharacter player,
+        Vector2 anchor,
+        float progress)
+    {
+        ResetPartTransform();
+        _chainHeadWorldPosition = null;
+        bool flip = player.Facing == FacingDirection.Left;
+        progress = Math.Clamp(progress, 0f, 1f);
+        var pose = new Pose
+        {
+            Crouch = 3f,
+            Lean = 5f,
+            Step = -2f,
+            SwordLength = 58f,
+            SwordHandX = 12f,
+            SwordHandY = -43f,
+            SwordAngle = -.72f,
+            OffHandX = 1f,
+            OffHandY = -35f,
+            FrontElbowX = 23f,
+            FrontElbowY = -45f,
+            RearElbowX = -9f,
+            RearElbowY = -38f,
+            CloakTail = -9f
+        };
+        DrawStanding(player, anchor, flip, pose);
+
+        float eyePulse = MathF.Sin(progress * MathHelper.Pi);
+        Color iris = new(42, 12, 54, (int)(235f * eyePulse));
+        Color core = new(185, 116, 219, (int)(245f * eyePulse));
+        DrawBox(anchor, pose.Lean + 1f, pose.Crouch - 61f,
+            6f, 3f, iris, flip);
+        DrawBox(anchor, pose.Lean + 3f, pose.Crouch - 61f,
+            2f, 2f, core, flip);
+        DrawLine(anchor,
+            new Vector2(pose.Lean - 7f, pose.Crouch - 60f),
+            new Vector2(pose.Lean + 18f, pose.Crouch - 63f),
+            1f,
+            new Color(111, 51, 139, (int)(105f * eyePulse)),
+            flip);
+
+        float sweep = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((progress - .35f) / .45f, 0f, 1f));
+        Vector2 bladeStart = new(-34f + sweep * 18f, -16f);
+        Vector2 bladeEnd = new(46f + sweep * 12f, -68f);
+        DrawLine(anchor, bladeStart, bladeEnd, 11f,
+            new Color(18, 8, 23, (int)(225f * sweep)), flip);
+        DrawLine(anchor, bladeStart + new Vector2(0f, -2f),
+            bladeEnd + new Vector2(0f, -2f), 2f,
+            new Color(151, 78, 187, (int)(210f * sweep)), flip);
+    }
+
     private void DrawStanding(
         PlayerCharacter player,
         Vector2 anchor,
@@ -427,10 +481,13 @@ public sealed class PlayerSpriteRenderer
         DrawSpellbladeTechniqueEffects(player, anchor, flip, pose);
         DrawBreakerTechniqueEffects(player, anchor, flip, pose);
         DrawGreatswordTechniqueEffects(player, anchor, flip, pose);
+        DrawScytheTechniqueEffects(player, anchor, flip, pose);
         DrawSovereignTransformation(player, anchor, flip, pose);
         DrawSovereignMartialEffects(player, anchor, flip, pose);
 
-        if (player.Combat.IsChargingHeavy)
+        if (player.Combat.IsChargingHeavy &&
+            player.Combat.CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.ScytheUmbraDevourer)
             DrawChargeEffect(player, anchor, flip, pose);
 
         if (player.Combat.IsBlockFeedbackActive && player.UsesShield)
@@ -623,6 +680,7 @@ public sealed class PlayerSpriteRenderer
         ApplyGreatswordTechniquePose(player, ref pose);
         ApplyBreakerTechniquePose(player, ref pose);
         ApplyReckonerTechniquePose(player, ref pose);
+        ApplyScytheTechniquePose(player, ref pose);
         ApplySovereignTechniquePose(player, ref pose);
         return pose;
     }
@@ -727,6 +785,485 @@ public sealed class PlayerSpriteRenderer
                     : -1.45f + time * (stage == 0 ? 3.8f : 7.4f);
                 pose.CloakTail = stage == 7 ? -15f : -10f;
                 break;
+        }
+    }
+
+    private void ApplyScytheTechniquePose(PlayerCharacter player, ref Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.Scythe ||
+            player.Combat.CurrentTechnique == null)
+            return;
+
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        int stage = player.Combat.TechniqueStageIndex;
+        if (effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+        {
+            AttackDefinition ultimateAttack = player.Combat.CurrentAttack;
+            float ultimateElapsed = player.Combat.StateElapsed;
+            float ultimateWindup = ultimateAttack == null
+                ? 1f
+                : MathHelper.SmoothStep(0f, 1f, Math.Clamp(
+                    ultimateElapsed / MathF.Max(.01f, ultimateAttack.StartupTime),
+                    0f, 1f));
+            float ultimateStrike = ultimateAttack == null
+                ? 0f
+                : MathHelper.SmoothStep(0f, 1f, Math.Clamp(
+                    (ultimateElapsed - ultimateAttack.StartupTime) /
+                        MathF.Max(.01f, ultimateAttack.ActiveTime), 0f, 1f));
+            float ultimateRecovery = ultimateAttack == null
+                ? 0f
+                : MathHelper.SmoothStep(0f, 1f, Math.Clamp(
+                    (ultimateElapsed - ultimateAttack.StartupTime -
+                        ultimateAttack.ActiveTime) /
+                        MathF.Max(.01f, ultimateAttack.RecoveryTime), 0f, 1f));
+            (float ultimateStart, float ultimateEnd, float ultimateSettle) = stage switch
+            {
+                0 => (-.64f, -2.30f, -2.05f),
+                4 => (-2.52f, .68f, .96f),
+                5 => (.86f, -2.42f, -2.70f),
+                6 => (-2.28f, .82f, 1.06f),
+                7 => (1.04f, -.88f, -.96f),
+                _ => (-1.35f, -1.35f, -1.35f)
+            };
+            float ultimateAngle = ultimateElapsed <
+                    (ultimateAttack?.StartupTime ?? 0f)
+                ? MathHelper.Lerp(ultimateStart - .18f, ultimateStart,
+                    ultimateWindup)
+                : ultimateRecovery <= 0f
+                    ? MathHelper.Lerp(ultimateStart, ultimateEnd,
+                        ultimateStrike)
+                    : MathHelper.Lerp(ultimateEnd, ultimateSettle,
+                        ultimateRecovery);
+            pose.SwordLength = 58f;
+            pose.SwordAngle = ultimateAngle;
+            float drive = MathF.Sin(ultimateStrike * MathHelper.Pi);
+            pose.Crouch = stage switch
+            {
+                0 => 11f - ultimateRecovery * 4f,
+                4 or 5 => 7f + drive * 3f,
+                6 => 4f + ultimateWindup * 5f - ultimateStrike * 2f,
+                7 => 8f - ultimateRecovery * 5f,
+                _ => 13f
+            };
+            pose.Lean = stage switch
+            {
+                0 => 13f - ultimateRecovery * 5f,
+                4 => 11f * drive,
+                5 => -12f * drive,
+                6 => 5f + 13f * drive,
+                7 => 10f * (1f - ultimateRecovery),
+                _ => 0f
+            };
+            pose.Step = stage switch
+            {
+                0 => 10f,
+                4 => 8f,
+                5 => -7f,
+                6 => 6f,
+                7 => 7f * (1f - ultimateRecovery),
+                _ => 0f
+            };
+            pose.LeftFootLift = stage is 5 or 6 ? drive * 8f : 0f;
+            pose.RightFootLift = stage is 4 or 6 ? drive * 6f : 0f;
+            pose.SwordHandX = 13f + pose.Lean * .20f;
+            pose.SwordHandY = stage == 6
+                ? -40f - ultimateWindup * 7f + ultimateStrike * 7f
+                : -36f - MathF.Sin(ultimateAngle) * 3f;
+            float grip = stage == 6 ? 18f : 15f + drive * 3f;
+            pose.OffHandX = pose.SwordHandX - MathF.Cos(ultimateAngle) * grip;
+            pose.OffHandY = pose.SwordHandY - MathF.Sin(ultimateAngle) * grip;
+            pose.FrontElbowX = pose.SwordHandX + 9f;
+            pose.FrontElbowY = pose.SwordHandY - 6f;
+            pose.RearElbowX = pose.OffHandX - 10f;
+            pose.RearElbowY = pose.OffHandY - 5f;
+            pose.CloakTail = stage == 0 ? -16f : -10f - drive * 9f;
+            return;
+        }
+
+        AttackDefinition attack = player.Combat.CurrentAttack;
+        float elapsed = player.Combat.StateElapsed;
+        float windup = attack == null || attack.StartupTime <= .001f
+            ? 1f
+            : Math.Clamp(elapsed / attack.StartupTime, 0f, 1f);
+        float strike = attack == null
+            ? 0f
+            : Math.Clamp((elapsed - attack.StartupTime) /
+                MathF.Max(.01f, attack.ActiveTime), 0f, 1f);
+        float recovery = attack == null
+            ? 0f
+            : Math.Clamp((elapsed - attack.StartupTime - attack.ActiveTime) /
+                MathF.Max(.01f, attack.RecoveryTime), 0f, 1f);
+        windup = MathHelper.SmoothStep(0f, 1f, windup);
+        strike = MathHelper.SmoothStep(0f, 1f, strike);
+        recovery = MathHelper.SmoothStep(0f, 1f, recovery);
+
+        GetScytheMotionProfile(effect, stage,
+            out float startAngle, out float endAngle, out float settleAngle,
+            out float stance, out float turn, out float gripSlide);
+        float travelSign = MathF.Sign(endAngle - startAngle);
+        float preloadAngle = startAngle - travelSign * .28f;
+        float angle = elapsed < (attack?.StartupTime ?? 0f)
+            ? MathHelper.Lerp(preloadAngle, startAngle, windup)
+            : recovery <= 0f
+                ? MathHelper.Lerp(startAngle, endAngle, strike)
+                : MathHelper.Lerp(endAngle, settleAngle, recovery) +
+                    travelSign * .22f * MathF.Sin(recovery * MathHelper.Pi);
+
+        pose.SwordLength = 58f;
+        pose.SwordAngle = angle;
+        float bodyDrive = MathF.Sin(strike * MathHelper.Pi) * turn;
+        float settle = recovery * recovery;
+        pose.Crouch = stance + MathF.Abs(bodyDrive) * .22f - settle * 1.5f;
+        pose.Lean = bodyDrive + travelSign * (2f - settle * 2f);
+        pose.Step = travelSign * (4f + MathF.Abs(bodyDrive) * .34f) *
+            (1f - settle * .55f);
+        pose.LeftFootLift = stage % 2 == 0
+            ? MathF.Sin(strike * MathHelper.Pi) * 2.5f
+            : 0f;
+        pose.RightFootLift = stage % 2 != 0
+            ? MathF.Sin(strike * MathHelper.Pi) * 2.5f
+            : 0f;
+
+        float regrip = MathF.Sin((windup + recovery) * MathHelper.Pi);
+        pose.SwordHandX = 13f + bodyDrive * .25f;
+        pose.SwordHandY = -36f - MathF.Sin(angle) * 3f;
+        float gripDistance = 14f + gripSlide * regrip;
+        pose.OffHandX = pose.SwordHandX - MathF.Cos(angle) * gripDistance;
+        pose.OffHandY = pose.SwordHandY - MathF.Sin(angle) * gripDistance;
+        pose.FrontElbowX = pose.SwordHandX + 9f + bodyDrive * .18f;
+        pose.FrontElbowY = pose.SwordHandY - 5f - MathF.Abs(bodyDrive) * .12f;
+        pose.RearElbowX = pose.OffHandX - 10f - bodyDrive * .12f;
+        pose.RearElbowY = pose.OffHandY - 5f;
+        pose.CloakTail = -7f - MathF.Abs(bodyDrive) * .7f -
+            MathF.Abs(endAngle - startAngle) * 1.3f;
+
+        if (effect == WeaponTechniqueEffect.ScytheShadowSlip)
+        {
+            pose.Crouch = 11f;
+            pose.Lean = 13f * player.Combat.ScytheMoveDirection;
+            pose.Step = 10f * player.Combat.ScytheMoveDirection;
+            pose.SwordAngle = -1.45f;
+        }
+        else if (effect == WeaponTechniqueEffect.ScytheCrescentDive)
+        {
+            float tuck = MathF.Sin(Math.Clamp(strike + windup * .4f, 0f, 1f) *
+                MathHelper.Pi);
+            pose.Crouch = 8f + tuck * 7f;
+            pose.Lean = 8f + strike * 4f;
+            pose.Step = -6f + strike * 9f;
+            pose.LeftFootLift = 7f * tuck;
+            pose.RightFootLift = 10f * tuck;
+            pose.OffHandX -= 3f * tuck;
+        }
+        else if (effect == WeaponTechniqueEffect.ScytheAbyssalRequiem &&
+            stage is 2 or 3)
+        {
+            float tuck = MathF.Sin(Math.Clamp(strike + windup * .35f, 0f, 1f) *
+                MathHelper.Pi);
+            pose.Crouch += tuck * 5f;
+            pose.LeftFootLift = 8f * tuck;
+            pose.RightFootLift = 11f * tuck;
+            pose.Step *= .35f;
+        }
+        else if (effect == WeaponTechniqueEffect.ScytheEclipseWaltz &&
+            stage is 0 or 2)
+        {
+            pose.Lean += travelSign * 5f * (1f - recovery);
+            pose.Crouch += 3f;
+            pose.Step += travelSign * 4f;
+        }
+    }
+
+    private static void GetScytheMotionProfile(
+        WeaponTechniqueEffect effect,
+        int stage,
+        out float start,
+        out float end,
+        out float settle,
+        out float stance,
+        out float turn,
+        out float gripSlide)
+    {
+        start = -2.15f;
+        end = .62f;
+        settle = .82f;
+        stance = 3f;
+        turn = 7f;
+        gripSlide = 3f;
+
+        switch (effect)
+        {
+            case WeaponTechniqueEffect.ScytheReapersDance:
+                (start, end, settle, stance, turn, gripSlide) = stage switch
+                {
+                    0 => (-2.42f, .24f, .40f, 2f, 6f, 2f),
+                    1 => (.48f, -2.28f, -2.48f, 3f, -8f, 6f),
+                    2 => (-2.70f, -7.50f, -7.75f, 7f, 9f, 5f),
+                    3 => (-7.90f, -2.56f, -2.34f, 4f, 12f, 7f),
+                    4 => (-1.82f, .52f, -.18f, 6f, 8f, 8f),
+                    _ => (-.46f, 7.30f, 7.58f, 8f, 14f, 8f)
+                };
+                break;
+            case WeaponTechniqueEffect.ScytheDeathSpiral:
+                (start, end, settle, stance, turn, gripSlide) = stage switch
+                {
+                    0 => (1.02f, -1.95f, -2.14f, 8f, -8f, 4f),
+                    1 => (-2.05f, .68f, .88f, 4f, 9f, 7f),
+                    2 => (.82f, -2.38f, -2.58f, 3f, -11f, 5f),
+                    3 => (-2.32f, .96f, 1.18f, 5f, 12f, 7f),
+                    4 => (1.04f, -2.16f, -2.38f, 4f, -12f, 6f),
+                    _ => (-2.42f, 1.12f, 1.38f, 8f, 15f, 8f)
+                };
+                break;
+            case WeaponTechniqueEffect.ScythePhantomCross:
+                (start, end, settle, stance, turn, gripSlide) = stage == 0
+                    ? (-2.26f, .56f, .78f, 7f, 10f, 5f)
+                    : (.82f, -2.38f, -2.62f, 6f, -13f, 8f);
+                break;
+            case WeaponTechniqueEffect.ScytheEclipseWaltz:
+                (start, end, settle, stance, turn, gripSlide) = stage switch
+                {
+                    0 => (.98f, -1.92f, -2.12f, 9f, -8f, 5f),
+                    1 => (-2.18f, .42f, .66f, 2f, 9f, 6f),
+                    2 => (.72f, -2.52f, -2.70f, 6f, -10f, 7f),
+                    3 => (-2.42f, .92f, 1.12f, 4f, 11f, 5f),
+                    _ => (-2.58f, 1.08f, 1.38f, 7f, 15f, 8f)
+                };
+                break;
+            case WeaponTechniqueEffect.ScytheAbyssalRequiem:
+                (start, end, settle, stance, turn, gripSlide) = stage switch
+                {
+                    0 => (-1.34f, .30f, .82f, 7f, 7f, 8f),
+                    1 => (1.34f, -1.28f, -1.54f, 7f, 10f, 6f),
+                    2 => (-2.22f, 1.02f, 1.24f, 6f, 11f, 5f),
+                    3 => (1.10f, -2.30f, -2.52f, 7f, -12f, 6f),
+                    4 => (-2.56f, .94f, 1.28f, 9f, 15f, 9f),
+                    _ => (.62f, -2.22f, -2.46f, 6f, -9f, 7f)
+                };
+                break;
+            case WeaponTechniqueEffect.ScytheCrescentDive:
+                (start, end, settle, stance, turn, gripSlide) =
+                    (-2.36f, .64f, .92f, 9f, 12f, 7f);
+                break;
+            case WeaponTechniqueEffect.ScytheShadowPass:
+                (start, end, settle, stance, turn, gripSlide) = stage == 0
+                    ? (.78f, -1.80f, -2.02f, 10f, -8f, 4f)
+                    : (-2.04f, .54f, -.18f, 7f, 11f, 9f);
+                break;
+            case WeaponTechniqueEffect.ScytheWraithCut:
+                (start, end, settle, stance, turn, gripSlide) =
+                    (-2.48f, .92f, 1.16f, 6f, 13f, 7f);
+                break;
+        }
+    }
+
+    private void DrawScytheTechniqueEffects(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.Scythe ||
+            player.Combat.CurrentTechnique == null)
+            return;
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique.Effect;
+        float direction = player.Combat.ScytheMoveDirection;
+        if (effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+        {
+            if (player.Combat.State == CombatState.ChargingHeavy)
+                return;
+            int stage = player.Combat.TechniqueStageIndex;
+            float progress = player.Combat.CurrentAttack == null
+                ? 0f
+                : Math.Clamp(player.Combat.StateElapsed /
+                    MathF.Max(.01f, player.Combat.CurrentAttack.TotalTime),
+                    0f, 1f);
+            if (stage == 0)
+            {
+                float fade = 1f - progress;
+                Color shadow = new(39, 12, 50, (int)(115f * fade));
+                for (int echo = 1; echo <= 2; echo++)
+                {
+                    float offset = -direction * (12f + echo * 11f);
+                    float alpha = fade / echo;
+                    DrawLine(anchor, new Vector2(offset, -51f),
+                        new Vector2(offset - direction * 8f, -14f),
+                        7f, ScaleAlpha(shadow, alpha), flip);
+                    DrawLine(anchor, new Vector2(offset - 5f, -35f),
+                        new Vector2(offset + direction * 13f, -31f),
+                        3f, new Color(104, 47, 130,
+                            (int)(65f * alpha)), flip);
+                }
+                DrawLine(anchor, new Vector2(-direction * 34f, -3f),
+                    new Vector2(direction * 8f, -3f), 2f,
+                    new Color(57, 18, 71, (int)(125f *
+                        MathF.Sin(progress * MathHelper.Pi))), flip);
+            }
+            else if (stage is 4 or 5)
+            {
+                float rupture = 1f - Math.Clamp(progress / .72f, 0f, 1f);
+                float side = stage == 4 ? -1f : 1f;
+                DrawLine(anchor, new Vector2(side * 4f, -4f),
+                    new Vector2(side * 16f, -58f), 8f,
+                    new Color(18, 5, 24, (int)(175f * rupture)), flip);
+                DrawLine(anchor, new Vector2(side * 6f, -5f),
+                    new Vector2(side * 17f, -56f), 2f,
+                    new Color(135, 62, 169, (int)(155f * rupture)), flip);
+                for (int shard = 0; shard < 3; shard++)
+                {
+                    float y = -13f - shard * 13f;
+                    DrawLine(anchor,
+                        new Vector2(side * (8f + progress * 8f), y),
+                        new Vector2(side * (15f + progress * 14f), y - 4f),
+                        2f, new Color(48, 14, 60,
+                            (int)(105f * rupture)), flip);
+                }
+            }
+            else if (stage == 6)
+            {
+                float quiet = 1f - Math.Clamp(progress / .34f, 0f, 1f);
+                DrawLine(anchor, new Vector2(-15f, -3f),
+                    new Vector2(15f, -3f), 3f,
+                    new Color(35, 10, 44, (int)(115f * quiet)), flip);
+            }
+            else if (stage == 7)
+            {
+                float catchup = 1f - progress;
+                float offset = -direction * (9f + catchup * 16f);
+                DrawLine(anchor, new Vector2(offset, -49f),
+                    new Vector2(offset + direction * 5f, -13f), 7f,
+                    new Color(43, 14, 54, (int)(100f * catchup)), flip);
+                DrawLine(anchor, new Vector2(-18f, -2f),
+                    new Vector2(18f, -2f), 1f,
+                    new Color(95, 47, 112, (int)(75f * catchup)), flip);
+            }
+            return;
+        }
+        if (effect == WeaponTechniqueEffect.ScytheShadowSlip)
+        {
+            float progress = Math.Clamp(player.Combat.StateElapsed /
+                MathF.Max(.01f, player.Combat.CurrentAttack.TotalTime), 0f, 1f);
+            float launch = 1f - Math.Clamp(progress / .28f, 0f, 1f);
+            float settle = Math.Clamp((progress - .70f) / .30f, 0f, 1f);
+            Color seam = new(69, 27, 88,
+                (int)(100f * MathF.Sin(progress * MathHelper.Pi)));
+            DrawLine(anchor, new Vector2(-direction * (12f + progress * 20f), -3f),
+                new Vector2(direction * 7f, -3f), 2f, seam, flip);
+            DrawLine(anchor, new Vector2(-direction * 15f, -2f),
+                new Vector2(-direction * 3f, -6f), 2f,
+                new Color(42, 15, 52, (int)(120f * launch)), flip);
+            if (settle > 0f)
+            {
+                float width = 5f + settle * 10f;
+                DrawLine(anchor, new Vector2(-width, -2f),
+                    new Vector2(width, -2f), 1f,
+                    new Color(91, 45, 112, (int)(75f * (1f - settle))), flip);
+            }
+
+            float perfect = player.Combat.ScythePerfectDodgeVisualRatio;
+            if (perfect > 0f)
+            {
+                float flash = MathF.Sin((1f - perfect) * MathHelper.Pi);
+                DrawLine(anchor, new Vector2(-direction * 6f, -57f),
+                    new Vector2(direction * 12f, -19f), 2f,
+                    new Color(174, 113, 207, (int)(135f * flash)), flip);
+                DrawLine(anchor, new Vector2(-direction * 20f, -34f),
+                    new Vector2(direction * 18f, -34f), 1f,
+                    new Color(76, 29, 94, (int)(95f * perfect)), flip);
+            }
+        }
+        if (effect == WeaponTechniqueEffect.ScytheShadowPass)
+        {
+            float progress = Math.Clamp(player.Combat.StateElapsed /
+                MathF.Max(.01f, player.Combat.CurrentAttack.TotalTime), 0f, 1f);
+            float trail = MathF.Sin(progress * MathHelper.Pi);
+            DrawLine(anchor, new Vector2(-direction * (20f + progress * 24f), -4f),
+                new Vector2(direction * 5f, -4f), 2f,
+                new Color(54, 18, 69, (int)(115f * trail)), flip);
+            DrawLine(anchor, new Vector2(-direction * (16f + progress * 10f), -7f),
+                new Vector2(-direction * 2f, -4f), 1f,
+                new Color(125, 62, 160, (int)(90f * trail)), flip);
+        }
+        if (effect == WeaponTechniqueEffect.ScythePhantomCross &&
+            player.Combat.IsAttackActive)
+        {
+            float fade = 1f - Math.Clamp(
+                player.Combat.StateElapsed /
+                    MathF.Max(.12f, player.Combat.CurrentAttack.TotalTime),
+                0f, 1f);
+            float offset = -MathF.Sign(pose.Step == 0f ? direction : pose.Step) *
+                (10f + fade * 13f);
+            Color shadow = new(64, 20, 83, (int)(72f * fade));
+            Color edge = new(116, 39, 125, (int)(46f * fade));
+            DrawLine(anchor, new Vector2(offset, -51f),
+                new Vector2(offset - 3f, -14f), 8f, shadow, flip);
+            DrawLine(anchor, new Vector2(offset - 6f, -36f),
+                new Vector2(offset + 13f, -31f), 4f, shadow, flip);
+            DrawLine(anchor, new Vector2(offset - 7f, -10f),
+                new Vector2(offset + 8f, -10f), 2f, edge, flip);
+        }
+    }
+
+    private void DrawScytheMovementAfterimage(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose)
+    {
+        if (player.WeaponFamily != WeaponFamily.Scythe)
+            return;
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        float perfect = player.Combat.ScythePerfectDodgeVisualRatio;
+        bool movement = effect is WeaponTechniqueEffect.ScytheShadowSlip or
+            WeaponTechniqueEffect.ScytheShadowPass;
+        if (!movement && perfect <= 0f)
+            return;
+
+        float direction = player.Combat.ScytheMoveDirection;
+        if (MathF.Abs(direction) < .1f)
+            direction = flip ? -1f : 1f;
+        float fade = movement && player.Combat.CurrentAttack != null
+            ? 1f - Math.Clamp(player.Combat.StateElapsed /
+                MathF.Max(.12f, player.Combat.CurrentAttack.TotalTime), 0f, 1f)
+            : 0f;
+        float alpha = Math.Clamp(.18f + fade * .25f + perfect * .22f, 0f, .52f);
+        Vector2 echoAnchor = anchor - new Vector2(
+            direction * (16f + fade * 9f + perfect * 5f), 0f);
+        Color body = ScaleAlpha(new Color(40, 16, 50, 210), alpha);
+        Color edge = ScaleAlpha(new Color(117, 62, 146, 190), alpha * .72f);
+        float stretch = direction * (5f + fade * 5f);
+        float bodyX = pose.Lean;
+        DrawLine(echoAnchor, new Vector2(bodyX - stretch, pose.Crouch - 50f),
+            new Vector2(bodyX, pose.Crouch - 19f), 10f, body, flip);
+        DrawBox(echoAnchor, bodyX - 7f - stretch * .3f,
+            pose.Crouch - 65f, 14f + MathF.Abs(stretch) * .3f, 15f,
+            body, flip);
+        DrawLine(echoAnchor, new Vector2(-8f - stretch * .25f, -19f),
+            new Vector2(-13f - stretch, -1f), 5f, body, flip);
+        DrawLine(echoAnchor, new Vector2(8f - stretch * .25f, -19f),
+            new Vector2(13f - stretch, -1f), 5f, body, flip);
+        Vector2 hand = new(pose.SwordHandX, pose.SwordHandY);
+        Vector2 shaft = new(MathF.Cos(pose.SwordAngle),
+            MathF.Sin(pose.SwordAngle));
+        DrawLine(echoAnchor, hand - shaft * 17f,
+            hand + shaft * (pose.SwordLength - 10f), 3f, body, flip);
+        Vector2 tip = GetScytheBladeTip(hand, pose.SwordAngle, pose.SwordLength);
+        DrawLine(echoAnchor, hand + shaft * (pose.SwordLength - 18f),
+            tip, 2f, edge, flip);
+
+        if (perfect > 0f)
+        {
+            Vector2 sourceDelta = player.Combat.ScythePerfectDodgeSource -
+                player.Position;
+            if (sourceDelta.LengthSquared() > .01f)
+                sourceDelta.Normalize();
+            else
+                sourceDelta = new Vector2(-direction, 0f);
+            Vector2 miss = new(sourceDelta.X * 18f, sourceDelta.Y * 8f);
+            DrawLine(echoAnchor, new Vector2(-miss.X, -38f - miss.Y),
+                new Vector2(miss.X, -38f + miss.Y), 1f,
+                ScaleAlpha(new Color(183, 132, 205), perfect * .55f), flip);
         }
     }
 
@@ -1943,6 +2480,20 @@ public sealed class PlayerSpriteRenderer
                 pose.Lean += 2f;
                 pose.ShieldX = -30f;
                 break;
+
+            case WeaponFamily.Scythe:
+                pose.SwordLength = 58f;
+                pose.SwordHandX = 13f;
+                pose.SwordHandY = -35f;
+                pose.OffHandX = -1f;
+                pose.OffHandY = -29f;
+                pose.FrontElbowX = 22f;
+                pose.FrontElbowY = -38f;
+                pose.RearElbowX = -10f;
+                pose.RearElbowY = -34f;
+                if (!isAttack)
+                    pose.SwordAngle = -.96f;
+                break;
         }
     }
 
@@ -3036,6 +3587,15 @@ public sealed class PlayerSpriteRenderer
             return;
         }
 
+        if (player.WeaponFamily == WeaponFamily.Scythe)
+        {
+            DrawScytheArm(player, anchor, flip, shoulder,
+                new Vector2(pose.RearElbowX, pose.RearElbowY),
+                new Vector2(pose.OffHandX, pose.OffHandY),
+                front: false);
+            return;
+        }
+
         if (!player.UsesShield)
         {
             Vector2 direction = new(
@@ -3416,6 +3976,14 @@ public sealed class PlayerSpriteRenderer
                 front: true);
             return;
         }
+        if (player.WeaponFamily == WeaponFamily.Scythe)
+        {
+            DrawScytheArm(player, anchor, flip, shoulder,
+                new Vector2(pose.FrontElbowX, pose.FrontElbowY),
+                hand,
+                front: true);
+            return;
+        }
         DrawLine(anchor, shoulder, hand, 8f, Outline, flip);
         DrawLine(anchor, shoulder, hand, 5f, Tint(Leather, player), flip);
         DrawLine(
@@ -3446,6 +4014,26 @@ public sealed class PlayerSpriteRenderer
     {
         Color sleeve = Tint(new Color(18, 19, 24), player);
         Color bracer = Tint(new Color(87, 65, 27), player);
+        Color skin = Tint(GetSkinColor(player.Appearance.SkinTone), player);
+        DrawLine(anchor, shoulder, elbow, front ? 9f : 8f, Outline, flip);
+        DrawLine(anchor, elbow, hand, front ? 8f : 7f, Outline, flip);
+        DrawLine(anchor, shoulder, elbow, front ? 6f : 5f, sleeve, flip);
+        DrawLine(anchor, elbow, hand, front ? 5f : 4f, bracer, flip);
+        DrawBox(anchor, hand.X - 3f, hand.Y - 3f, 7f, 7f, Outline, flip);
+        DrawBox(anchor, hand.X - 2f, hand.Y - 2f, 5f, 5f, skin, flip);
+    }
+
+    private void DrawScytheArm(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Vector2 shoulder,
+        Vector2 elbow,
+        Vector2 hand,
+        bool front)
+    {
+        Color sleeve = Tint(ClothLight, player);
+        Color bracer = Tint(new Color(59, 42, 67), player);
         Color skin = Tint(GetSkinColor(player.Appearance.SkinTone), player);
         DrawLine(anchor, shoulder, elbow, front ? 9f : 8f, Outline, flip);
         DrawLine(anchor, elbow, hand, front ? 8f : 7f, Outline, flip);
@@ -3622,6 +4210,28 @@ public sealed class PlayerSpriteRenderer
         if (player.WeaponFamily == WeaponFamily.ChainFlail)
         {
             DrawChainFlail(player, anchor, flip, hand, handleEnd);
+            return;
+        }
+
+        if (player.WeaponFamily == WeaponFamily.Scythe)
+        {
+            Vector2 shaftEnd = hand + direction * pose.SwordLength;
+            Vector2 rearHand = new(pose.OffHandX, pose.OffHandY);
+            Vector2 gripEnd = rearHand - direction * 8f;
+            Color shadowSteel = player.Combat.IsUmbralAttached
+                ? new Color(104, 52, 151, 175)
+                : new Color(82, 61, 103);
+            DrawLine(anchor, gripEnd, shaftEnd, 6f, Outline, flip);
+            DrawLine(anchor, gripEnd, shaftEnd, 3f,
+                Tint(new Color(58, 40, 67), player), flip);
+            Vector2 neck = shaftEnd - direction * 3f;
+            Vector2 curveMid = neck + perpendicular * 13f - direction * 4f;
+            Vector2 tip = neck + perpendicular * 27f - direction * 18f;
+            DrawLine(anchor, neck, curveMid, 10f, Outline, flip);
+            DrawLine(anchor, curveMid, tip, 8f, Outline, flip);
+            DrawLine(anchor, neck, curveMid, 6f, shadowSteel, flip);
+            DrawLine(anchor, curveMid, tip, 4f,
+                new Color(159, 105, 193), flip);
             return;
         }
 
@@ -3987,6 +4597,12 @@ public sealed class PlayerSpriteRenderer
             return;
         }
 
+        if (player.WeaponFamily == WeaponFamily.Scythe)
+        {
+            DrawScytheBladeTrail(player, anchor, flip, pose, attack);
+            return;
+        }
+
         if (player.WeaponFamily == WeaponFamily.Spear &&
             attack.HitboxShape == AttackHitboxShape.Thrust)
         {
@@ -4140,6 +4756,194 @@ public sealed class PlayerSpriteRenderer
                     ScaleAlpha(SlashCore, fade * 0.7f),
                     flip);
             }
+        }
+    }
+
+    private void DrawScytheBladeTrail(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose,
+        AttackDefinition attack)
+    {
+        WeaponTechniqueEffect effect = player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+        {
+            DrawScytheUltimateBladeTrail(player, anchor, flip, pose, attack);
+            return;
+        }
+        if (effect == WeaponTechniqueEffect.ScytheShadowSlip)
+            return;
+
+        int stage = player.Combat.TechniqueStageIndex;
+        GetScytheMotionProfile(effect, stage,
+            out float startAngle, out float endAngle, out float settleAngle,
+            out _, out _, out _);
+        float motionTime = attack.ActiveTime + MathF.Min(.16f, attack.RecoveryTime);
+        float elapsed = player.Combat.StateElapsed - attack.StartupTime;
+        if (elapsed < 0f || elapsed > motionTime)
+            return;
+
+        float head = Math.Clamp(elapsed / MathF.Max(.01f, motionTime), 0f, 1f);
+        float span = effect == WeaponTechniqueEffect.ScytheDeathSpiral
+            ? .25f
+            : stage >= 4 || attack.Kind == AttackKind.Heavy ? .36f : .29f;
+        float tail = MathF.Max(0f, head - span);
+        int segments = stage >= 4 || attack.Kind == AttackKind.Heavy ? 12 : 9;
+        float fade = head < .12f
+            ? head / .12f
+            : 1f - Math.Clamp((head - .78f) / .22f, 0f, 1f);
+        Vector2 grip = new(pose.SwordHandX, pose.SwordHandY);
+        bool strong = attack.Kind == AttackKind.Heavy ||
+            effect == WeaponTechniqueEffect.ScytheReapersDance && stage >= 4 ||
+            effect == WeaponTechniqueEffect.ScytheAbyssalRequiem && stage >= 4 ||
+            effect == WeaponTechniqueEffect.ScytheEclipseWaltz && stage == 4;
+
+        bool shadowEnhanced = effect is
+            WeaponTechniqueEffect.ScytheWraithCut or
+            WeaponTechniqueEffect.ScytheShadowPass;
+        if (shadowEnhanced)
+        {
+            float delayedHead = MathF.Max(0f, head - .075f);
+            float delayedTail = MathF.Max(0f, delayedHead - span * .82f);
+            Vector2 shadowPrevious = GetScytheBladeTip(grip,
+                EvaluateScytheTrailAngle(startAngle, endAngle, settleAngle,
+                    delayedTail), pose.SwordLength) + new Vector2(-3f, 2f);
+            for (int index = 1; index <= segments; index++)
+            {
+                float sample = MathHelper.Lerp(delayedTail, delayedHead,
+                    index / (float)segments);
+                Vector2 next = GetScytheBladeTip(grip,
+                    EvaluateScytheTrailAngle(startAngle, endAngle,
+                        settleAngle, sample), pose.SwordLength) +
+                    new Vector2(-3f, 2f);
+                float taper = MathF.Sin(index / (float)segments *
+                    MathHelper.Pi);
+                DrawLine(anchor, shadowPrevious, next, 3f + taper * 2f,
+                    ScaleAlpha(new Color(31, 8, 40), fade * taper * .58f),
+                    flip);
+                shadowPrevious = next;
+            }
+        }
+
+        Vector2 previous = GetScytheBladeTip(
+            grip,
+            EvaluateScytheTrailAngle(startAngle, endAngle, settleAngle, tail),
+            pose.SwordLength);
+        for (int index = 1; index <= segments; index++)
+        {
+            float local = index / (float)segments;
+            float sample = MathHelper.Lerp(tail, head, local);
+            float angle = EvaluateScytheTrailAngle(
+                startAngle, endAngle, settleAngle, sample);
+            Vector2 next = GetScytheBladeTip(grip, angle, pose.SwordLength);
+            float taper = MathF.Sin(local * MathHelper.Pi);
+            float alpha = fade * (.18f + taper * .72f) * local;
+            DrawLine(anchor, previous, next, 4f + taper * (strong ? 2f : 1f),
+                ScaleAlpha(new Color(24, 8, 31), alpha * .72f), flip);
+            DrawLine(anchor, previous, next, 1.5f + taper * (strong ? 1.2f : .6f),
+                ScaleAlpha(new Color(153, 72, 205), alpha), flip);
+            if (strong && local > .55f)
+                DrawLine(anchor, previous, next, 1f,
+                    ScaleAlpha(new Color(151, 42, 62), alpha * .52f), flip);
+            previous = next;
+        }
+    }
+
+    private static float EvaluateScytheTrailAngle(
+        float start,
+        float end,
+        float settle,
+        float progress)
+    {
+        const float strikePortion = .68f;
+        if (progress <= strikePortion)
+        {
+            float strike = MathHelper.SmoothStep(
+                0f, 1f, progress / strikePortion);
+            return MathHelper.Lerp(start, end, strike);
+        }
+        float recovery = MathHelper.SmoothStep(
+            0f, 1f, (progress - strikePortion) / (1f - strikePortion));
+        float travelSign = MathF.Sign(end - start);
+        return MathHelper.Lerp(end, settle, recovery) +
+            travelSign * .18f * MathF.Sin(recovery * MathHelper.Pi);
+    }
+
+    private static Vector2 GetScytheBladeTip(
+        Vector2 grip,
+        float angle,
+        float shaftLength)
+    {
+        Vector2 direction = new(MathF.Cos(angle), MathF.Sin(angle));
+        Vector2 perpendicular = new(-direction.Y, direction.X);
+        return grip + direction * (shaftLength - 18f) + perpendicular * 27f;
+    }
+
+    private void DrawScytheUltimateBladeTrail(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose,
+        AttackDefinition attack)
+    {
+        int stage = player.Combat.TechniqueStageIndex;
+        if (stage is >= 1 and <= 3 or 7)
+            return;
+        (float start, float end, float settle) = stage switch
+        {
+            0 => (-.64f, -2.30f, -2.05f),
+            4 => (-2.52f, .68f, .96f),
+            5 => (.86f, -2.42f, -2.70f),
+            6 => (-2.28f, .82f, 1.06f),
+            _ => (pose.SwordAngle, pose.SwordAngle, pose.SwordAngle)
+        };
+        float elapsed = player.Combat.StateElapsed - attack.StartupTime;
+        float duration = attack.ActiveTime + MathF.Min(
+            stage == 6 ? .24f : .15f, attack.RecoveryTime);
+        if (elapsed < 0f || elapsed > duration)
+            return;
+
+        float head = Math.Clamp(elapsed / MathF.Max(.01f, duration), 0f, 1f);
+        float span = stage == 6 ? .52f : stage is 4 or 5 ? .38f : .28f;
+        float tail = MathF.Max(0f, head - span);
+        int segments = stage == 6 ? 18 : 12;
+        float fade = head < .10f
+            ? head / .10f
+            : 1f - Math.Clamp((head - .82f) / .18f, 0f, 1f);
+        float reachScale = stage == 6 ? 1.20f : 1f;
+        Vector2 grip = new(pose.SwordHandX, pose.SwordHandY);
+        Vector2 previous = grip +
+            (GetScytheBladeTip(grip,
+                EvaluateScytheTrailAngle(start, end, settle, tail),
+                pose.SwordLength) - grip) * reachScale;
+        Vector2 shadowPrevious = previous + new Vector2(-4f, 3f);
+        for (int index = 1; index <= segments; index++)
+        {
+            float local = index / (float)segments;
+            float sample = MathHelper.Lerp(tail, head, local);
+            Vector2 next = grip +
+                (GetScytheBladeTip(grip,
+                    EvaluateScytheTrailAngle(start, end, settle, sample),
+                    pose.SwordLength) - grip) * reachScale;
+            float taper = MathF.Sin(local * MathHelper.Pi);
+            Vector2 shadowNext = next + new Vector2(-4f, 3f);
+            DrawLine(anchor, shadowPrevious, shadowNext,
+                5f + taper * (stage == 6 ? 5f : 3f),
+                ScaleAlpha(new Color(24, 6, 31), fade * taper * .72f),
+                flip);
+            DrawLine(anchor, previous, next,
+                2f + taper * (stage == 6 ? 2.5f : 1.3f),
+                ScaleAlpha(new Color(166, 91, 202), fade * taper), flip);
+            if (stage == 6 && local > .58f)
+            {
+                DrawLine(anchor, previous, next, 1f,
+                    ScaleAlpha(new Color(151, 39, 61),
+                        fade * taper * .64f), flip);
+            }
+            previous = next;
+            shadowPrevious = shadowNext;
         }
     }
 
@@ -4941,6 +5745,21 @@ public sealed class PlayerSpriteRenderer
                 progress);
             return;
         }
+        if (techniqueEffect is
+            WeaponTechniqueEffect.ScytheReapersDance or
+            WeaponTechniqueEffect.ScytheDeathSpiral or
+            WeaponTechniqueEffect.ScythePhantomCross or
+            WeaponTechniqueEffect.ScytheEclipseWaltz or
+            WeaponTechniqueEffect.ScytheAbyssalRequiem or
+            WeaponTechniqueEffect.ScytheCrescentDive or
+            WeaponTechniqueEffect.ScytheShadowPass or
+            WeaponTechniqueEffect.ScytheWraithCut or
+            WeaponTechniqueEffect.ScytheUmbraDevourer)
+        {
+            DrawScytheHitImpact(anchor, flip, techniqueEffect,
+                techniqueStage, progress);
+            return;
+        }
         Color spark = ScaleAlpha(HitSpark, Math.Clamp(progress * 1.4f, 0f, 1f));
         Color glint = ScaleAlpha(SlashCore, Math.Clamp(progress * 1.2f, 0f, 1f));
 
@@ -4954,6 +5773,153 @@ public sealed class PlayerSpriteRenderer
             1f,
             spark,
             flip);
+    }
+
+    private void DrawScytheHitImpact(
+        Vector2 anchor,
+        bool flip,
+        WeaponTechniqueEffect effect,
+        int stage,
+        float remaining)
+    {
+        if (effect == WeaponTechniqueEffect.ScytheUmbraDevourer)
+        {
+            DrawScytheUltimateHitImpact(anchor, flip, stage, remaining);
+            return;
+        }
+        float expansion = 1f - remaining;
+        bool reverse = stage % 2 != 0;
+        bool strong = effect == WeaponTechniqueEffect.ScytheCrescentDive ||
+            effect == WeaponTechniqueEffect.ScytheWraithCut ||
+            effect == WeaponTechniqueEffect.ScytheReapersDance && stage >= 4 ||
+            effect == WeaponTechniqueEffect.ScytheDeathSpiral && stage == 5 ||
+            effect == WeaponTechniqueEffect.ScytheEclipseWaltz && stage == 4 ||
+            effect == WeaponTechniqueEffect.ScytheAbyssalRequiem && stage >= 4;
+        float reach = (strong ? 10f : 7f) + expansion * (strong ? 7f : 4f);
+        Vector2 slash = Vector2.Normalize(new Vector2(1f,
+            reverse ? -.62f : .62f));
+        Vector2 normal = new(-slash.Y, slash.X);
+        Color violet = ScaleAlpha(new Color(170, 82, 215), remaining);
+        Color shadow = ScaleAlpha(new Color(45, 15, 57), remaining * .82f);
+        Color crimson = ScaleAlpha(new Color(157, 45, 65),
+            remaining * (strong ? .68f : .26f));
+        bool shadowEnhanced = effect is
+            WeaponTechniqueEffect.ScytheWraithCut or
+            WeaponTechniqueEffect.ScytheShadowPass;
+        if (shadowEnhanced)
+        {
+            DrawLine(anchor, -slash * (reach + 3f) + normal * 3f,
+                slash * (reach - 1f) + normal * 3f, 3f,
+                ScaleAlpha(new Color(29, 8, 39), remaining * .76f), flip);
+            DrawLine(anchor, -slash * (reach * .45f) - normal * 5f,
+                -slash * (reach * .05f) + normal * 5f, 1f,
+                ScaleAlpha(new Color(102, 39, 127), remaining * .62f), flip);
+        }
+        DrawLine(anchor, -slash * reach, slash * reach, strong ? 4f : 3f,
+            shadow, flip);
+        DrawLine(anchor, -slash * (reach - 2f), slash * reach, 1.5f,
+            violet, flip);
+        DrawLine(anchor, -normal * (3f + expansion * 2f),
+            normal * (4f + expansion * 3f), 1f, crimson, flip);
+        if (strong)
+        {
+            DrawLine(anchor, normal * 2f,
+                normal * 2f + slash * (7f + expansion * 5f),
+                1f, crimson, flip);
+        }
+        if (effect == WeaponTechniqueEffect.ScytheShadowPass && stage == 1)
+        {
+            const int segments = 6;
+            float radius = 9f + expansion * 5f;
+            float start = -2.4f;
+            Vector2 previous = new(MathF.Cos(start) * radius,
+                MathF.Sin(start) * radius * .62f);
+            for (int index = 1; index <= segments; index++)
+            {
+                float angle = start + 4.4f * index / segments;
+                Vector2 next = new(MathF.Cos(angle) * radius,
+                    MathF.Sin(angle) * radius * .62f);
+                DrawLine(anchor, previous, next, 1.5f,
+                    ScaleAlpha(new Color(121, 54, 158), remaining * .72f),
+                    flip);
+                previous = next;
+            }
+        }
+    }
+
+    private void DrawScytheUltimateHitImpact(
+        Vector2 anchor,
+        bool flip,
+        int stage,
+        float remaining)
+    {
+        float expansion = 1f - remaining;
+        Color shadow = ScaleAlpha(new Color(25, 6, 32), remaining * .90f);
+        Color violet = ScaleAlpha(new Color(166, 86, 204), remaining);
+        Color crimson = ScaleAlpha(new Color(151, 38, 59), remaining * .78f);
+        if (stage is >= 1 and <= 3)
+        {
+            if (stage == 1)
+            {
+                DrawLine(anchor, new Vector2(-13f - expansion * 5f, 3f),
+                    new Vector2(13f + expansion * 5f, -4f), 5f, shadow, flip);
+                DrawLine(anchor, new Vector2(-12f, 2f),
+                    new Vector2(13f, -4f), 1.5f, violet, flip);
+            }
+            else if (stage == 2)
+            {
+                DrawLine(anchor, new Vector2(11f, -13f - expansion * 4f),
+                    new Vector2(-11f, 13f + expansion * 4f), 5f, shadow, flip);
+                DrawLine(anchor, new Vector2(10f, -12f),
+                    new Vector2(-11f, 13f), 1.5f, violet, flip);
+            }
+            else
+            {
+                const int segments = 9;
+                float radius = 9f + expansion * 8f;
+                Vector2 previous = new(radius, 0f);
+                for (int index = 1; index <= segments; index++)
+                {
+                    float angle = MathHelper.TwoPi * index / segments;
+                    Vector2 next = new(MathF.Cos(angle) * radius,
+                        MathF.Sin(angle) * radius * .72f);
+                    DrawLine(anchor, previous, next, 4f, shadow, flip);
+                    DrawLine(anchor, previous, next, 1f, violet, flip);
+                    previous = next;
+                }
+            }
+            return;
+        }
+
+        if (stage is 4 or 5)
+        {
+            Vector2 slash = Vector2.Normalize(new Vector2(1f,
+                stage == 4 ? -.82f : .82f));
+            float reach = 17f + expansion * 8f;
+            DrawLine(anchor, -slash * reach, slash * reach, 6f,
+                shadow, flip);
+            DrawLine(anchor, -slash * (reach - 2f), slash * reach, 2f,
+                violet, flip);
+            return;
+        }
+
+        if (stage == 6)
+        {
+            Vector2 slash = Vector2.Normalize(new Vector2(1f, -.70f));
+            Vector2 normal = new(-slash.Y, slash.X);
+            float reach = 25f + expansion * 16f;
+            DrawLine(anchor, -slash * reach, slash * reach, 9f,
+                shadow, flip);
+            DrawLine(anchor, -slash * (reach - 3f), slash * reach, 3f,
+                violet, flip);
+            DrawLine(anchor, -normal * (7f + expansion * 7f),
+                normal * (8f + expansion * 8f), 2f, crimson, flip);
+            DrawBox(anchor, -2f, -2f, 4f, 4f, crimson, flip);
+            return;
+        }
+
+        DrawLine(anchor, new Vector2(-9f, 0f), new Vector2(9f, 0f),
+            2f, violet, flip);
     }
 
     private void DrawAncientStaffHitImpact(

@@ -28,6 +28,7 @@ public static class WeaponFamilyExtensions
             WeaponFamily.ChainFlail => "Chain Flail",
             WeaponFamily.GreatSword => "Greatsword",
             WeaponFamily.AbyssRing => "Abyss Ring",
+            WeaponFamily.Scythe => "Scythe",
             _ => "Long Sword + Shield"
         };
     }
