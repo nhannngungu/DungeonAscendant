@@ -146,6 +146,23 @@ public sealed class GameSession
     private object _runicStrikeChainTarget;
     private int _runicStrikeChainHits;
     private int _arcaneDominionRuneSnapshot;
+    private object _ancientStaffCandidate;
+    private object _ancientStaffUltimateCandidate;
+    private object _ancientStaffLockedTarget;
+    private Vector2 _ancientStaffLockedCenter;
+    private int _ancientStaffTechniqueUseId = -1;
+    private int _ancientStaffWorldEffectAttackId = -1;
+    private int _ancientStaffMotionAttackId = -1;
+    private float _thunderSpiritTimeRemaining;
+    private float _thunderSpiritAttackCooldown;
+    private ThunderSpiritState _thunderSpiritState;
+    private Vector2 _thunderSpiritLastTarget;
+    private float _thunderSpiritSummonVisualRemaining;
+    private float _thunderSpiritDismissVisualRemaining;
+    private float _ancientStaffEffectTimeRemaining;
+    private float _ancientStaffEffectDuration;
+    private Vector2 _ancientStaffBlinkOrigin;
+    private float _ancientStaffBlinkTrailRemaining;
     private int _breakerWorldEffectAttackId = -1;
     private int _breakerImpactFeedbackAttackId = -1;
     private int _greatswordLandingImpactId = -1;
@@ -340,6 +357,60 @@ public sealed class GameSession
         GetCombatTargetBounds(_sovereignExecutionTarget);
     public bool IsSovereignExecutionSuppressed =>
         _sovereignExecutionSuppressed;
+    public ThunderSpiritState ThunderSpiritState => _thunderSpiritState;
+    public float ThunderSpiritTimeRemaining => _thunderSpiritTimeRemaining;
+    public Vector2 ThunderSpiritPosition => Player == null
+        ? Vector2.Zero
+        : Player.Position + new Vector2(
+            Player.Facing == FacingDirection.Left ? 38f : -38f,
+            -54f);
+    public Vector2 ThunderSpiritLastTarget => _thunderSpiritLastTarget;
+    public bool IsThunderSpiritVisualVisible =>
+        _thunderSpiritState != ThunderSpiritState.Dormant ||
+        _thunderSpiritDismissVisualRemaining > 0f;
+    public float ThunderSpiritSummonVisualRatio => Math.Clamp(
+        1f - _thunderSpiritSummonVisualRemaining / .62f,
+        0f,
+        1f);
+    public float ThunderSpiritDismissVisualRatio => Math.Clamp(
+        _thunderSpiritDismissVisualRemaining / .38f,
+        0f,
+        1f);
+    public bool IsAncientStaffUltimateActive =>
+        Player?.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate;
+    public int AncientStaffUltimateStage => IsAncientStaffUltimateActive
+        ? Player.Combat.TechniqueStageIndex
+        : -1;
+    public float AncientStaffUltimateStageRatio =>
+        IsAncientStaffUltimateActive && Player.Combat.CurrentAttack != null
+            ? Math.Clamp(
+                Player.Combat.StateElapsed /
+                    Math.Max(.01f, Player.Combat.CurrentAttack.TotalTime),
+                0f,
+                1f)
+            : 0f;
+    public Vector2 AncientStaffEffectCenter => _ancientStaffLockedCenter;
+    public float AncientStaffEffectRatio => _ancientStaffEffectDuration > 0f
+        ? Math.Clamp(
+            _ancientStaffEffectTimeRemaining / _ancientStaffEffectDuration,
+            0f,
+            1f)
+        : 0f;
+    public Vector2 AncientStaffBlinkOrigin => _ancientStaffBlinkOrigin;
+    public float AncientStaffBlinkTrailRatio => Math.Clamp(
+        _ancientStaffBlinkTrailRemaining / .30f,
+        0f,
+        1f);
+    public float AncientStaffRestraintVisualStrength =>
+        _ancientStaffLockedTarget switch
+        {
+            AncientTreant => .30f,
+            Enemy enemy when enemy.IsElite => .58f,
+            _ => 1f
+        };
+    public WeaponTechniqueEffect PlayerHitTechniqueEffect { get; private set; }
+    public int PlayerHitTechniqueStage { get; private set; } = -1;
     public string CurrentMapName => CurrentDungeon?.IsDemonLands == true
         ? Loc.Get("hud.map_demon_lands")
         : CurrentDungeon?.IsFallenCity == true
@@ -626,6 +697,7 @@ public sealed class GameSession
             ClearRangerUltimateLock();
             ClearGreatswordUltimateLock();
             ClearSovereignState();
+            ClearAncientStaffState();
             RefreshInventoryView();
             RestoreActiveTabSelection();
             ClampInventorySelection();
@@ -641,6 +713,7 @@ public sealed class GameSession
             ClearRangerUltimateLock();
             ClearGreatswordUltimateLock();
             ClearSovereignState();
+            ClearAncientStaffState();
             PauseMenu.Begin();
             State = GameState.Paused;
             StoreInputStates(keyboardState, mouseState);
@@ -652,6 +725,7 @@ public sealed class GameSession
             ClearRangerUltimateLock();
             ClearGreatswordUltimateLock();
             ClearSovereignState();
+            ClearAncientStaffState();
             Projectiles.Clear();
             ClearBreakerEffects();
             RootHazards.Clear();
@@ -685,6 +759,7 @@ public sealed class GameSession
         UpdateRecentDuelistDangerZone(elapsedSeconds);
         GroundRunes.Update(elapsedSeconds);
         UpdateSpellbladeRuneNetwork();
+        UpdateAncientStaffCandidates();
         UpdateBreakerEffects(elapsedSeconds);
         _worldTierTransitionTimeRemaining = System.MathF.Max(
             0f,
@@ -702,6 +777,8 @@ public sealed class GameSession
         UpdateSovereignUltimateCandidate();
         Player.Combat.SetSovereignUltimateTargetAvailable(
             _sovereignUltimateCandidate != null);
+        Player.Combat.SetAncientStaffUltimateTargetAvailable(
+            _ancientStaffUltimateCandidate != null);
         bool entryFallWasActive = _mapEntryFallActive;
         GameTime playerCombatTime = IsSovereignExecutionActive
             ? ScaleGameTime(
@@ -716,6 +793,7 @@ public sealed class GameSession
         UpdateRangerUltimateLock();
         UpdateGreatswordUltimateLock();
         UpdateSovereignTargetLock();
+        UpdateAncientStaffTargetLock();
         GameTime cinematicWorldTime = ScaleGameTime(
             gameTime,
             MathF.Min(
@@ -723,7 +801,9 @@ public sealed class GameSession
                     Player.Combat.RangerUltimateWorldTimeScale,
                     Player.Combat.GreatswordUltimateWorldTimeScale),
                 MathF.Min(
-                    Player.Combat.SovereignUltimateWorldTimeScale,
+                    MathF.Min(
+                        Player.Combat.SovereignUltimateWorldTimeScale,
+                        Player.Combat.AncientStaffUltimateWorldTimeScale),
                     IsSovereignExecutionActive
                         ? AbyssRingTuning.ExecutionWorldTimeScale
                         : 1f)));
@@ -738,9 +818,11 @@ public sealed class GameSession
         UpdateRangerTechniqueMovement();
         UpdateGreatswordUltimateMovement(elapsedSeconds);
         UpdateSovereignTechniqueMovement();
+        UpdateAncientStaffTechniqueMovement();
         ResolvePerfectRiftCounter();
         SovereignPortals.Update(elapsedSeconds);
         UpdateRangerFocusPressure(elapsedSeconds);
+        UpdateAncientStaffRuntime(elapsedSeconds);
         if (Player.Combat.IsHitstopActive)
         {
             StoreInputStates(keyboardState, mouseState);
@@ -934,6 +1016,7 @@ public sealed class GameSession
             ClearRangerUltimateLock();
             ClearGreatswordUltimateLock();
             ClearSovereignState();
+            ClearAncientStaffState();
             Projectiles.Clear();
             GroundRunes.Clear();
             ClearBreakerEffects();
@@ -1384,6 +1467,7 @@ public sealed class GameSession
         ClearRangerUltimateLock();
         ClearGreatswordUltimateLock();
         ClearSovereignState();
+        ClearAncientStaffState();
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
@@ -1905,9 +1989,11 @@ public sealed class GameSession
 
     private void InitializeDungeonState()
     {
+        Player.Combat.CancelActions(restoreStamina: false);
         ClearRangerUltimateLock();
         ClearGreatswordUltimateLock();
         ClearSovereignState();
+        ClearAncientStaffState();
         Player.ClearTemporaryStatus();
         _playerAttackHits.Clear();
         _trackedPlayerAttackId = -1;
@@ -2432,6 +2518,69 @@ public sealed class GameSession
             return;
         }
 
+        if (IsAncientStaffUltimateActive)
+        {
+            float intro = Player.Combat.AncientStaffUltimateCinematicRatio;
+            int stage = AncientStaffUltimateStage;
+            float returnEase = stage == 9
+                ? MathHelper.SmoothStep(
+                    0f,
+                    1f,
+                    AncientStaffUltimateStageRatio)
+                : 0f;
+            float focus = intro > 0f
+                ? MathHelper.SmoothStep(0f, 1f, intro)
+                : 1f;
+            float phaseZoom = stage switch
+            {
+                0 => 1.12f,
+                1 => 1.08f,
+                2 => 1.10f,
+                >= 3 and <= 7 => 1.11f,
+                8 => MathHelper.Lerp(1.12f, 1.28f,
+                    MathHelper.SmoothStep(0f, 1f,
+                        AncientStaffUltimateStageRatio)),
+                9 => 1f,
+                _ => AncientStaffTuning.UltimateCameraZoom
+            };
+            float staffZoom = intro > 0f
+                ? MathHelper.Lerp(1f,
+                    AncientStaffTuning.UltimateCameraZoom,
+                    focus)
+                : MathHelper.Lerp(phaseZoom, 1f, returnEase);
+            float centerWeight = stage switch
+            {
+                0 => .54f,
+                1 => .62f,
+                2 => .69f,
+                >= 3 and <= 7 => .64f,
+                8 => .68f,
+                9 => .58f * (1f - returnEase),
+                _ => .48f
+            };
+            Vector2 staffTarget = Vector2.Lerp(
+                Player.Position,
+                _ancientStaffLockedCenter,
+                centerWeight * focus);
+            float verticalFraming = stage switch
+            {
+                1 => -22f,
+                2 => -58f,
+                >= 3 and <= 7 => -50f,
+                8 => -72f,
+                _ => 0f
+            };
+            staffTarget.Y += verticalFraming * (1f - returnEase);
+            Camera.SetCinematicZoom(staffZoom, elapsedSeconds);
+            Camera.Follow(
+                staffTarget,
+                Player.Facing,
+                CurrentDungeon.WorldBounds,
+                elapsedSeconds,
+                stage is >= 2 and <= 8 ? .50f : .46f);
+            return;
+        }
+
         float rangerCinematic =
             Player.Combat.RangerUltimateCinematicRatio;
         float greatswordCinematic =
@@ -2878,9 +3027,11 @@ public sealed class GameSession
 
     private void ClearDeveloperTransientState()
     {
+        Player.Combat.CancelActions(restoreStamina: false);
         ClearRangerUltimateLock();
         ClearGreatswordUltimateLock();
         ClearSovereignState();
+        ClearAncientStaffState();
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
@@ -3403,7 +3554,7 @@ public sealed class GameSession
         for (int index = 0; index < Enemies.Enemies.Count; index++)
         {
             Enemy enemy = Enemies.Enemies[index];
-            if (!enemy.CanBeTargeted ||
+            if (!CanDamageAncientStaffEnemy(enemy) ||
                 !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
                 continue;
 
@@ -4008,8 +4159,11 @@ public sealed class GameSession
                 Rectangle target = GetCombatTargetBounds(
                     _sovereignUltimateLockedTarget);
                 if (!target.IsEmpty)
+                {
+                    SovereignPortals.Clear();
                     SovereignPortals.OpenGoldenGateArray(
                         target.Center.ToVector2());
+                }
             }
             if (!_sovereignSafeExitRequested &&
                 !IsSovereignTargetValid(_sovereignUltimateLockedTarget))
@@ -4017,7 +4171,7 @@ public sealed class GameSession
                 _sovereignSafeExitRequested = true;
                 Player.Combat.RequestSovereignSafeExit();
             }
-            else if (SovereignPortals.Portals.Count < 8)
+            else if (!SovereignPortals.HasUltimateConstellation)
             {
                 Rectangle target = GetCombatTargetBounds(
                     _sovereignUltimateLockedTarget);
@@ -4132,7 +4286,14 @@ public sealed class GameSession
                 SovereignPortalType.Strike,
                 strikeOrigin,
                 strikeExit,
-                Player.Combat.IsSovereignThroneActive ? 1.15f : .92f);
+                Player.Combat.IsSovereignThroneActive ? 1.15f : .92f,
+                portalStep: effect ==
+                        WeaponTechniqueEffect.SovereignGoldenCataclysm &&
+                    stage >= 1,
+                presentationSeconds: effect ==
+                        WeaponTechniqueEffect.SovereignGoldenCataclysm
+                    ? Player.Combat.CurrentAttack.TotalTime
+                    : 0f);
             if (effect == WeaponTechniqueEffect.SovereignMartialArts &&
                 stage == 6)
             {
@@ -4192,7 +4353,16 @@ public sealed class GameSession
             return;
         Vector2 start = Player.Position;
         SovereignPortals.OpenPair(
-            SovereignPortalType.Transit, start, safe, .9f);
+            SovereignPortalType.Transit,
+            start,
+            safe,
+            .9f,
+            portalStep: effect ==
+                WeaponTechniqueEffect.SovereignGoldenCataclysm,
+            presentationSeconds: effect ==
+                    WeaponTechniqueEffect.SovereignGoldenCataclysm
+                ? Player.Combat.CurrentAttack.TotalTime
+                : 0f);
         Player.MoveTo(safe);
         if (!target.IsEmpty)
             Player.FaceToward(target.Center.X);
@@ -4503,12 +4673,39 @@ public sealed class GameSession
 
     private void RegisterPlayerHitEffect(Rectangle targetBounds)
     {
-        RegisterPlayerHitEffect(PlayerAttackArea, targetBounds);
+        RegisterPlayerHitEffect(
+            PlayerAttackArea,
+            targetBounds,
+            Player.Combat.CurrentTechnique?.Effect ??
+                WeaponTechniqueEffect.None,
+            Player.Combat.TechniqueStageIndex);
+    }
+
+    private void RegisterPlayerHitEffect(
+        Rectangle targetBounds,
+        WeaponTechniqueEffect effect,
+        int stage)
+    {
+        RegisterPlayerHitEffect(PlayerAttackArea, targetBounds, effect, stage);
     }
 
     private void RegisterPlayerHitEffect(
         Rectangle hitArea,
         Rectangle targetBounds)
+    {
+        RegisterPlayerHitEffect(
+            hitArea,
+            targetBounds,
+            Player.Combat.CurrentTechnique?.Effect ??
+                WeaponTechniqueEffect.None,
+            Player.Combat.TechniqueStageIndex);
+    }
+
+    private void RegisterPlayerHitEffect(
+        Rectangle hitArea,
+        Rectangle targetBounds,
+        WeaponTechniqueEffect effect,
+        int stage)
     {
         Rectangle overlap = Rectangle.Intersect(
             hitArea,
@@ -4516,6 +4713,8 @@ public sealed class GameSession
         PlayerHitEffectPosition = overlap.Width > 0 && overlap.Height > 0
             ? overlap.Center.ToVector2()
             : targetBounds.Center.ToVector2();
+        PlayerHitTechniqueEffect = effect;
+        PlayerHitTechniqueStage = stage;
         PlayerHitEffectId++;
     }
 
@@ -4556,6 +4755,8 @@ public sealed class GameSession
         PrepareSpellbladeTechnique(technique);
         ProcessSpellbladeWorldEffect(technique);
         ProcessGreatswordWorldEffect(technique);
+        if (ProcessAncientStaffWorldEffect(technique))
+            return;
 
         if (Player.WeaponFamily == WeaponFamily.GreatSword &&
             technique?.Effect ==
@@ -5356,6 +5557,496 @@ public sealed class GameSession
         _breakerImpactFeedbackAttackId = -1;
     }
 
+    private void UpdateAncientStaffCandidates()
+    {
+        if (Player?.WeaponFamily != WeaponFamily.ArcaneWarStaff ||
+            CurrentDungeon == null || Player.Combat.IsFourthVeilActive)
+        {
+            _ancientStaffCandidate = null;
+            _ancientStaffUltimateCandidate = null;
+            return;
+        }
+
+        if (Player.Combat.CurrentTechnique != null)
+            return;
+
+        _ancientStaffCandidate = FindAncientStaffTarget(
+            AncientStaffTuning.RunePrisonRange,
+            preferHighestHealth: false);
+        _ancientStaffUltimateCandidate = FindAncientStaffTarget(
+            AncientStaffTuning.UltimateRange,
+            preferHighestHealth: true);
+    }
+
+    private object FindAncientStaffTarget(
+        float maximumRange,
+        bool preferHighestHealth)
+    {
+        float maximumDistance = maximumRange * maximumRange;
+        object best = null;
+        int bestHealth = -1;
+        float bestDistance = float.MaxValue;
+        int bestStableId = int.MaxValue;
+        for (int index = 0; index < Enemies.Enemies.Count; index++)
+        {
+            Enemy enemy = Enemies.Enemies[index];
+            if (!enemy.CanBeTargeted ||
+                !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
+                continue;
+            float distance = Vector2.DistanceSquared(
+                Player.Position,
+                enemy.Position);
+            if (distance > maximumDistance)
+                continue;
+            bool better = preferHighestHealth
+                ? IsBetterRangerUltimateTarget(
+                    enemy.MaxHealth,
+                    distance,
+                    index,
+                    bestHealth,
+                    bestDistance,
+                    bestStableId)
+                : distance < bestDistance;
+            if (!better)
+                continue;
+            best = enemy;
+            bestHealth = enemy.MaxHealth;
+            bestDistance = distance;
+            bestStableId = index;
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true && Boss.IsActivated &&
+            !Boss.IsPhaseTransitioning)
+        {
+            float distance = Vector2.DistanceSquared(
+                Player.Position,
+                Boss.Position);
+            int stableId = Enemies.Enemies.Count;
+            bool better = distance <= maximumDistance &&
+                (preferHighestHealth
+                    ? IsBetterRangerUltimateTarget(
+                        Boss.MaxHealth,
+                        distance,
+                        stableId,
+                        bestHealth,
+                        bestDistance,
+                        bestStableId)
+                    : distance < bestDistance);
+            if (better)
+                best = Boss;
+        }
+        return best;
+    }
+
+    private void UpdateAncientStaffTargetLock()
+    {
+        if (Player?.WeaponFamily != WeaponFamily.ArcaneWarStaff)
+        {
+            ClearAncientStaffState();
+            return;
+        }
+
+        WeaponTechnique technique = Player.Combat.CurrentTechnique;
+        if (technique == null)
+        {
+            bool hadStaffLock = _ancientStaffTechniqueUseId >= 0 ||
+                _ancientStaffLockedTarget != null;
+            _ancientStaffLockedTarget = null;
+            _ancientStaffTechniqueUseId = -1;
+            if (hadStaffLock)
+                Camera.ResetCinematicZoom();
+            return;
+        }
+        if (_ancientStaffTechniqueUseId ==
+            Player.Combat.CurrentTechniqueUseId)
+        {
+            if (technique.Effect ==
+                    WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate &&
+                (IsAncientStaffTargetTransitioning(_ancientStaffLockedTarget) ||
+                    IsBossTransitioningInAncientStaffArea()))
+            {
+                Player.Combat.CancelActions();
+                ClearAncientStaffState();
+            }
+            else if (technique.Effect ==
+                    WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate &&
+                Player.Combat.State != CombatState.ChargingHeavy &&
+                Player.Combat.TechniqueStageIndex < 9 &&
+                !HasAncientStaffTargetsInArea())
+            {
+                Player.Combat.RequestAncientStaffUltimateReturn();
+            }
+            return;
+        }
+
+        _ancientStaffTechniqueUseId = Player.Combat.CurrentTechniqueUseId;
+        _ancientStaffLockedTarget = technique.Effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate
+            ? _ancientStaffUltimateCandidate
+            : _ancientStaffCandidate;
+        Rectangle bounds = GetCombatTargetBounds(_ancientStaffLockedTarget);
+        _ancientStaffLockedCenter = bounds.IsEmpty
+            ? Player.Position
+            : bounds.Center.ToVector2();
+    }
+
+    private void UpdateAncientStaffTechniqueMovement()
+    {
+        if (Player?.WeaponFamily != WeaponFamily.ArcaneWarStaff ||
+            Player.Combat.CurrentAttack == null ||
+            _ancientStaffMotionAttackId == Player.Combat.AttackId)
+            return;
+        _ancientStaffMotionAttackId = Player.Combat.AttackId;
+        if (Player.Combat.CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.AncientStaffBlinkCast)
+            return;
+
+        float direction = Player.Facing == FacingDirection.Left ? -1f : 1f;
+        _ancientStaffBlinkOrigin = Player.Position;
+        _ancientStaffBlinkTrailRemaining = .30f;
+        Player.MoveThroughCombatTechnique(
+            Player.Position + new Vector2(
+                direction * AncientStaffTuning.BlinkDistance,
+                0f),
+            CurrentDungeon);
+    }
+
+    private bool ProcessAncientStaffWorldEffect(WeaponTechnique technique)
+    {
+        WeaponTechniqueEffect effect = technique?.Effect ??
+            WeaponTechniqueEffect.None;
+        bool staffEffect = effect is
+            WeaponTechniqueEffect.AncientStaffAegisWard or
+            WeaponTechniqueEffect.AncientStaffThunderSpirit or
+            WeaponTechniqueEffect.AncientStaffRunePrison or
+            WeaponTechniqueEffect.AncientStaffSpiritBastion or
+            WeaponTechniqueEffect.AncientStaffElderInvocation or
+            WeaponTechniqueEffect.AncientStaffAstralDescent or
+            WeaponTechniqueEffect.AncientStaffFourthVeil or
+            WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate;
+        if (!staffEffect)
+            return false;
+        if (_ancientStaffWorldEffectAttackId == Player.Combat.AttackId)
+            return true;
+
+        _ancientStaffWorldEffectAttackId = Player.Combat.AttackId;
+        int stage = Player.Combat.TechniqueStageIndex;
+        int damage = Player.Combat.CalculateDamage(Player.MeleeDamage);
+        float poise = Player.Combat.CalculatePoiseDamage();
+        float radius = 0f;
+        Vector2 center = Player.Position;
+
+        if (effect == WeaponTechniqueEffect.AncientStaffThunderSpirit)
+        {
+            _thunderSpiritTimeRemaining =
+                AncientStaffTuning.ThunderSpiritDurationSeconds;
+            _thunderSpiritAttackCooldown = .25f;
+            _thunderSpiritState = ThunderSpiritState.Active;
+            _thunderSpiritSummonVisualRemaining = .62f;
+            _thunderSpiritDismissVisualRemaining = 0f;
+            return true;
+        }
+        if (effect is WeaponTechniqueEffect.AncientStaffAegisWard or
+            WeaponTechniqueEffect.AncientStaffFourthVeil)
+            return true;
+
+        if (effect == WeaponTechniqueEffect.AncientStaffRunePrison)
+        {
+            center = _ancientStaffLockedCenter;
+            radius = AncientStaffTuning.RunePrisonRadius +
+                Player.Combat.ElderSigils * 8f;
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffSpiritBastion)
+        {
+            center = Player.Position;
+            radius = AncientStaffTuning.SpiritBastionRadius;
+            if (_thunderSpiritState == ThunderSpiritState.Dormant)
+                _thunderSpiritSummonVisualRemaining = .34f;
+            _thunderSpiritTimeRemaining = MathF.Max(
+                _thunderSpiritTimeRemaining,
+                AncientStaffTuning.ThunderSpiritDurationSeconds * .5f);
+            _thunderSpiritState = ThunderSpiritState.Empowered;
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffElderInvocation)
+        {
+            center = _ancientStaffLockedCenter;
+            radius = AncientStaffTuning.ElderInvocationRadius;
+            if (stage == 3 && Player.Combat.ElderSigils ==
+                    AncientStaffTuning.MaximumElderSigils)
+                damage = Math.Max(1, (int)MathF.Round(damage * 1.10f));
+            if (stage == 3 && _thunderSpiritState != ThunderSpiritState.Dormant)
+            {
+                _thunderSpiritState = ThunderSpiritState.Discharged;
+                _thunderSpiritTimeRemaining = MathF.Min(
+                    _thunderSpiritTimeRemaining,
+                    .45f);
+            }
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffAstralDescent)
+        {
+            center = Player.Position;
+            radius = stage == 0 ? 76f : 108f;
+        }
+        else if (effect ==
+            WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate)
+        {
+            center = _ancientStaffLockedCenter;
+            radius = AncientStaffTuning.UltimateRadius;
+        }
+
+        _ancientStaffEffectTimeRemaining = stage == 8 ? .58f : .34f;
+        _ancientStaffEffectDuration = _ancientStaffEffectTimeRemaining;
+        bool hit = ApplyAncientStaffAreaDamage(
+            center,
+            radius,
+            damage,
+            poise,
+            effect,
+            stage);
+        if (hit)
+            Player.Combat.RegisterSuccessfulHit();
+        if (effect ==
+            WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate)
+        {
+            float impactFeedback = stage switch
+            {
+                1 => 2.0f,
+                3 => 1.0f,
+                5 => 1.3f,
+                7 => 1.6f,
+                8 => 5.0f,
+                _ => 0f
+            };
+            if (impactFeedback > 0f)
+                Camera.AddImpactFeedback(impactFeedback);
+        }
+        return true;
+    }
+
+    private bool ApplyAncientStaffAreaDamage(
+        Vector2 center,
+        float radius,
+        int damage,
+        float poise,
+        WeaponTechniqueEffect effect,
+        int stage)
+    {
+        if (damage <= 0 && poise <= 0f)
+            return false;
+        bool hit = false;
+        float radiusSquared = radius * radius;
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (!CanDamageAncientStaffEnemy(enemy) ||
+                Vector2.DistanceSquared(center, enemy.Position) >
+                    radiusSquared)
+                continue;
+            enemy.ReceiveDamageFrom(damage, poise, Player.Position);
+            ApplyAncientStaffControl(enemy, effect, stage);
+            RegisterPlayerHitEffect(enemy.MeleeTargetBounds, effect, stage);
+            hit = true;
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true &&
+            !Boss.IsPhaseTransitioning &&
+            Vector2.DistanceSquared(center, Boss.Position) <= radiusSquared)
+        {
+            Boss.ReceiveDamage(damage, poise * .65f);
+            if (effect == WeaponTechniqueEffect.AncientStaffRunePrison)
+                Boss.ApplyArcaneSlow(.82f, .55f);
+            else if (effect ==
+                    WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate &&
+                stage is 1 or 2)
+                Boss.ApplyArcaneSlow(.88f, .40f);
+            RegisterPlayerHitEffect(Boss.Bounds, effect, stage);
+            hit = true;
+        }
+        return hit;
+    }
+
+    private static bool CanDamageAncientStaffEnemy(Enemy enemy)
+    {
+        if (enemy?.CanBeTargeted != true)
+            return false;
+        return enemy switch
+        {
+            CatacombEnemy catacomb => !catacomb.IsPhaseTransitioning,
+            FallenCityEnemy city => !city.IsKingPhaseTransitioning,
+            DemonLandsEnemy demon => demon.FrontierCombatState !=
+                DemonFrontierCombatState.GeneralPhaseTransition,
+            _ => true
+        };
+    }
+
+    private static bool IsAncientStaffTargetTransitioning(object target)
+    {
+        return target switch
+        {
+            AncientTreant boss => boss.IsPhaseTransitioning,
+            CatacombEnemy catacomb => catacomb.IsPhaseTransitioning,
+            FallenCityEnemy city => city.IsKingPhaseTransitioning,
+            DemonLandsEnemy demon => demon.FrontierCombatState ==
+                DemonFrontierCombatState.GeneralPhaseTransition,
+            _ => false
+        };
+    }
+
+    private bool IsBossTransitioningInAncientStaffArea()
+    {
+        return ShouldRenderBoss && Boss?.IsPhaseTransitioning == true &&
+            Vector2.DistanceSquared(
+                _ancientStaffLockedCenter,
+                Boss.Position) <= AncientStaffTuning.UltimateRadius *
+                    AncientStaffTuning.UltimateRadius;
+    }
+
+    private bool HasAncientStaffTargetsInArea()
+    {
+        float radiusSquared = AncientStaffTuning.UltimateRadius *
+            AncientStaffTuning.UltimateRadius;
+        foreach (Enemy enemy in Enemies.Enemies)
+        {
+            if (CanDamageAncientStaffEnemy(enemy) &&
+                Vector2.DistanceSquared(
+                    _ancientStaffLockedCenter,
+                    enemy.Position) <= radiusSquared)
+                return true;
+        }
+        return ShouldRenderBoss && Boss?.IsAlive == true &&
+            !Boss.IsPhaseTransitioning &&
+            Vector2.DistanceSquared(
+                _ancientStaffLockedCenter,
+                Boss.Position) <= radiusSquared;
+    }
+
+    private static void ApplyAncientStaffControl(
+        Enemy enemy,
+        WeaponTechniqueEffect effect,
+        int stage)
+    {
+        if (effect == WeaponTechniqueEffect.AncientStaffRunePrison &&
+            stage == 0)
+        {
+            enemy.ApplyControl(
+                enemy.IsElite ? .62f : .25f,
+                enemy.IsElite ? .65f : 1.25f);
+            if (!enemy.IsElite)
+                enemy.ApplyArcaneStun(.38f);
+        }
+        else if (effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate &&
+            stage == 1)
+        {
+            if (!enemy.IsElite && enemy.WeightClass != EnemyWeightClass.Heavy)
+                enemy.ApplyRaiderLaunch(-220f);
+            else
+                enemy.ApplyControl(.72f, .42f);
+        }
+        else if (effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate &&
+            stage == 2)
+        {
+            enemy.ApplyControl(enemy.IsElite ? .72f : .38f, .48f);
+        }
+    }
+
+    private void UpdateAncientStaffRuntime(float elapsedSeconds)
+    {
+        _ancientStaffEffectTimeRemaining = MathF.Max(
+            0f,
+            _ancientStaffEffectTimeRemaining - elapsedSeconds);
+        _ancientStaffBlinkTrailRemaining = MathF.Max(
+            0f,
+            _ancientStaffBlinkTrailRemaining - elapsedSeconds);
+        _thunderSpiritSummonVisualRemaining = MathF.Max(
+            0f,
+            _thunderSpiritSummonVisualRemaining - elapsedSeconds);
+        _thunderSpiritDismissVisualRemaining = MathF.Max(
+            0f,
+            _thunderSpiritDismissVisualRemaining - elapsedSeconds);
+        if (Player?.WeaponFamily != WeaponFamily.ArcaneWarStaff)
+            return;
+        if (!Player.IsAlive)
+        {
+            ClearAncientStaffState();
+            return;
+        }
+        if (_thunderSpiritTimeRemaining <= 0f)
+        {
+            _thunderSpiritState = ThunderSpiritState.Dormant;
+            return;
+        }
+
+        _thunderSpiritTimeRemaining = MathF.Max(
+            0f,
+            _thunderSpiritTimeRemaining - elapsedSeconds);
+        _thunderSpiritAttackCooldown -= elapsedSeconds;
+        if (_thunderSpiritTimeRemaining <= 0f)
+        {
+            _thunderSpiritState = ThunderSpiritState.Dormant;
+            _thunderSpiritDismissVisualRemaining = .38f;
+            return;
+        }
+        if (_thunderSpiritState == ThunderSpiritState.Discharged ||
+            _thunderSpiritAttackCooldown > 0f ||
+            Player.Combat.IsFourthVeilActive)
+            return;
+
+        object target = FindAncientStaffTarget(
+            AncientStaffTuning.ThunderSpiritRange,
+            preferHighestHealth: false);
+        Rectangle bounds = GetCombatTargetBounds(target);
+        if (bounds.IsEmpty)
+        {
+            _thunderSpiritAttackCooldown = .25f;
+            return;
+        }
+
+        _thunderSpiritLastTarget = bounds.Center.ToVector2();
+        int damage = Math.Max(1, (int)MathF.Round(
+            Player.MeleeDamage * (_thunderSpiritState ==
+                ThunderSpiritState.Empowered ? .34f : .24f)));
+        if (target is Enemy enemy && CanDamageAncientStaffEnemy(enemy))
+            enemy.ReceiveDamageFrom(damage, 10f, ThunderSpiritPosition);
+        else if (target is AncientTreant boss && boss.IsAlive &&
+            !boss.IsPhaseTransitioning)
+            boss.ReceiveDamage(damage, 6f);
+        else
+            return;
+        Player.Combat.Resources.AddElderSigil();
+        _ancientStaffEffectTimeRemaining = .18f;
+        _ancientStaffEffectDuration = .18f;
+        _thunderSpiritAttackCooldown =
+            AncientStaffTuning.ThunderSpiritAttackIntervalSeconds;
+    }
+
+    private void ClearAncientStaffState()
+    {
+        bool hadCameraState = _ancientStaffLockedTarget != null ||
+            _ancientStaffTechniqueUseId >= 0 ||
+            _ancientStaffEffectTimeRemaining > 0f;
+        _ancientStaffCandidate = null;
+        _ancientStaffUltimateCandidate = null;
+        _ancientStaffLockedTarget = null;
+        _ancientStaffLockedCenter = Vector2.Zero;
+        _ancientStaffTechniqueUseId = -1;
+        _ancientStaffWorldEffectAttackId = -1;
+        _ancientStaffMotionAttackId = -1;
+        _thunderSpiritTimeRemaining = 0f;
+        _thunderSpiritAttackCooldown = 0f;
+        _thunderSpiritState = ThunderSpiritState.Dormant;
+        _thunderSpiritLastTarget = Vector2.Zero;
+        _thunderSpiritSummonVisualRemaining = 0f;
+        _thunderSpiritDismissVisualRemaining = 0f;
+        _ancientStaffEffectTimeRemaining = 0f;
+        _ancientStaffEffectDuration = 0f;
+        _ancientStaffBlinkOrigin = Vector2.Zero;
+        _ancientStaffBlinkTrailRemaining = 0f;
+        Player?.Combat.SetAncientStaffUltimateTargetAvailable(false);
+        if (hadCameraState)
+            Camera?.ResetCinematicZoom();
+    }
+
     private void PrepareSpellbladeTechnique(WeaponTechnique technique)
     {
         if (Player.WeaponFamily != WeaponFamily.ArcaneWarStaff ||
@@ -6150,6 +6841,32 @@ public sealed class GameSession
                 RangerTuning.FallingStarMaximumPoiseBonus;
         }
 
+        if (effect == WeaponTechniqueEffect.AncientStaffArcaneBoltChain &&
+            Player.Combat.TechniqueStageIndex == 2)
+        {
+            for (int glyph = -1; glyph <= 1; glyph += 2)
+            {
+                Vector2 glyphDirection = Vector2.Normalize(new Vector2(
+                    direction.X,
+                    glyph * .075f));
+                Projectiles.SpawnPlayerProjectile(
+                    attack.Projectile,
+                    spawnPosition + new Vector2(0f, glyph * 7f),
+                    glyphDirection,
+                    Player.Combat.ProjectileSpeedMultiplier,
+                    damage,
+                    poiseDamage,
+                    Player.Combat.CalculateKnockback(),
+                    roomId,
+                    effect,
+                    Player.Combat.CurrentTechnique?.ResourceGainOnHit ?? 0,
+                    sourceAttackId: Player.Combat.AttackId,
+                    techniqueUseId: Player.Combat.CurrentTechniqueUseId,
+                    spreadArrowIndex: Player.Combat.TechniqueStageIndex);
+            }
+            return;
+        }
+
         Projectiles.SpawnPlayerProjectile(
             attack.Projectile,
             spawnPosition,
@@ -6173,6 +6890,11 @@ public sealed class GameSession
                 ? SpellbladeTuning.GetPlacementDistance(
                     Player.Combat.RunePlacementDistance)
                 : 0f,
+            spreadArrowIndex: effect is
+                    WeaponTechniqueEffect.AncientStaffArcaneBoltChain or
+                    WeaponTechniqueEffect.AncientStaffBlinkCast
+                ? Player.Combat.TechniqueStageIndex
+                : -1,
             lockedTarget: lockedTarget);
     }
 
@@ -6236,7 +6958,7 @@ public sealed class GameSession
                 focusRatioAtFire: focusRatio,
                 sourceAttackId: Player.Combat.AttackId,
                 techniqueUseId: Player.Combat.CurrentTechniqueUseId,
-                spreadArrowIndex: index);
+            spreadArrowIndex: index);
         }
     }
 
@@ -6279,6 +7001,8 @@ public sealed class GameSession
             foreach (Enemy enemy in Enemies.Enemies)
             {
                 if (!enemy.CanBeTargeted ||
+                    projectile.IsAncientStaffProjectile &&
+                        !CanDamageAncientStaffEnemy(enemy) ||
                     projectile.LockedTarget != null &&
                         !ReferenceEquals(projectile.LockedTarget, enemy) ||
                     projectile.HitEnemies.Contains(enemy) ||
@@ -6305,7 +7029,9 @@ public sealed class GameSession
                     projectile.HitEnemies.Add(enemy);
                     RegisterPlayerHitEffect(
                         projectile.SweptBounds,
-                        enemy.MeleeTargetBounds);
+                        enemy.MeleeTargetBounds,
+                        projectile.TechniqueEffect,
+                        projectile.SpreadArrowIndex);
                     int rangerDamage = CalculateRangerProjectileDamage(
                         projectile,
                         enemy.PhysicalDamageTakenMultiplier,
@@ -6333,6 +7059,39 @@ public sealed class GameSession
                         CurrentDungeon);
                     RecordPredatorFanHit(projectile, enemy);
                     RegisterRangerHit(projectile, enemy.Position, weakPoint);
+                    consumed = !AdvancePenetratingProjectile(projectile);
+                    if (consumed)
+                        break;
+                    continue;
+                }
+
+                if (projectile.IsAncientStaffProjectile)
+                {
+                    projectile.HitEnemies.Add(enemy);
+                    projectile.HasHitTarget = true;
+                    RegisterPlayerHitEffect(
+                        projectile.SweptBounds,
+                        enemy.MeleeTargetBounds,
+                        projectile.TechniqueEffect,
+                        projectile.SpreadArrowIndex);
+                    enemy.ReceiveDamageFrom(
+                        projectile.Damage,
+                        projectile.PoiseDamage,
+                        projectile.SourcePosition);
+                    Player.Combat.RegisterExternalHit(
+                        projectile.WeaponResourceGain);
+                    if (projectile.TechniqueEffect ==
+                        WeaponTechniqueEffect.AncientStaffBlinkCast)
+                    {
+                        ApplyAncientStaffAreaDamage(
+                            enemy.Position,
+                            42f,
+                            Math.Max(1, (int)MathF.Round(
+                                Player.MeleeDamage * .35f)),
+                            14f,
+                            projectile.TechniqueEffect,
+                            1);
+                    }
                     consumed = !AdvancePenetratingProjectile(projectile);
                     if (consumed)
                         break;
@@ -6391,6 +7150,8 @@ public sealed class GameSession
             }
 
             if (!consumed && ShouldRenderBoss && Boss.IsAlive &&
+                (!projectile.IsAncientStaffProjectile ||
+                    !Boss.IsPhaseTransitioning) &&
                 (projectile.LockedTarget == null ||
                     ReferenceEquals(projectile.LockedTarget, Boss)) &&
                 !projectile.HasHitBoss &&
@@ -6414,7 +7175,9 @@ public sealed class GameSession
                     projectile.HasHitBoss = true;
                     RegisterPlayerHitEffect(
                         projectile.SweptBounds,
-                        Boss.Bounds);
+                        Boss.Bounds,
+                        projectile.TechniqueEffect,
+                        projectile.SpreadArrowIndex);
                     int rangerDamage = CalculateRangerProjectileDamage(
                         projectile,
                         1f,
@@ -6436,6 +7199,34 @@ public sealed class GameSession
                         CurrentDungeon);
                     RecordPredatorBossFanHit(projectile);
                     RegisterRangerHit(projectile, Boss.Position, weakPoint);
+                    consumed = !AdvancePenetratingProjectile(projectile);
+                }
+                else if (projectile.IsAncientStaffProjectile)
+                {
+                    projectile.HasHitBoss = true;
+                    projectile.HasHitTarget = true;
+                    RegisterPlayerHitEffect(
+                        projectile.SweptBounds,
+                        Boss.Bounds,
+                        projectile.TechniqueEffect,
+                        projectile.SpreadArrowIndex);
+                    Boss.ReceiveDamage(
+                        projectile.Damage,
+                        projectile.PoiseDamage);
+                    Player.Combat.RegisterExternalHit(
+                        projectile.WeaponResourceGain);
+                    if (projectile.TechniqueEffect ==
+                        WeaponTechniqueEffect.AncientStaffBlinkCast)
+                    {
+                        ApplyAncientStaffAreaDamage(
+                            Boss.Position,
+                            42f,
+                            Math.Max(1, (int)MathF.Round(
+                                Player.MeleeDamage * .35f)),
+                            9f,
+                            projectile.TechniqueEffect,
+                            1);
+                    }
                     consumed = !AdvancePenetratingProjectile(projectile);
                 }
                 else if (projectile.IsSpellbladeProjectile)
@@ -6497,6 +7288,21 @@ public sealed class GameSession
                     impact.Position,
                     impact.Projectile.RoomId,
                     CurrentDungeon);
+                continue;
+            }
+
+            if (impact.Projectile.TechniqueEffect ==
+                    WeaponTechniqueEffect.AncientStaffBlinkCast &&
+                !impact.Projectile.HasHitTarget)
+            {
+                ApplyAncientStaffAreaDamage(
+                    impact.Position,
+                    42f,
+                    Math.Max(1, (int)MathF.Round(
+                        Player.MeleeDamage * .35f)),
+                    14f,
+                    impact.Projectile.TechniqueEffect,
+                    1);
                 continue;
             }
 

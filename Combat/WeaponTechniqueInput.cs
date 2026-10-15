@@ -9,5 +9,6 @@ public enum WeaponTechniqueInput
     Skill1Skill3,
     Skill2Skill3,
     Ultimate,
-    DashSkill
+    DashSkill,
+    DashSkill2
 }

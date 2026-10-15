@@ -23,7 +23,7 @@ public static class WeaponFamilyExtensions
             WeaponFamily.DualSwords => "Dual Swords",
             WeaponFamily.HunterBow => "Hunter Bow",
             WeaponFamily.WarAxe => "War Axe + Buckler",
-            WeaponFamily.ArcaneWarStaff => "Arcane War Staff",
+            WeaponFamily.ArcaneWarStaff => "Ancient Staff",
             WeaponFamily.SpikedMace => "Spiked Mace",
             WeaponFamily.ChainFlail => "Chain Flail",
             WeaponFamily.GreatSword => "Greatsword",

@@ -374,156 +374,67 @@ public static class EquipmentRebuildValidation
         WeaponCombatProfile profile = EquipmentCatalog.ArcaneWarStaff
             .CombatProfile;
         Require(profile.DashInput == WeaponTechniqueInput.Skill1,
-            "Spellblade dash technique must be Shift+J.");
+            "Ancient Staff blink technique must be Shift+J.");
         Require(profile.Get(WeaponTechniqueInput.Skill1).Id ==
-                "runic-strikes" &&
-            profile.Get(WeaponTechniqueInput.Skill2).Id == "rune-brand" &&
-            profile.Get(WeaponTechniqueInput.Skill3).Id ==
-                "arcane-detonation" &&
+                "arcane-bolt-chain" &&
+            profile.Get(WeaponTechniqueInput.Skill2).Id == "aegis-ward" &&
+            profile.Get(WeaponTechniqueInput.Skill3).Id == "thunder-spirit" &&
             profile.Get(WeaponTechniqueInput.DashSkill).Id ==
-                "arcane-lunge" &&
+                "blink-cast" &&
+            profile.Get(WeaponTechniqueInput.DashSkill2).Id ==
+                "fourth-veil" &&
             profile.Get(WeaponTechniqueInput.Skill1Skill2).Id ==
-                "runic-spear" &&
+                "rune-prison" &&
             profile.Get(WeaponTechniqueInput.Skill1Skill3).Id ==
-                "resonance-breaker" &&
+                "elder-invocation" &&
             profile.Get(WeaponTechniqueInput.Skill2Skill3).Id ==
-                "arcane-convergence" &&
+                "spirit-bastion" &&
             profile.Get(WeaponTechniqueInput.Ultimate).Id ==
-                "arcane-dominion",
-            "Spellblade J/K/L chord mapping is incomplete.");
+                "heavenfall-thunder-gate",
+            "Ancient Staff J/K/L chord mapping is incomplete.");
 
-        WeaponTechnique strikes = profile.Get(WeaponTechniqueInput.Skill1);
-        WeaponTechnique spear = profile.Get(
+        WeaponTechnique bolts = profile.Get(WeaponTechniqueInput.Skill1);
+        WeaponTechnique prison = profile.Get(
             WeaponTechniqueInput.Skill1Skill2);
-        WeaponTechnique dominion = profile.Get(WeaponTechniqueInput.Ultimate);
-        Require(strikes.StageCount == 3 && strikes.RequiresRepeatedInput &&
-            strikes.AdditionalStageStaminaCost == 5f,
-            "Runic Strikes must be a paid three-input staff chain.");
-        Require(spear.GetStage(0).Projectile.RemainingPierces ==
-                SpellbladeTuning.RunicSpearMaximumTargets - 1,
-            "Runic Spear must use one capped multi-target projectile.");
-        Require(dominion.RequiresFullStamina && dominion.StageCount == 4 &&
-            dominion.GetStage(3).HitboxShape == AttackHitboxShape.Circular,
-            "Arcane Dominion must keep four bounded setup-payoff phases.");
-
-        var marked = new Goblin(Vector2.Zero);
-        marked.AddArcaneImprint();
-        marked.AddArcaneImprint();
-        marked.AddArcaneImprint();
-        marked.AddArcaneImprint();
-        Require(marked.ArcaneImprintCount ==
-                SpellbladeTuning.MaximumImprints,
-            "Arcane Imprints exceeded their three-stack cap.");
-        marked.UpdateTimers(Frame(2f));
-        marked.RefreshArcaneImprints();
-        marked.RefreshArcaneImprints();
-        Require(marked.ArcaneImprintTimeRemaining <=
-                SpellbladeTuning.MaximumRefreshedLifetimeSeconds,
-            "Arcane Lunge refresh exceeded the Imprint lifetime cap.");
-        marked.UpdateTimers(Frame(
-            SpellbladeTuning.MaximumRefreshedLifetimeSeconds + .1f));
-        Require(marked.ArcaneImprintCount == 0,
-            "Expired Arcane Imprints were not cleared from the target.");
-
-        var room = new DungeonRoom(
-            11,
-            new Rectangle(0, 0, 620, 260),
-            RoomType.Start);
-        var dungeon = new DungeonMap(
-            new[] { room },
-            Array.Empty<Rectangle>(),
-            room.Bounds);
-        var runes = new GroundRuneManager();
-        Require(runes.TryPlace(new Vector2(100f, 100f), room.Id, dungeon) &&
-            runes.TryPlace(new Vector2(220f, 100f), room.Id, dungeon) &&
-            runes.TryPlace(new Vector2(340f, 100f), room.Id, dungeon),
-            "Ground Runes failed valid ground placement.");
-        int oldestId = runes.Runes[0].Id;
-        Require(runes.TryPlace(new Vector2(460f, 100f), room.Id, dungeon) &&
-            runes.Count == SpellbladeTuning.MaximumGroundRunes &&
-            runes.Runes[0].Id != oldestId,
-            "A fourth Ground Rune did not replace the oldest Rune.");
-        Require(runes.CountWithin(
-                new Vector2(460f, 100f),
-                SpellbladeTuning.ConvergenceMaximumRange) == 3 &&
-            runes.CountWithin(new Vector2(1200f, 100f), 100f) == 0,
-            "Eligible Ground Rune range filtering is incorrect.");
-        Require(runes.StartNetwork(new Vector2(300f, 100f)),
-            "Two or more eligible Runes failed to form a network.");
-        runes.Update(SpellbladeTuning.ConvergenceTickIntervalSeconds);
-        Require(runes.NetworkTickPending,
-            "Rune network did not expose its controlled damage tick.");
-        runes.Update(SpellbladeTuning.ConvergenceDurationSeconds);
-        Require(runes.NetworkDetonationPending,
-            "Rune network did not reach its simultaneous detonation.");
-
-        var insufficient = new PlayerCombat();
-        insufficient.ApplyLoadout(
-            EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.CreateStartingArmor());
-        StartInput(
-            insufficient,
-            EquipmentCatalog.ArcaneWarStaff,
+        WeaponTechnique bastion = profile.Get(
             WeaponTechniqueInput.Skill2Skill3);
-        Require(insufficient.CurrentTechnique == null &&
-            insufficient.Stamina.Current == insufficient.Stamina.Maximum,
-            "Arcane Convergence activated with fewer than two Runes.");
+        WeaponTechnique elder = profile.Get(
+            WeaponTechniqueInput.Skill1Skill3);
+        WeaponTechnique ultimate = profile.Get(WeaponTechniqueInput.Ultimate);
+        Require(bolts.StageCount == 5 && bolts.RequiresRepeatedInput &&
+            bolts.GetStage(0).DamageMultiplier == .60f &&
+            bolts.GetStage(4).DamageMultiplier == 1.25f,
+            "Arcane Bolt Chain must preserve five escalating ranged attacks.");
+        Require(prison.StageCount == 2 && bastion.StageCount == 5 &&
+            elder.StageCount == 4,
+            "Ancient Staff dual-skill sequences have incorrect stage counts.");
+        Require(ultimate.RequiresFullStamina && ultimate.StageCount == 10 &&
+            ultimate.GetStage(1).DamageMultiplier == .60f &&
+            ultimate.GetStage(8).DamageMultiplier == 1.80f,
+            "Heavenfall must preserve setup, barrage, and final judgment.");
 
-        var convergence = new PlayerCombat();
-        convergence.ApplyLoadout(
+        var sigils = new WeaponResourceState();
+        sigils.SetFamily(WeaponFamily.ArcaneWarStaff);
+        sigils.AddElderSigil(20);
+        Require(sigils.ElderSigils == AncientStaffTuning.MaximumElderSigils,
+            "Elder Sigils exceeded their bounded three-stack cap.");
+        Require(AncientStaffTuning.ChordWindowSeconds >= .10f &&
+                AncientStaffTuning.ChordWindowSeconds <= .15f &&
+                AncientStaffTuning.FourthVeilDurationSeconds == 12f,
+            "Ancient Staff chord or Fourth Veil timing changed unexpectedly.");
+
+        var caster = new PlayerCombat();
+        caster.ApplyLoadout(
             EquipmentCatalog.ArcaneWarStaff,
             EquipmentCatalog.CreateStartingArmor());
-        convergence.SetSpellbladeRuneCount(2);
+        caster.SetAncientStaffUltimateTargetAvailable(true);
         StartInput(
-            convergence,
-            EquipmentCatalog.ArcaneWarStaff,
-            WeaponTechniqueInput.Skill2Skill3);
-        Require(convergence.CurrentTechnique?.Id == "arcane-convergence",
-            "Arcane Convergence failed with two prepared Runes.");
-
-        var brand = new PlayerCombat();
-        brand.ApplyLoadout(
-            EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.CreateStartingArmor());
-        brand.Update(
-            Frame(.016f),
-            new CombatInput(
-                false, true, false, false, false, false, 0f,
-                skill2Held: true),
-            true,
-            FacingDirection.Right);
-        for (int frame = 0; frame < 7; frame++)
-        {
-            brand.Update(
-                Frame(.05f),
-                new CombatInput(
-                    false, false, false, false, false, false, 0f,
-                    skill2Held: true),
-                true,
-                FacingDirection.Right);
-        }
-        Require(brand.IsRuneBrandCharging &&
-            brand.RunePlacementDistance == RunePlacementDistance.Near,
-            "Held Rune Brand did not enter its Near band.");
-        AdvanceHeldSkill2(brand, 4);
-        Require(brand.RunePlacementDistance == RunePlacementDistance.Medium,
-            "Held Rune Brand did not enter its Medium band.");
-        AdvanceHeldSkill2(brand, 7);
-        Require(brand.RunePlacementDistance == RunePlacementDistance.Far,
-            "Held Rune Brand did not enter its Far band.");
-
-        var ultimate = new PlayerCombat();
-        ultimate.ApplyLoadout(
-            EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.CreateStartingArmor());
-        StartInput(
-            ultimate,
+            caster,
             EquipmentCatalog.ArcaneWarStaff,
             WeaponTechniqueInput.Ultimate);
-        Require(ultimate.CurrentTechnique?.Id == "arcane-dominion" &&
-            ultimate.EffectiveTechniqueStageCount == 4 &&
-            ultimate.Stamina.Current == 0f,
-            "Arcane Dominion must consume full stamina and begin four phases.");
+        Require(caster.CurrentTechnique?.Id == "heavenfall-thunder-gate" &&
+            caster.Stamina.Current == 0f,
+            "Heavenfall must validate a target then consume full stamina once.");
     }
 
     private static void ValidateBreakerCombat()
@@ -1427,6 +1338,8 @@ public static class EquipmentRebuildValidation
         {
             foreach (WeaponTechniqueInput input in Enum.GetValues<WeaponTechniqueInput>())
             {
+                if (weapon.CombatProfile.Get(input) == null)
+                    continue;
                 var combat = new PlayerCombat();
                 combat.ApplyLoadout(weapon, EquipmentCatalog.CreateStartingArmor());
                 if (weapon.Family == WeaponFamily.ArcaneWarStaff)
@@ -1440,6 +1353,11 @@ public static class EquipmentRebuildValidation
                     input == WeaponTechniqueInput.Ultimate)
                 {
                     combat.SetSovereignUltimateTargetAvailable(true);
+                }
+                if (weapon.Family == WeaponFamily.ArcaneWarStaff &&
+                    input == WeaponTechniqueInput.Ultimate)
+                {
+                    combat.SetAncientStaffUltimateTargetAvailable(true);
                 }
                 StartInput(combat, weapon, input);
                 Require(combat.CurrentTechnique?.Input == input,
@@ -1456,6 +1374,8 @@ public static class EquipmentRebuildValidation
                 insufficient.SetGreatswordUltimateTargetAvailable(true);
             if (weapon.Family == WeaponFamily.AbyssRing)
                 insufficient.SetSovereignUltimateTargetAvailable(true);
+            if (weapon.Family == WeaponFamily.ArcaneWarStaff)
+                insufficient.SetAncientStaffUltimateTargetAvailable(true);
             insufficient.Stamina.SpendUpTo(1f);
             StartInput(insufficient, weapon, WeaponTechniqueInput.Ultimate);
             Require(insufficient.CurrentTechnique == null &&
@@ -1481,13 +1401,18 @@ public static class EquipmentRebuildValidation
             WeaponTechniqueInput.Skill1Skill3 or
             WeaponTechniqueInput.Skill2Skill3 or
             WeaponTechniqueInput.Ultimate;
-        bool dash = input == WeaponTechniqueInput.DashSkill;
+        bool dash = input is WeaponTechniqueInput.DashSkill or
+            WeaponTechniqueInput.DashSkill2;
 
         if (dash)
         {
-            skill1 = weapon.CombatProfile.DashInput == WeaponTechniqueInput.Skill1;
-            skill2 = weapon.CombatProfile.DashInput == WeaponTechniqueInput.Skill2;
-            skill3 = weapon.CombatProfile.DashInput == WeaponTechniqueInput.Skill3;
+            WeaponTechniqueInput dashInput = input ==
+                    WeaponTechniqueInput.DashSkill2
+                ? WeaponTechniqueInput.Skill2
+                : weapon.CombatProfile.DashInput;
+            skill1 = dashInput == WeaponTechniqueInput.Skill1;
+            skill2 = dashInput == WeaponTechniqueInput.Skill2;
+            skill3 = dashInput == WeaponTechniqueInput.Skill3;
         }
 
         bool greatsword = weapon.Family == WeaponFamily.GreatSword;

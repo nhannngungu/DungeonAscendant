@@ -34,6 +34,12 @@ public static class WeaponArchetypeValidation
 
             foreach (WeaponTechniqueInput input in Enum.GetValues<WeaponTechniqueInput>())
             {
+                if (input == WeaponTechniqueInput.DashSkill2 &&
+                    weapon.Family != WeaponFamily.ArcaneWarStaff)
+                {
+                    continue;
+                }
+
                 WeaponTechnique technique = weapon.CombatProfile.Get(input);
                 Require(technique != null,
                     $"{weapon.Name} is missing {input}.");

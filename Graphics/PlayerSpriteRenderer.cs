@@ -70,6 +70,8 @@ public sealed class PlayerSpriteRenderer
     private float _partScaleX = 1f;
     private float _partPivotX;
     private float _lineThicknessScale = 1f;
+    private float _spatialPhaseStrength;
+    private Color _spatialPhaseColor = new(70, 91, 166);
 
     public PlayerSpriteRenderer(SpriteBatch spriteBatch, Texture2D pixel)
     {
@@ -86,6 +88,10 @@ public sealed class PlayerSpriteRenderer
         float portalTransitionStrength = 0f)
     {
         ResetPartTransform();
+        _spatialPhaseStrength = player.Combat.IsFourthVeilVisualActive
+            ? .42f * player.Combat.FourthVeilVisualStrength
+            : 0f;
+        _spatialPhaseColor = new Color(61, 77, 145);
         _chainHeadWorldPosition = chainHeadWorldPosition;
         _animation.Update(gameTime, player);
 
@@ -123,7 +129,10 @@ public sealed class PlayerSpriteRenderer
                     ref pose,
                     portalTravelDirection.Value,
                     portalTransitionStrength,
-                    flip);
+                    flip,
+                    player.Combat.CurrentTechnique?.Effect ==
+                        WeaponTechniqueEffect.SovereignGoldenCataclysm,
+                    player.Combat.TechniqueStageIndex);
             }
             DrawDuelistAfterimages(player, anchor, flip, pose);
             DrawRangerAfterimages(player, anchor, flip, pose);
@@ -133,16 +142,143 @@ public sealed class PlayerSpriteRenderer
 
         if (player.IsSlowed)
             DrawWebStrands(anchor, flip);
+        _spatialPhaseStrength = 0f;
+    }
+
+    public void DrawFourthVeilEcho(
+        PlayerCharacter player,
+        Vector2 visualPosition,
+        float strength,
+        bool purpleLayer)
+    {
+        if (strength <= 0f)
+            return;
+        ResetPartTransform();
+        _chainHeadWorldPosition = null;
+        _spatialPhaseStrength = Math.Clamp(strength, 0f, 1f);
+        _spatialPhaseColor = purpleLayer
+            ? new Color(104, 62, 174)
+            : new Color(54, 112, 194);
+        Vector2 anchor = new(
+            MathF.Round(visualPosition.X),
+            MathF.Round(visualPosition.Y + player.Size.Y / 2f));
+        DrawStanding(player, anchor,
+            player.Facing == FacingDirection.Left,
+            CreatePose(player));
+        _spatialPhaseStrength = 0f;
     }
 
     private static void ApplyPortalTransitPose(
         ref Pose pose,
         Vector2 direction,
         float strength,
-        bool flip)
+        bool flip,
+        bool ultimatePortalStep,
+        int stepIndex)
     {
         strength = Math.Clamp(strength, 0f, 1f);
         float localX = (flip ? -direction.X : direction.X) * strength;
+        if (ultimatePortalStep)
+        {
+            float preparation = 1f - MathHelper.SmoothStep(
+                0f,
+                1f,
+                Math.Clamp(strength / .28f, 0f, 1f));
+            float flight = MathHelper.SmoothStep(
+                0f,
+                1f,
+                Math.Clamp((strength - .22f) / .48f, 0f, 1f));
+            float plant = 1f - Math.Clamp(
+                MathF.Abs(strength - .80f) / .13f,
+                0f,
+                1f);
+            float propulsion = MathHelper.SmoothStep(
+                0f,
+                1f,
+                Math.Clamp((strength - .86f) / .14f, 0f, 1f));
+            float localDirection = MathF.Abs(localX) < .08f
+                ? (stepIndex % 2 == 0 ? 1f : -1f)
+                : MathF.Sign(localX);
+            float redirect = stepIndex % 3 == 1 ? -1f : 1f;
+
+            pose.Crouch += preparation * 5f + plant * 7f -
+                propulsion * 4f;
+            pose.Lean += localX * (7f + flight * 8f) +
+                redirect * plant * 3f;
+            pose.CloakTail -= flight * 6f + propulsion * 5f;
+
+            float tuck = MathF.Sin(Math.Clamp(
+                (strength - .18f) / .58f,
+                0f,
+                1f) * MathHelper.Pi);
+            pose.FrontKneeX = MathHelper.Lerp(
+                pose.FrontKneeX,
+                13f + localDirection * 11f,
+                tuck);
+            pose.FrontKneeY = MathHelper.Lerp(
+                pose.FrontKneeY,
+                -22f - direction.Y * 7f,
+                tuck);
+            pose.RearKneeX = MathHelper.Lerp(
+                pose.RearKneeX,
+                -10f - localDirection * 8f,
+                tuck);
+            pose.RearKneeY = MathHelper.Lerp(
+                pose.RearKneeY,
+                -18f + direction.Y * 5f,
+                tuck);
+
+            bool frontPlant = stepIndex % 2 == 0;
+            if (frontPlant)
+            {
+                pose.FrontKneeX = MathHelper.Lerp(
+                    pose.FrontKneeX,
+                    18f * localDirection,
+                    plant);
+                pose.FrontKneeY = MathHelper.Lerp(
+                    pose.FrontKneeY,
+                    -13f,
+                    plant);
+                pose.FrontFootX = MathHelper.Lerp(
+                    pose.FrontFootX,
+                    29f * localDirection,
+                    plant);
+                pose.FrontFootY = MathHelper.Lerp(
+                    pose.FrontFootY,
+                    -4f,
+                    plant);
+                pose.RearFootX -= localDirection * 10f * propulsion;
+                pose.RearFootY -= 10f * propulsion;
+            }
+            else
+            {
+                pose.RearKneeX = MathHelper.Lerp(
+                    pose.RearKneeX,
+                    15f * localDirection,
+                    plant);
+                pose.RearKneeY = MathHelper.Lerp(
+                    pose.RearKneeY,
+                    -14f,
+                    plant);
+                pose.RearFootX = MathHelper.Lerp(
+                    pose.RearFootX,
+                    27f * localDirection,
+                    plant);
+                pose.RearFootY = MathHelper.Lerp(
+                    pose.RearFootY,
+                    -5f,
+                    plant);
+                pose.FrontFootX -= localDirection * 11f * propulsion;
+                pose.FrontFootY -= 9f * propulsion;
+            }
+
+            pose.SwordHandX += localDirection *
+                (plant * -7f + propulsion * 16f);
+            pose.SwordHandY -= propulsion * (6f - direction.Y * 5f);
+            pose.OffHandX -= localDirection * (plant * 8f + propulsion * 5f);
+            return;
+        }
+
         pose.Crouch += 4f * strength;
         pose.Lean += 8f * localX;
         pose.Step += 9f * localX;
@@ -903,8 +1039,231 @@ public sealed class PlayerSpriteRenderer
         pose.SwordLength = 57f;
         pose.SwordHandX = 10f;
         pose.SwordHandY = -34f;
+        pose.UseMartialLimbs = true;
+        pose.FrontElbowX = 15f;
+        pose.FrontElbowY = -42f;
+        pose.OffHandX = -5f;
+        pose.OffHandY = -39f;
+        pose.RearElbowX = -16f;
+        pose.RearElbowY = -43f;
+        float cast = player.Combat.CurrentAttack == null
+            ? 0f
+            : Math.Clamp(
+                player.Combat.StateElapsed /
+                    MathF.Max(.01f,
+                        player.Combat.CurrentAttack.StartupTime),
+                0f,
+                1f);
         switch (player.Combat.CurrentTechnique.Effect)
         {
+            case WeaponTechniqueEffect.AncientStaffArcaneBoltChain:
+                pose.Crouch = stage == 4 ? 6f : 2f + stage * .45f;
+                pose.Lean = stage == 4
+                    ? MathHelper.Lerp(-5f, 7f, cast)
+                    : MathHelper.Lerp(-2f, 3f + stage, cast);
+                pose.Step = stage == 4 ? -5f + cast * 10f : stage - 1f;
+                pose.SwordHandX = MathHelper.Lerp(7f, 17f + stage, cast);
+                pose.SwordHandY = MathHelper.Lerp(
+                    stage == 4 ? -29f : -38f,
+                    stage == 3 ? -31f : -36f,
+                    cast);
+                pose.SwordAngle = stage switch
+                {
+                    0 => MathHelper.Lerp(-1.02f, -.12f, cast),
+                    1 => MathHelper.Lerp(-1.34f, -.05f, cast),
+                    2 => MathHelper.Lerp(-.82f, .02f, cast),
+                    3 => MathHelper.Lerp(-1.66f, -.01f, cast),
+                    _ => MathHelper.Lerp(-2.18f, -.04f, cast)
+                };
+                pose.OffHandX = stage == 2
+                    ? MathHelper.Lerp(-8f, 24f, cast)
+                    : MathHelper.Lerp(-7f, 11f + stage * 2f, cast);
+                pose.OffHandY = stage == 4
+                    ? MathHelper.Lerp(-32f, -48f, cast)
+                    : -41f - stage;
+                pose.RearElbowX = MathHelper.Lerp(-17f, 3f + stage, cast);
+                pose.RearElbowY = -46f;
+                pose.CloakTail = stage == 4 ? -11f : -4f - stage;
+                break;
+            case WeaponTechniqueEffect.AncientStaffAegisWard:
+                pose.Crouch = 5f;
+                pose.Lean = -4f;
+                pose.SwordHandX = 4f;
+                pose.SwordHandY = -48f;
+                pose.SwordAngle = -1.48f;
+                pose.FrontElbowX = 10f;
+                pose.FrontElbowY = -45f;
+                pose.OffHandX = 24f;
+                pose.OffHandY = -43f;
+                pose.RearElbowX = 3f;
+                pose.RearElbowY = -47f;
+                pose.CloakTail = -3f;
+                break;
+            case WeaponTechniqueEffect.AncientStaffRunePrison:
+                pose.Crouch = stage == 0 ? 3f : 6f;
+                pose.Lean = stage == 0 ? -3f : 5f;
+                pose.SwordHandX = stage == 0 ? 8f : 18f;
+                pose.SwordHandY = stage == 0 ? -46f : -34f;
+                pose.SwordAngle = stage == 0
+                    ? MathHelper.Lerp(-1.60f, -.25f, cast)
+                    : -.04f;
+                pose.OffHandX = stage == 0 ? 25f : 31f;
+                pose.OffHandY = stage == 0 ? -34f : -28f;
+                pose.RearElbowX = stage == 0 ? 5f : 12f;
+                pose.RearElbowY = -40f;
+                pose.CloakTail = stage == 0 ? -4f : -8f;
+                break;
+            case WeaponTechniqueEffect.AncientStaffBlinkCast:
+                pose.Crouch = 9f;
+                pose.Lean = 11f;
+                pose.Step = 9f;
+                pose.SwordHandX = 21f;
+                pose.SwordHandY = -35f;
+                pose.SwordAngle = -.03f;
+                pose.FrontElbowX = 17f;
+                pose.FrontElbowY = -42f;
+                pose.OffHandX = 10f;
+                pose.OffHandY = -48f;
+                pose.RearElbowX = -2f;
+                pose.RearElbowY = -47f;
+                pose.CloakTail = -16f;
+                break;
+            case WeaponTechniqueEffect.AncientStaffThunderSpirit:
+                pose.Crouch = 3f;
+                pose.Lean = -2f;
+                pose.SwordHandX = 7f;
+                pose.SwordHandY = -50f;
+                pose.SwordAngle = -1.46f;
+                pose.FrontElbowX = 12f;
+                pose.FrontElbowY = -48f;
+                pose.OffHandX = -18f + cast * 28f;
+                pose.OffHandY = -35f - cast * 10f;
+                pose.RearElbowX = -15f + cast * 12f;
+                pose.RearElbowY = -44f;
+                pose.CloakTail = -5f;
+                break;
+            case WeaponTechniqueEffect.AncientStaffSpiritBastion:
+                pose.Crouch = 6f;
+                pose.Lean = -3f + stage * 2f;
+                pose.SwordHandX = 5f;
+                pose.SwordHandY = -45f;
+                pose.SwordAngle = stage < 4 ? -1.40f : -.12f;
+                pose.OffHandX = MathHelper.Lerp(25f, 5f,
+                    stage < 4 ? cast : 1f - cast);
+                pose.OffHandY = -42f;
+                pose.RearElbowX = 4f;
+                pose.RearElbowY = -48f;
+                pose.CloakTail = stage == 4 ? -10f : -5f;
+                break;
+            case WeaponTechniqueEffect.AncientStaffElderInvocation:
+                pose.Crouch = stage == 3 ? 7f : 3f;
+                pose.Lean = stage == 3 ? 5f : -4f;
+                pose.SwordHandX = stage == 3 ? 18f : 5f;
+                pose.SwordHandY = stage == 3 ? -35f : -55f;
+                pose.SwordAngle = stage == 3 ? -.06f : -1.52f;
+                pose.FrontElbowX = 10f;
+                pose.FrontElbowY = -49f;
+                pose.OffHandX = 27f;
+                pose.OffHandY = stage == 0 ? -45f : -50f;
+                pose.RearElbowX = 7f;
+                pose.RearElbowY = -49f;
+                pose.CloakTail = stage == 3 ? -12f : -6f;
+                break;
+            case WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate:
+            {
+                float sequence = player.Combat.CurrentAttack == null
+                    ? 0f
+                    : Math.Clamp(
+                        player.Combat.StateElapsed /
+                            MathF.Max(.01f,
+                                player.Combat.CurrentAttack.TotalTime),
+                        0f,
+                        1f);
+                if (player.Combat.State == CombatState.ChargingHeavy)
+                {
+                    float judgment = player.Combat
+                        .AncientStaffUltimateCinematicRatio;
+                    pose.Crouch = MathHelper.Lerp(6f, 2f, judgment);
+                    pose.Lean = MathHelper.Lerp(-2f, -5f, judgment);
+                    pose.SwordHandX = MathHelper.Lerp(7f, 3f, judgment);
+                    pose.SwordHandY = MathHelper.Lerp(-44f, -58f, judgment);
+                    pose.SwordAngle = MathHelper.Lerp(-1.08f, -1.56f,
+                        judgment);
+                    pose.OffHandX = MathHelper.Lerp(-8f, 26f, judgment);
+                    pose.OffHandY = MathHelper.Lerp(-37f, -52f, judgment);
+                    pose.RearElbowX = MathHelper.Lerp(-15f, 7f, judgment);
+                    pose.RearElbowY = -48f;
+                    pose.CloakTail = -5f;
+                }
+                else if (stage <= 2)
+                {
+                    pose.Crouch = stage == 1 ? 7f : 3f;
+                    pose.Lean = stage == 1 ? 2f : -5f;
+                    pose.SwordHandX = 4f;
+                    pose.SwordHandY = -57f;
+                    pose.SwordAngle = -1.54f;
+                    pose.OffHandX = 28f;
+                    pose.OffHandY = -50f;
+                    pose.RearElbowX = 7f;
+                    pose.RearElbowY = -48f;
+                    pose.CloakTail = stage == 1 ? -9f : -6f;
+                }
+                else if (stage <= 7)
+                {
+                    pose.Crouch = 4f;
+                    pose.Lean = -4f;
+                    pose.SwordHandX = 5f;
+                    pose.SwordHandY = -55f;
+                    pose.SwordAngle = -1.50f;
+                    pose.OffHandX = 25f + MathF.Sin(stage * 1.8f) * 2f;
+                    pose.OffHandY = -49f;
+                    pose.RearElbowX = 6f;
+                    pose.RearElbowY = -47f;
+                    pose.CloakTail = -7f;
+                }
+                else if (stage == 8)
+                {
+                    float release = MathHelper.SmoothStep(0f, 1f,
+                        Math.Clamp((sequence - .30f) / .30f, 0f, 1f));
+                    pose.Crouch = MathHelper.Lerp(7f, 11f, release);
+                    pose.Lean = MathHelper.Lerp(-5f, 4f, release);
+                    pose.SwordHandX = MathHelper.Lerp(3f, 14f, release);
+                    pose.SwordHandY = MathHelper.Lerp(-58f, -42f, release);
+                    pose.SwordAngle = MathHelper.Lerp(-1.56f, -.20f, release);
+                    pose.OffHandX = MathHelper.Lerp(3f, 20f, release);
+                    pose.OffHandY = MathHelper.Lerp(-56f, -43f, release);
+                    pose.RearElbowX = MathHelper.Lerp(-5f, 5f, release);
+                    pose.RearElbowY = -48f;
+                    pose.CloakTail = MathHelper.Lerp(-5f, -14f, release);
+                }
+                else
+                {
+                    pose.Crouch = MathHelper.Lerp(10f, 4f, sequence);
+                    pose.Lean = MathHelper.Lerp(4f, 0f, sequence);
+                    pose.SwordHandX = MathHelper.Lerp(14f, 9f, sequence);
+                    pose.SwordHandY = MathHelper.Lerp(-42f, -35f, sequence);
+                    pose.SwordAngle = MathHelper.Lerp(-.20f, -.72f, sequence);
+                    pose.OffHandX = MathHelper.Lerp(20f, -4f, sequence);
+                    pose.OffHandY = MathHelper.Lerp(-43f, -38f, sequence);
+                    pose.RearElbowX = MathHelper.Lerp(5f, -14f, sequence);
+                    pose.RearElbowY = -43f;
+                    pose.CloakTail = MathHelper.Lerp(-14f, -3f, sequence);
+                }
+                break;
+            }
+            case WeaponTechniqueEffect.AncientStaffFourthVeil:
+                pose.Crouch = 4f;
+                pose.Lean = -2f;
+                pose.Step = -2f;
+                pose.SwordHandX = 7f;
+                pose.SwordHandY = -48f;
+                pose.SwordAngle = -1.36f;
+                pose.OffHandX = 18f;
+                pose.OffHandY = -41f;
+                pose.RearElbowX = 0f;
+                pose.RearElbowY = -47f;
+                pose.CloakTail = -7f;
+                break;
             case WeaponTechniqueEffect.SpellbladeRunicStrikes:
                 pose.Crouch = stage == 2 ? 7f : 4f;
                 pose.Lean = stage == 0 ? 5f : stage == 1 ? -3f : 7f;
@@ -2058,44 +2417,53 @@ public sealed class PlayerSpriteRenderer
 
         if (stage <= AbyssRingTuning.UltimateStrikeCount)
         {
-            int pattern = (stage - 1) % 4;
+            int pattern = (stage - 1) % 6;
             float commitment = .82f + stage /
                 (float)AbyssRingTuning.UltimateStrikeCount * .18f;
             switch (pattern)
             {
-                case 0: // descending diagonal punch
-                    pose.Crouch = 5f;
-                    pose.Lean = MathHelper.Lerp(-6f, 12f, drive);
-                    pose.Step = 8f;
+                case 0: // diagonal launch punch
+                    pose.Crouch = MathHelper.Lerp(8f, 3f, drive) +
+                        recovery * 3f;
+                    pose.Lean = MathHelper.Lerp(-8f, 14f, drive);
+                    pose.Step = MathHelper.Lerp(-6f, 10f, drive);
                     SetFrontArm(ref pose, drive, 0f, -48f, -5f, -44f,
                         46f, -29f, 25f, -38f);
                     SetGuardArm(ref pose, -4f, -42f, -17f, -45f);
                     break;
-                case 1: // crossing kick
-                    pose.Crouch = 3f;
-                    pose.Lean = MathHelper.Lerp(6f, -9f, drive);
-                    pose.FrontKneeX = MathHelper.Lerp(8f, 26f, drive);
-                    pose.FrontKneeY = MathHelper.Lerp(-10f, -31f, drive);
-                    pose.FrontFootX = MathHelper.Lerp(13f, 52f, drive);
-                    pose.FrontFootY = MathHelper.Lerp(-1f, -33f, drive);
+                case 1: // crossing side kick
+                    pose.Crouch = MathHelper.Lerp(6f, 1f, drive);
+                    pose.Lean = MathHelper.Lerp(9f, -12f, drive);
+                    pose.FrontKneeX = MathHelper.Lerp(7f, 25f, drive);
+                    pose.FrontKneeY = MathHelper.Lerp(-12f, -28f, drive);
+                    pose.FrontFootX = MathHelper.Lerp(12f, 54f, drive);
+                    pose.FrontFootY = MathHelper.Lerp(-2f, -30f, drive);
+                    pose.RearKneeX = -13f;
+                    pose.RearKneeY = -21f;
+                    pose.RearFootX = -19f;
+                    pose.RearFootY = -8f;
                     pose.SwordHandX = 13f;
                     pose.SwordHandY = -48f;
                     pose.FrontElbowX = 22f;
                     pose.FrontElbowY = -47f;
                     break;
-                case 2: // rising elbow
+                case 2: // rising knee and elbow
                     pose.Crouch = MathHelper.Lerp(11f, 1f, drive);
                     pose.Lean = MathHelper.Lerp(-5f, 10f, drive);
+                    pose.FrontKneeX = MathHelper.Lerp(8f, 19f, drive);
+                    pose.FrontKneeY = MathHelper.Lerp(-10f, -32f, drive);
+                    pose.FrontFootX = MathHelper.Lerp(13f, 15f, drive);
+                    pose.FrontFootY = MathHelper.Lerp(-1f, -21f, drive);
                     pose.SwordHandX = MathHelper.Lerp(1f, 20f, drive);
                     pose.SwordHandY = MathHelper.Lerp(-28f, -58f, drive);
                     pose.FrontElbowX = MathHelper.Lerp(-3f, 32f, drive);
                     pose.FrontElbowY = MathHelper.Lerp(-34f, -53f, drive);
                     SetGuardArm(ref pose, -4f, -40f, -16f, -44f);
                     break;
-                default: // compact cross
-                    pose.Crouch = 6f;
-                    pose.Lean = MathHelper.Lerp(-7f, 9f, drive);
-                    pose.Step = 7f;
+                case 3: // hard redirection cross
+                    pose.Crouch = 7f + contact * 2f;
+                    pose.Lean = MathHelper.Lerp(10f, -11f, drive);
+                    pose.Step = MathHelper.Lerp(8f, -7f, drive);
                     SetFrontArm(ref pose, drive, 2f, -42f, 5f, -47f,
                         43f, -35f, 24f, -41f);
                     pose.OffHandX = MathHelper.Lerp(-4f, 34f,
@@ -2103,6 +2471,30 @@ public sealed class PlayerSpriteRenderer
                     pose.OffHandY = MathHelper.Lerp(-35f, -47f, drive);
                     pose.RearElbowX = MathHelper.Lerp(-17f, 18f, drive);
                     pose.RearElbowY = -47f;
+                    break;
+                case 4: // descending axe kick
+                    pose.Crouch = MathHelper.Lerp(2f, 7f, drive);
+                    pose.Lean = MathHelper.Lerp(-9f, 8f, drive);
+                    pose.FrontKneeX = MathHelper.Lerp(5f, 23f, drive);
+                    pose.FrontKneeY = MathHelper.Lerp(-25f, -10f, drive);
+                    pose.FrontFootX = MathHelper.Lerp(4f, 38f, drive);
+                    pose.FrontFootY = MathHelper.Lerp(-49f, -3f, drive);
+                    SetFrontArm(ref pose, drive, 5f, -45f, 16f, -47f,
+                        31f, -35f, 19f, -42f);
+                    SetGuardArm(ref pose, -9f, -39f, -20f, -43f);
+                    break;
+                default: // twisting palm, opposite silhouette
+                    pose.Crouch = MathHelper.Lerp(8f, 3f, drive);
+                    pose.Lean = MathHelper.Lerp(12f, -8f, drive);
+                    pose.Step = MathHelper.Lerp(9f, -10f, drive);
+                    pose.SwordHandX = MathHelper.Lerp(12f, -30f, drive);
+                    pose.SwordHandY = MathHelper.Lerp(-45f, -36f, drive);
+                    pose.FrontElbowX = MathHelper.Lerp(20f, -12f, drive);
+                    pose.FrontElbowY = -43f;
+                    pose.OffHandX = MathHelper.Lerp(-7f, 39f, drive);
+                    pose.OffHandY = MathHelper.Lerp(-38f, -42f, drive);
+                    pose.RearElbowX = MathHelper.Lerp(-18f, 20f, drive);
+                    pose.RearElbowY = -46f;
                     break;
             }
             pose.Lean *= commitment;
@@ -2112,17 +2504,24 @@ public sealed class PlayerSpriteRenderer
 
         if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
         {
-            pose.Crouch = MathHelper.Lerp(12f, 2f, drive) + recovery * 5f;
-            pose.Lean = MathHelper.Lerp(-10f, 13f, drive) - recovery * 4f;
-            pose.Step = MathHelper.Lerp(-10f, 12f, drive);
-            pose.SwordHandX = MathHelper.Lerp(-9f, 35f, drive);
-            pose.SwordHandY = MathHelper.Lerp(-31f, -8f, drive);
-            pose.FrontElbowX = MathHelper.Lerp(-5f, 25f, drive);
-            pose.FrontElbowY = MathHelper.Lerp(-42f, -27f, drive);
+            float compression = 1f - drive;
+            pose.Crouch = MathHelper.Lerp(15f, 0f, drive) + recovery * 6f;
+            pose.Lean = MathHelper.Lerp(-13f, 17f, drive) - recovery * 5f;
+            pose.Step = MathHelper.Lerp(-13f, 15f, drive);
+            pose.SwordHandX = MathHelper.Lerp(-13f, 40f, drive);
+            pose.SwordHandY = MathHelper.Lerp(-30f, -7f, drive);
+            pose.FrontElbowX = MathHelper.Lerp(-8f, 28f, drive);
+            pose.FrontElbowY = MathHelper.Lerp(-43f, -25f, drive);
             SetGuardArm(ref pose, -7f, -45f, -19f, -47f);
-            pose.FrontFootX = MathHelper.Lerp(11f, 24f, drive);
-            pose.RearFootX = MathHelper.Lerp(-15f, -25f, drive);
-            pose.CloakTail = -16f;
+            pose.FrontKneeX = MathHelper.Lerp(17f, 25f, drive);
+            pose.FrontKneeY = MathHelper.Lerp(-9f, -16f, drive);
+            pose.FrontFootX = MathHelper.Lerp(31f, 36f, drive);
+            pose.FrontFootY = MathHelper.Lerp(-2f, -13f, drive);
+            pose.RearKneeX = MathHelper.Lerp(-5f, -18f, drive);
+            pose.RearKneeY = MathHelper.Lerp(-8f, -22f, drive);
+            pose.RearFootX = MathHelper.Lerp(-19f, -34f, drive);
+            pose.RearFootY = MathHelper.Lerp(-1f, -13f, drive);
+            pose.CloakTail = -17f - drive * 4f + compression * 2f;
             return;
         }
 
@@ -2605,6 +3004,15 @@ public sealed class PlayerSpriteRenderer
                 front: false);
             return;
         }
+        if (player.WeaponFamily == WeaponFamily.ArcaneWarStaff &&
+            pose.UseMartialLimbs)
+        {
+            DrawCastingArm(player, anchor, flip, shoulder,
+                new Vector2(pose.RearElbowX, pose.RearElbowY),
+                new Vector2(pose.OffHandX, pose.OffHandY),
+                front: false);
+            return;
+        }
 
         if (player.WeaponFamily == WeaponFamily.DualDaggers)
         {
@@ -2999,6 +3407,15 @@ public sealed class PlayerSpriteRenderer
                 front: true);
             return;
         }
+        if (player.WeaponFamily == WeaponFamily.ArcaneWarStaff &&
+            pose.UseMartialLimbs)
+        {
+            DrawCastingArm(player, anchor, flip, shoulder,
+                new Vector2(pose.FrontElbowX, pose.FrontElbowY),
+                hand,
+                front: true);
+            return;
+        }
         DrawLine(anchor, shoulder, hand, 8f, Outline, flip);
         DrawLine(anchor, shoulder, hand, 5f, Tint(Leather, player), flip);
         DrawLine(
@@ -3029,6 +3446,26 @@ public sealed class PlayerSpriteRenderer
     {
         Color sleeve = Tint(new Color(18, 19, 24), player);
         Color bracer = Tint(new Color(87, 65, 27), player);
+        Color skin = Tint(GetSkinColor(player.Appearance.SkinTone), player);
+        DrawLine(anchor, shoulder, elbow, front ? 9f : 8f, Outline, flip);
+        DrawLine(anchor, elbow, hand, front ? 8f : 7f, Outline, flip);
+        DrawLine(anchor, shoulder, elbow, front ? 6f : 5f, sleeve, flip);
+        DrawLine(anchor, elbow, hand, front ? 5f : 4f, bracer, flip);
+        DrawBox(anchor, hand.X - 3f, hand.Y - 3f, 7f, 7f, Outline, flip);
+        DrawBox(anchor, hand.X - 2f, hand.Y - 2f, 5f, 5f, skin, flip);
+    }
+
+    private void DrawCastingArm(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Vector2 shoulder,
+        Vector2 elbow,
+        Vector2 hand,
+        bool front)
+    {
+        Color sleeve = Tint(ClothLight, player);
+        Color bracer = Tint(new Color(68, 72, 91), player);
         Color skin = Tint(GetSkinColor(player.Appearance.SkinTone), player);
         DrawLine(anchor, shoulder, elbow, front ? 9f : 8f, Outline, flip);
         DrawLine(anchor, elbow, hand, front ? 8f : 7f, Outline, flip);
@@ -4097,6 +4534,16 @@ public sealed class PlayerSpriteRenderer
         Pose pose,
         AttackDefinition attack)
     {
+        WeaponTechniqueEffect effect =
+            player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect is WeaponTechniqueEffect.AncientStaffArcaneBoltChain or
+            WeaponTechniqueEffect.AncientStaffBlinkCast)
+        {
+            DrawAncientStaffCastRune(player, anchor, flip, pose, attack);
+            return;
+        }
+
         float elapsed = player.Combat.StateElapsed - attack.StartupTime;
         if (elapsed < 0f || elapsed > attack.ActiveTime + .12f)
             return;
@@ -4110,6 +4557,160 @@ public sealed class PlayerSpriteRenderer
         DrawLine(anchor, center - new Vector2(radius, 0f), center + new Vector2(radius, 0f), 3f, color, flip);
         DrawLine(anchor, center - new Vector2(0f, radius), center + new Vector2(0f, radius), 3f, color, flip);
         DrawLine(anchor, center - new Vector2(radius * .7f), center + new Vector2(radius * .7f), 2f, color, flip);
+    }
+
+    private void DrawAncientStaffCastRune(
+        PlayerCharacter player,
+        Vector2 anchor,
+        bool flip,
+        Pose pose,
+        AttackDefinition attack)
+    {
+        int stage = player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffBlinkCast
+            ? 3
+            : Math.Clamp(player.Combat.TechniqueStageIndex, 0, 4);
+        float elapsed = player.Combat.StateElapsed;
+        float draw = Math.Clamp(
+            elapsed / MathF.Max(.01f, attack.StartupTime),
+            0f,
+            1f);
+        float afterRelease = MathF.Max(0f, elapsed - attack.StartupTime);
+        float dissolve = 1f - Math.Clamp(
+            afterRelease / MathF.Max(.06f, attack.ActiveTime + .10f),
+            0f,
+            1f);
+        float visibility = elapsed < attack.StartupTime
+            ? MathHelper.SmoothStep(0f, 1f, draw)
+            : dissolve;
+        Vector2 staffDirection = new(
+            MathF.Cos(pose.SwordAngle),
+            MathF.Sin(pose.SwordAngle));
+        Vector2 center = new Vector2(pose.SwordHandX, pose.SwordHandY) +
+            staffDirection * (pose.SwordLength + 8f);
+        Color blue = ScaleAlpha(new Color(82, 166, 240),
+            .25f + visibility * .68f);
+        Color gold = ScaleAlpha(new Color(233, 190, 78),
+            .18f + visibility * .72f);
+        Color purple = ScaleAlpha(new Color(132, 82, 201),
+            .14f + visibility * .52f);
+        float radius = 6f + stage * 2.6f;
+        if (player.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.AncientStaffBlinkCast)
+            radius = 14f;
+
+        if (draw < .12f)
+        {
+            DrawBox(anchor, center.X - 1f, center.Y - 1f,
+                3f, 3f, gold, flip);
+            return;
+        }
+
+        DrawLocalBrokenRune(anchor, flip, center, radius,
+            Math.Clamp((draw - .10f) / .68f, 0f, 1f),
+            -.35f + stage * .23f, blue, gold,
+            5 + stage);
+        if (stage >= 1)
+        {
+            DrawLocalBrokenRune(anchor, flip, center,
+                radius * .58f,
+                Math.Clamp((draw - .28f) / .52f, 0f, 1f),
+                .70f - stage * .18f, purple, gold,
+                4 + stage);
+        }
+
+        Vector2 freeHand = new(pose.OffHandX, pose.OffHandY);
+        float handGlyph = stage == 2 ? 7f : stage == 4 ? 9f : 4f;
+        DrawLine(anchor,
+            freeHand + new Vector2(-handGlyph, 0f),
+            freeHand + new Vector2(0f, -handGlyph),
+            1f,
+            gold,
+            flip);
+        DrawLine(anchor,
+            freeHand + new Vector2(0f, -handGlyph),
+            freeHand + new Vector2(handGlyph, 0f),
+            1f,
+            blue,
+            flip);
+
+        if (stage == 2)
+        {
+            DrawLocalBrokenRune(anchor, flip,
+                center + new Vector2(0f, -11f), 6f, draw,
+                .35f, gold, blue, 5);
+            DrawLocalBrokenRune(anchor, flip,
+                center + new Vector2(0f, 11f), 6f, draw,
+                -.48f, blue, gold, 5);
+        }
+        else if (stage == 4)
+        {
+            Vector2 rear = new(pose.SwordHandX - 5f,
+                pose.SwordHandY);
+            DrawLocalBrokenRune(anchor, flip, rear, 19f,
+                draw, -.72f, purple, gold, 9);
+        }
+
+        if (afterRelease > 0f)
+        {
+            float fracture = 1f - dissolve;
+            for (int shard = 0; shard < Math.Min(5, stage + 2); shard++)
+            {
+                float angle = -.9f + shard * .47f;
+                Vector2 direction = new(
+                    MathF.Cos(angle), MathF.Sin(angle));
+                Vector2 start = center + direction * radius;
+                DrawLine(anchor, start,
+                    start + direction * (3f + fracture * 8f),
+                    1f, shard % 2 == 0 ? gold : blue, flip);
+            }
+        }
+    }
+
+    private void DrawLocalBrokenRune(
+        Vector2 anchor,
+        bool flip,
+        Vector2 center,
+        float radius,
+        float completion,
+        float rotation,
+        Color primary,
+        Color accent,
+        int segments)
+    {
+        completion = Math.Clamp(completion, 0f, 1f);
+        int visible = Math.Clamp(
+            (int)MathF.Ceiling(segments * completion),
+            0,
+            segments);
+        for (int index = 0; index < visible; index++)
+        {
+            float startAngle = rotation + MathHelper.TwoPi *
+                index / segments + .055f;
+            float endAngle = rotation + MathHelper.TwoPi *
+                (index + .64f) / segments;
+            Vector2 start = center + new Vector2(
+                MathF.Cos(startAngle) * radius,
+                MathF.Sin(startAngle) * radius * .72f);
+            Vector2 end = center + new Vector2(
+                MathF.Cos(endAngle) * radius,
+                MathF.Sin(endAngle) * radius * .72f);
+            DrawLine(anchor, start, end,
+                index % 3 == 0 ? 2f : 1f,
+                index % 2 == 0 ? primary : accent,
+                flip);
+            if (index % 2 == 0)
+            {
+                Vector2 mark = center + new Vector2(
+                    MathF.Cos(startAngle) * (radius + 3f),
+                    MathF.Sin(startAngle) * (radius + 3f) * .72f);
+                DrawLine(anchor, mark,
+                    mark + new Vector2(
+                        MathF.Cos(startAngle) * 4f,
+                        MathF.Sin(startAngle) * 3f),
+                    1f, accent, flip);
+            }
+        }
     }
 
     private void DrawSlashArc(
@@ -4289,14 +4890,20 @@ public sealed class PlayerSpriteRenderer
         PlayerCharacter player,
         GameTime gameTime,
         int hitEffectId,
-        Vector2 hitPosition)
+        Vector2 hitPosition,
+        WeaponTechniqueEffect techniqueEffect = WeaponTechniqueEffect.None,
+        int techniqueStage = -1)
     {
         if (hitEffectId != _observedHitEffectId)
         {
             _observedHitEffectId = hitEffectId;
             _hitEffectPosition = hitPosition;
-            _hitEffectDuration = player.Combat.CurrentAttack?.Kind ==
-                AttackKind.Heavy
+            _hitEffectDuration = techniqueEffect is
+                    WeaponTechniqueEffect.AncientStaffArcaneBoltChain or
+                    WeaponTechniqueEffect.AncientStaffBlinkCast or
+                    WeaponTechniqueEffect.AncientStaffRunePrison
+                ? techniqueStage >= 4 ? .20f : .15f
+                : player.Combat.CurrentAttack?.Kind == AttackKind.Heavy
                     ? 0.16f
                     : 0.11f;
             _hitEffectTimeRemaining = _hitEffectDuration;
@@ -4321,6 +4928,19 @@ public sealed class PlayerSpriteRenderer
         Vector2 anchor = new(
             MathF.Round(_hitEffectPosition.X),
             MathF.Round(_hitEffectPosition.Y));
+        if (techniqueEffect is
+            WeaponTechniqueEffect.AncientStaffArcaneBoltChain or
+            WeaponTechniqueEffect.AncientStaffBlinkCast or
+            WeaponTechniqueEffect.AncientStaffRunePrison)
+        {
+            DrawAncientStaffHitImpact(
+                anchor,
+                flip,
+                techniqueEffect,
+                techniqueStage,
+                progress);
+            return;
+        }
         Color spark = ScaleAlpha(HitSpark, Math.Clamp(progress * 1.4f, 0f, 1f));
         Color glint = ScaleAlpha(SlashCore, Math.Clamp(progress * 1.2f, 0f, 1f));
 
@@ -4334,6 +4954,87 @@ public sealed class PlayerSpriteRenderer
             1f,
             spark,
             flip);
+    }
+
+    private void DrawAncientStaffHitImpact(
+        Vector2 anchor,
+        bool flip,
+        WeaponTechniqueEffect effect,
+        int stage,
+        float remaining)
+    {
+        float expansion = 1f - remaining;
+        Color blue = ScaleAlpha(new Color(78, 164, 239), remaining);
+        Color purple = ScaleAlpha(new Color(132, 82, 203), remaining * .88f);
+        Color gold = ScaleAlpha(new Color(234, 192, 79), remaining);
+        Color white = ScaleAlpha(new Color(235, 247, 255),
+            Math.Clamp(remaining * 1.35f, 0f, 1f));
+
+        if (effect == WeaponTechniqueEffect.AncientStaffRunePrison)
+        {
+            float radius = 7f + expansion * 16f;
+            DrawLocalBrokenRune(anchor, flip, Vector2.Zero, radius,
+                1f, -.35f + expansion, purple, gold, 8);
+            for (int mark = -1; mark <= 1; mark++)
+                DrawLine(anchor, new Vector2(mark * 7f, 2f),
+                    new Vector2(mark * 10f, -7f - expansion * 5f),
+                    1f, stage == 0 ? blue : gold, flip);
+            return;
+        }
+
+        if (effect == WeaponTechniqueEffect.AncientStaffBlinkCast)
+            stage = 5;
+        stage = Math.Clamp(stage, 0, 5);
+        switch (stage)
+        {
+            case 0:
+                DrawBox(anchor, -2f, -2f, 5f, 5f, white, flip);
+                DrawLine(anchor, new Vector2(-6f - expansion * 3f, 0f),
+                    new Vector2(7f + expansion * 3f, 0f), 1f, blue, flip);
+                break;
+            case 1:
+                DrawLocalBrokenRune(anchor, flip, Vector2.Zero,
+                    7f + expansion * 5f, 1f, .2f, purple, gold, 7);
+                DrawBox(anchor, -3f, -3f, 7f, 7f, white, flip);
+                break;
+            case 2:
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    Vector2 glyph = new(0f, side * (5f + expansion * 5f));
+                    DrawLine(anchor, glyph + new Vector2(-6f, 0f),
+                        glyph + new Vector2(0f, side * -4f), 2f,
+                        side < 0 ? gold : blue, flip);
+                    DrawLine(anchor, glyph + new Vector2(0f, side * -4f),
+                        glyph + new Vector2(6f, 0f), 1f, white, flip);
+                }
+                break;
+            case 3:
+                for (int band = -1; band <= 1; band += 2)
+                    DrawLine(anchor,
+                        new Vector2(-12f - expansion * 7f, band * 5f),
+                        new Vector2(13f + expansion * 9f, -band * 3f),
+                        band < 0 ? 2f : 1f,
+                        band < 0 ? purple : gold,
+                        flip);
+                DrawLine(anchor, new Vector2(-8f, 0f),
+                    new Vector2(17f + expansion * 8f, 0f), 2f, white, flip);
+                break;
+            default:
+                float radius = 9f + expansion * (stage == 5 ? 13f : 9f);
+                DrawLocalBrokenRune(anchor, flip, Vector2.Zero,
+                    radius, 1f, expansion * 1.2f, gold, blue, 9);
+                DrawLocalBrokenRune(anchor, flip, Vector2.Zero,
+                    radius * .58f, 1f, -expansion, purple, white, 6);
+                for (int fracture = 0; fracture < 4; fracture++)
+                {
+                    float angle = fracture * MathHelper.PiOver2 + .35f;
+                    Vector2 start = new(MathF.Cos(angle) * radius,
+                        MathF.Sin(angle) * radius * .72f);
+                    DrawLine(anchor, start, start * (1.25f + expansion * .3f),
+                        1f, fracture % 2 == 0 ? gold : purple, flip);
+                }
+                break;
+        }
     }
 
     private void DrawShield(
@@ -4558,7 +5259,7 @@ public sealed class PlayerSpriteRenderer
             (int)MathF.Round(anchor.Y + y),
             Math.Max(1, (int)MathF.Round(width)),
             Math.Max(1, (int)MathF.Round(height)));
-        _spriteBatch.Draw(_pixel, destination, color);
+        _spriteBatch.Draw(_pixel, destination, ApplySpatialPhase(color));
     }
 
     private void DrawRectangleOutlineLocal(
@@ -4601,7 +5302,7 @@ public sealed class PlayerSpriteRenderer
             _pixel,
             start,
             null,
-            color,
+            ApplySpatialPhase(color),
             angle,
             new Vector2(0f, 0.5f),
             new Vector2(
@@ -4638,6 +5339,18 @@ public sealed class PlayerSpriteRenderer
             0,
             byte.MaxValue);
         return new Color(color.R, color.G, color.B, alpha);
+    }
+
+    private Color ApplySpatialPhase(Color color)
+    {
+        if (_spatialPhaseStrength <= 0f)
+            return color;
+        Color shifted = Color.Lerp(
+            color,
+            _spatialPhaseColor,
+            Math.Clamp(.38f + _spatialPhaseStrength * .38f, 0f, 1f));
+        return ScaleAlpha(shifted,
+            1f - _spatialPhaseStrength * .58f);
     }
 
     private void SetPartTransform(float scaleX, float pivotX)

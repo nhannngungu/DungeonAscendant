@@ -79,6 +79,16 @@ public sealed class PlayerCombat
     private float _currentHorizontalDirection;
     private float _spellbladeSkill2HoldSeconds;
     private bool _spellbladeSkill2CurrentlyHeld;
+    private int _ancientStaffInputMask;
+    private float _ancientStaffChordRemaining;
+    private bool _ancientStaffDashSkill1Pending;
+    private bool _ancientStaffDashSkill2Pending;
+    private bool _ancientStaffAirSkill2Pending;
+    private bool _ancientStaffSkill2CurrentlyHeld;
+    private bool _ancientStaffUltimateTargetAvailable;
+    private float _fourthVeilTimeRemaining;
+    private float _fourthVeilExitVisualRemaining;
+    private float _aegisImpactVerticalOffset;
     private RunePlacementDistance _runePlacementDistance =
         RunePlacementDistance.Medium;
     private int _availableGroundRuneCount;
@@ -177,6 +187,49 @@ public sealed class PlayerCombat
     public RunePlacementDistance RunePlacementDistance =>
         _runePlacementDistance;
     public int AvailableGroundRuneCount => _availableGroundRuneCount;
+    public int ElderSigils => Resources.ElderSigils;
+    public bool IsFourthVeilActive =>
+        _weapon.Family == WeaponFamily.ArcaneWarStaff &&
+        _fourthVeilTimeRemaining > 0f;
+    public bool IsAstralDescending =>
+        CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.AncientStaffAstralDescent;
+    public float FourthVeilRatio => Math.Clamp(
+        _fourthVeilTimeRemaining /
+            AncientStaffTuning.FourthVeilDurationSeconds,
+        0f,
+        1f);
+    public float FourthVeilVisualStrength => IsFourthVeilActive
+        ? Math.Clamp(
+            (AncientStaffTuning.FourthVeilDurationSeconds -
+                _fourthVeilTimeRemaining) / .28f,
+            0f,
+            1f)
+        : Math.Clamp(_fourthVeilExitVisualRemaining / .34f, 0f, 1f);
+    public bool IsFourthVeilVisualActive =>
+        IsFourthVeilActive || _fourthVeilExitVisualRemaining > 0f;
+    public float AegisImpactVerticalOffset => _aegisImpactVerticalOffset;
+    public float AegisWardStress => 1f - Math.Clamp(
+        Stamina.Current / MathF.Max(1f, Stamina.Maximum),
+        0f,
+        1f);
+    public bool IsAncientStaffUltimateReady =>
+        _weapon.Family == WeaponFamily.ArcaneWarStaff &&
+        Stamina.IsFull && _ancientStaffUltimateTargetAvailable &&
+        !IsFourthVeilActive;
+    public float AncientStaffUltimateCinematicRatio =>
+        CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate &&
+            State == CombatState.ChargingHeavy
+            ? Math.Clamp(
+                _stateElapsed / AncientStaffTuning.UltimateIntroSeconds,
+                0f,
+                1f)
+            : 0f;
+    public float AncientStaffUltimateWorldTimeScale =>
+        AncientStaffUltimateCinematicRatio > 0f
+            ? AncientStaffTuning.UltimateWorldSlowScale
+            : 1f;
     public BreakerPendulumStage BreakerPendulumStage =>
         _breakerPendulumStage;
     public float BreakerInertiaSnapshot => _breakerInertiaSnapshot;
@@ -253,7 +306,8 @@ public sealed class PlayerCombat
     public bool IsDodging => State == CombatState.Dodging;
     public bool IsGuardBroken => State == CombatState.Staggered;
     public bool CanBlock => _weapon.Family.ToOfficialFamily() is
-        WeaponFamily.LongSword or WeaponFamily.GreatSword;
+        WeaponFamily.LongSword or WeaponFamily.GreatSword or
+        WeaponFamily.ArcaneWarStaff;
     public WeaponMoveSet MoveSet => _weapon.MoveSet;
     public float DodgeSpeedMultiplier => _armorItem?.MoveSpeedModifier ??
         _armor.MoveSpeedModifier;
@@ -452,6 +506,13 @@ public sealed class PlayerCombat
                 WeaponTechniqueEffect.RangerSkyfallMarker => .28f,
                 WeaponTechniqueEffect.RangerPredatorsHorizon => .18f,
                 WeaponTechniqueEffect.RangerHeavensFury => .05f,
+                WeaponTechniqueEffect.AncientStaffArcaneBoltChain => .72f,
+                WeaponTechniqueEffect.AncientStaffAegisWard => .45f,
+                WeaponTechniqueEffect.AncientStaffSpiritBastion => .28f,
+                WeaponTechniqueEffect.AncientStaffElderInvocation => .10f,
+                WeaponTechniqueEffect.AncientStaffAstralDescent => .08f,
+                WeaponTechniqueEffect.AncientStaffBlinkCast => .18f,
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate => 0f,
                 WeaponTechniqueEffect.RaiderCrowdCrusher => .05f,
                 WeaponTechniqueEffect.RaiderWarbringersDominion => 0f,
                 WeaponTechniqueEffect.RaiderHookingAxe => .12f,
@@ -517,6 +578,9 @@ public sealed class PlayerCombat
             _rangerFlowGainThisTechnique = 0f;
             _sovereignThroneTimeRemaining = 0f;
             _sovereignPerfectRiftCounterPending = false;
+            _fourthVeilTimeRemaining = 0f;
+            _fourthVeilExitVisualRemaining = 0f;
+            ClearAncientStaffPendingInput();
         }
 
         if (!_weapon.UsesShield && State == CombatState.Blocking)
@@ -541,10 +605,35 @@ public sealed class PlayerCombat
         UpdateGreatswordInputState(elapsedSeconds, input);
         UpdateRangerInputState(elapsedSeconds, input);
         UpdateSovereignInputState(elapsedSeconds, input);
+        UpdateAncientStaffInputState(elapsedSeconds, input);
         _sovereignStepCooldownRemaining = MathF.Max(
             0f, _sovereignStepCooldownRemaining - elapsedSeconds);
         _sovereignThroneTimeRemaining = MathF.Max(
             0f, _sovereignThroneTimeRemaining - elapsedSeconds);
+        bool fourthVeilWasActive = IsFourthVeilActive;
+        _fourthVeilExitVisualRemaining = MathF.Max(
+            0f, _fourthVeilExitVisualRemaining - elapsedSeconds);
+        _fourthVeilTimeRemaining = MathF.Max(
+            0f, _fourthVeilTimeRemaining - elapsedSeconds);
+        if (fourthVeilWasActive && _fourthVeilTimeRemaining <= 0f)
+            _fourthVeilExitVisualRemaining = .34f;
+
+        if (_weapon.Family == WeaponFamily.ArcaneWarStaff &&
+            IsFourthVeilActive && input.DashHeld && input.Skill2Pressed)
+        {
+            _fourthVeilTimeRemaining = 0f;
+            _fourthVeilExitVisualRemaining = .34f;
+            ClearActionState();
+            StartTimedState(isGrounded
+                ? CombatState.Idle
+                : CombatState.Jumping);
+            SetFeedback("FOURTH VEIL RELEASED");
+            Stamina.Update(
+                elapsedSeconds,
+                regenerationAllowed: false,
+                _armorItem.StaminaRegenModifier);
+            return;
+        }
 
         if (_weapon.Family == WeaponFamily.GreatSword &&
             CurrentTechnique?.Effect ==
@@ -627,6 +716,16 @@ public sealed class PlayerCombat
         UpdateSpellbladeInputState(elapsedSeconds, input);
         UpdateBreakerInputState(elapsedSeconds, input);
         UpdateReckonerInputState(elapsedSeconds, input);
+
+        if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffAegisWard &&
+            (input.Skill2Released || !_ancientStaffSkill2CurrentlyHeld))
+        {
+            ClearActionState();
+            StartTimedState(isGrounded
+                ? CombatState.Idle
+                : CombatState.Jumping);
+        }
 
         if (_weapon.Family == WeaponFamily.GreatSword &&
             CurrentTechnique?.Effect ==
@@ -729,7 +828,19 @@ public sealed class PlayerCombat
         if (State == CombatState.ChargingHeavy &&
             _weapon.Family == WeaponFamily.ArcaneWarStaff)
         {
-            UpdateSpellbladeChargeState(input);
+            if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate)
+            {
+                if (_stateElapsed >= AncientStaffTuning.UltimateIntroSeconds)
+                {
+                    SetFeedback("RISE... AND BE JUDGED!");
+                    StartTechniqueStage();
+                }
+            }
+            else
+            {
+                UpdateSpellbladeChargeState(input);
+            }
             Stamina.Update(
                 elapsedSeconds,
                 regenerationAllowed: false,
@@ -806,6 +917,15 @@ public sealed class PlayerCombat
             StartTimedState(CombatState.Idle);
         }
 
+        if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffAegisWard &&
+            CurrentAttack != null && _ancientStaffSkill2CurrentlyHeld)
+        {
+            float heldWardTime = CurrentAttack.StartupTime +
+                CurrentAttack.ActiveTime - .001f;
+            _stateElapsed = MathF.Min(_stateElapsed, heldWardTime);
+        }
+
         CompleteExpiredAction(isGrounded);
         bool canStartAction = CanStartAction();
         bool dashSkillPressed = IsDashSkillPressed(input);
@@ -831,6 +951,12 @@ public sealed class PlayerCombat
             _dodgeBuffered = false;
             techniqueStarted = TryStartTechnique(
                 WeaponTechniqueInput.Skill2);
+        }
+        else if (canStartAction &&
+            _weapon.Family == WeaponFamily.ArcaneWarStaff)
+        {
+            _inputBuffer.Clear();
+            techniqueStarted = ResolveAncientStaffActionInput(input);
         }
         else if (canStartAction && input.DashHeld && dashSkillPressed && isGrounded)
         {
@@ -917,7 +1043,8 @@ public sealed class PlayerCombat
         bool regenerationAllowed = State != CombatState.Dodging &&
             State != CombatState.HeavyAttack &&
             State != CombatState.LightAttack &&
-            State != CombatState.Blocking;
+            State != CombatState.Blocking &&
+            !IsFourthVeilActive;
         Stamina.Update(
             elapsedSeconds,
             regenerationAllowed,
@@ -944,6 +1071,21 @@ public sealed class PlayerCombat
             count,
             0,
             SpellbladeTuning.MaximumGroundRunes);
+    }
+
+    public void SetAncientStaffUltimateTargetAvailable(bool available)
+    {
+        _ancientStaffUltimateTargetAvailable = available;
+    }
+
+    public void RequestAncientStaffUltimateReturn()
+    {
+        if (CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate ||
+            _techniqueSequenceIndex >= CurrentTechnique.StageCount - 1)
+            return;
+        _techniqueSequenceIndex = CurrentTechnique.StageCount - 1;
+        StartTechniqueStage();
     }
 
     public void SetRangerUltimateTargetAvailable(bool available)
@@ -1037,6 +1179,9 @@ public sealed class PlayerCombat
         FacingDirection facing,
         bool isProjectile = false)
     {
+        if (IsFourthVeilActive)
+            return AttackResolution.Ignored;
+
         if (IsSovereignRiftEvading && !contact.Unblockable)
         {
             _sovereignPerfectRiftSource = contact.SourcePosition;
@@ -1085,6 +1230,50 @@ public sealed class PlayerCombat
         {
             WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
                 WeaponTechniqueEffect.None;
+
+            if (_weapon.Family == WeaponFamily.ArcaneWarStaff &&
+                effect is WeaponTechniqueEffect.AncientStaffAegisWard or
+                    WeaponTechniqueEffect.AncientStaffSpiritBastion &&
+                IsTechniqueGuardActive)
+            {
+                _aegisImpactVerticalOffset = Math.Clamp(
+                    contact.HitArea.Center.Y - playerPosition.Y,
+                    -31f,
+                    31f);
+                float guardCost = MathF.Max(
+                    BlockMinimumStaminaCost,
+                    contact.Damage * BlockStaminaPerDamage) *
+                    AncientStaffTuning.AegisPressureMultiplier *
+                    _armorItem.GuardCostModifier;
+                bool arcaneDeflect = effect ==
+                        WeaponTechniqueEffect.AncientStaffAegisWard &&
+                    _stateElapsed <=
+                        AncientStaffTuning.AegisDeflectWindowSeconds;
+                if (Stamina.Current + .001f < guardCost)
+                {
+                    Stamina.SpendUpTo(Stamina.Current);
+                    CurrentAttack = null;
+                    CurrentTechnique = null;
+                    StartTimedState(CombatState.Staggered);
+                    return AttackResolution.GuardBroken;
+                }
+
+                Stamina.SpendUpTo(arcaneDeflect
+                    ? MathF.Max(2f, guardCost * .25f)
+                    : guardCost);
+                _blockFeedbackRemaining = FeedbackSeconds;
+                if (arcaneDeflect)
+                {
+                    Resources.AddElderSigil();
+                    _perfectGuardFeedbackRemaining = .32f;
+                    _perfectGuardRewardRemaining = .75f;
+                    _hitstopRemaining = PerfectGuardHitstopSeconds;
+                    SetFeedback("ARCANE DEFLECT");
+                    return AttackResolution.PerfectGuard;
+                }
+
+                return AttackResolution.BladeGuarded;
+            }
 
             if (_weapon.Family == WeaponFamily.GreatSword &&
                 effect is (WeaponTechniqueEffect.GreatswordIronResolve or
@@ -1241,7 +1430,16 @@ public sealed class PlayerCombat
 
         ClearActionState();
         if (!isAlive)
+        {
             _sovereignThroneTimeRemaining = 0f;
+            _fourthVeilTimeRemaining = 0f;
+            _fourthVeilExitVisualRemaining = 0f;
+        }
+        else if (hardInterrupt)
+        {
+            _fourthVeilTimeRemaining = 0f;
+            _fourthVeilExitVisualRemaining = 0f;
+        }
         StartTimedState(isAlive ? CombatState.Hurt : CombatState.Dead);
     }
 
@@ -1253,6 +1451,8 @@ public sealed class PlayerCombat
             return;
         }
 
+        _fourthVeilTimeRemaining = 0f;
+        _fourthVeilExitVisualRemaining = 0f;
         ClearActionState();
         StartTimedState(CombatState.Hurt);
     }
@@ -1262,6 +1462,8 @@ public sealed class PlayerCombat
         ClearActionState();
         _sovereignThroneTimeRemaining = 0f;
         _sovereignPerfectRiftCounterPending = false;
+        _fourthVeilTimeRemaining = 0f;
+        _fourthVeilExitVisualRemaining = 0f;
         StartTimedState(CombatState.Idle);
 
         if (restoreStamina)
@@ -1316,6 +1518,7 @@ public sealed class PlayerCombat
         ResetRangerActionState(preserveRangerWindows);
         ResetRaiderActionState();
         ResetSpellbladeActionState();
+        ClearAncientStaffPendingInput();
         ResetBreakerActionState();
         ResetReckonerActionState();
         ResetGreatswordActionState();
@@ -1531,6 +1734,13 @@ public sealed class PlayerCombat
             else
                 technique = _weapon.CombatProfile.Get(techniqueInput);
         }
+        else if (_weapon.Family == WeaponFamily.ArcaneWarStaff)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill2 && !_isGrounded)
+                technique = WeaponTechniqueCatalog.AncientStaffAstralDescent;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
         else
         {
             technique = _weapon.CombatProfile.Get(techniqueInput);
@@ -1579,6 +1789,15 @@ public sealed class PlayerCombat
         if (sovereignUltimate && !_sovereignUltimateTargetAvailable)
         {
             SetFeedback("NO SAFE TARGET IN RANGE");
+            return false;
+        }
+        bool ancientStaffUltimate =
+            _weapon.Family == WeaponFamily.ArcaneWarStaff &&
+            technique.Effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate;
+        if (ancientStaffUltimate && !_ancientStaffUltimateTargetAvailable)
+        {
+            SetFeedback("NO VALID DEPLOYMENT AREA");
             return false;
         }
         if (_weapon.Family == WeaponFamily.AbyssRing &&
@@ -1853,17 +2072,34 @@ public sealed class PlayerCombat
             }
         }
 
-        else if (_weapon.Family == WeaponFamily.ArcaneWarStaff &&
-            technique.Effect == WeaponTechniqueEffect.SpellbladeRuneBrand)
+        else if (_weapon.Family == WeaponFamily.ArcaneWarStaff)
         {
-            _runePlacementDistance = GetRunePlacementDistance(
-                _spellbladeSkill2HoldSeconds,
-                _spellbladeSkill2CurrentlyHeld);
-            if (_spellbladeSkill2CurrentlyHeld)
+            if (technique.Effect ==
+                WeaponTechniqueEffect.AncientStaffFourthVeil)
             {
-                SetFeedback(technique.Name.ToUpperInvariant());
+                _fourthVeilTimeRemaining =
+                    AncientStaffTuning.FourthVeilDurationSeconds;
+                _fourthVeilExitVisualRemaining = 0f;
+                SetFeedback("FOURTH VEIL");
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate)
+            {
+                SetFeedback("HEAVENFALL THUNDER GATE");
                 StartTimedState(CombatState.ChargingHeavy);
                 return true;
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.SpellbladeRuneBrand)
+            {
+                _runePlacementDistance = GetRunePlacementDistance(
+                    _spellbladeSkill2HoldSeconds,
+                    _spellbladeSkill2CurrentlyHeld);
+                if (_spellbladeSkill2CurrentlyHeld)
+                {
+                    SetFeedback(technique.Name.ToUpperInvariant());
+                    StartTimedState(CombatState.ChargingHeavy);
+                    return true;
+                }
             }
         }
         else if (_weapon.Family == WeaponFamily.SpikedMace)
@@ -3247,6 +3483,97 @@ public sealed class PlayerCombat
                 _spellbladeSkill2HoldSeconds,
                 held: true);
         }
+    }
+
+    private void UpdateAncientStaffInputState(
+        float elapsedSeconds,
+        CombatInput input)
+    {
+        if (_weapon.Family != WeaponFamily.ArcaneWarStaff)
+        {
+            ClearAncientStaffPendingInput();
+            return;
+        }
+
+        _ancientStaffSkill2CurrentlyHeld = input.Skill2Held;
+        if (HasCommittedAction || IsFourthVeilActive)
+            return;
+
+        int pressedMask = (input.Skill1Pressed ? 1 : 0) |
+            (input.Skill2Pressed ? 2 : 0) |
+            (input.Skill3Pressed ? 4 : 0);
+        if (pressedMask != 0)
+        {
+            if (_ancientStaffInputMask == 0)
+            {
+                _ancientStaffChordRemaining =
+                    AncientStaffTuning.ChordWindowSeconds;
+            }
+            _ancientStaffInputMask |= pressedMask;
+            if (input.Skill1Pressed && input.DashHeld)
+                _ancientStaffDashSkill1Pending = true;
+            if (input.Skill2Pressed)
+            {
+                _ancientStaffDashSkill2Pending |= input.DashHeld;
+                _ancientStaffAirSkill2Pending |= !_isGrounded;
+            }
+        }
+
+        if (_ancientStaffInputMask != 0)
+        {
+            _ancientStaffChordRemaining = MathF.Max(
+                0f,
+                _ancientStaffChordRemaining - elapsedSeconds);
+        }
+    }
+
+    private bool ResolveAncientStaffActionInput(CombatInput input)
+    {
+        if (IsFourthVeilActive)
+        {
+            ClearAncientStaffPendingInput();
+            return false;
+        }
+
+        if (_ancientStaffInputMask == 7)
+        {
+            ClearAncientStaffPendingInput();
+            return TryStartTechnique(WeaponTechniqueInput.Ultimate);
+        }
+
+        if (_ancientStaffChordRemaining > 0f)
+            return false;
+
+        int mask = _ancientStaffInputMask;
+        bool dashSkill1 = _ancientStaffDashSkill1Pending;
+        bool dashSkill2 = _ancientStaffDashSkill2Pending;
+        bool airSkill2 = _ancientStaffAirSkill2Pending;
+        ClearAncientStaffPendingInput();
+        if (dashSkill2)
+            return TryStartTechnique(WeaponTechniqueInput.DashSkill2);
+        if (airSkill2)
+            return TryStartTechnique(WeaponTechniqueInput.Skill2);
+        return mask switch
+        {
+            3 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill2),
+            6 => TryStartTechnique(WeaponTechniqueInput.Skill2Skill3),
+            5 => TryStartTechnique(WeaponTechniqueInput.Skill1Skill3),
+            1 when dashSkill1 =>
+                TryStartTechnique(WeaponTechniqueInput.DashSkill),
+            1 => TryStartTechnique(WeaponTechniqueInput.Skill1),
+            2 => TryStartTechnique(WeaponTechniqueInput.Skill2),
+            4 => TryStartTechnique(WeaponTechniqueInput.Skill3),
+            _ => false
+        };
+    }
+
+    private void ClearAncientStaffPendingInput()
+    {
+        _ancientStaffInputMask = 0;
+        _ancientStaffChordRemaining = 0f;
+        _ancientStaffDashSkill1Pending = false;
+        _ancientStaffDashSkill2Pending = false;
+        _ancientStaffAirSkill2Pending = false;
     }
 
     private void UpdateSpellbladeChargeState(CombatInput input)

@@ -25,7 +25,8 @@ public static class EquipmentCatalog
     public static readonly WeaponDefinition RaiderWarAxe = CreateWeapon(
         "war-axe", "War Axe + Buckler", WeaponFamily.WarAxe, 3, 16);
     public static readonly WeaponDefinition ArcaneWarStaff = CreateWeapon(
-        "arcane-war-staff", "Arcane War Staff", WeaponFamily.ArcaneWarStaff, 2, 11);
+        "arcane-war-staff", "Ancient Staff — The Eternal Archmage",
+        WeaponFamily.ArcaneWarStaff, 2, 11);
     public static readonly WeaponDefinition BreakerSpikedMace = CreateWeapon(
         "breaker-spiked-mace", "Breaker Spiked Mace", WeaponFamily.SpikedMace, 3, 17);
     public static readonly WeaponDefinition ReckonerChainFlail = CreateWeapon(
@@ -287,7 +288,7 @@ public static class EquipmentCatalog
                 WeaponTechniqueCatalog.Raider),
             WeaponFamily.ArcaneWarStaff => Definition(id, name, family, tier, damageBonus,
                 .94f, 1f, 1.10f, 1.05f, 1.12f, false, .22f,
-                "Physical strikes into arcane release", WeaponMoveSets.ArcaneStaff,
+                "Rune magic, summoning, space control, and thunder", WeaponMoveSets.ArcaneStaff,
                 WeaponTechniqueCatalog.Spellblade),
             WeaponFamily.SpikedMace => Definition(id, name, family, tier, damageBonus,
                 .72f, 1f, 1f, 1.55f, 1.72f, false, .12f,

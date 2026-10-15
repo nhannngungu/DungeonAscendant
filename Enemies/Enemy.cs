@@ -203,7 +203,7 @@ public abstract class Enemy
 
         UpdateTimers(gameTime);
 
-        if (player.IsAlive && !IsStaggered && !IsArcaneStunned)
+        if (player.IsTargetable && !IsStaggered && !IsArcaneStunned)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -234,7 +234,7 @@ public abstract class Enemy
     {
         float startingX = Position.X;
 
-        if (IsAlive && player.IsAlive && !IsStaggered && !IsArcaneStunned)
+        if (IsAlive && player.IsTargetable && !IsStaggered && !IsArcaneStunned)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);

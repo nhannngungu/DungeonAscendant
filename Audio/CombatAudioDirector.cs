@@ -44,6 +44,7 @@ public sealed class CombatAudioDirector
     private bool _sovereignUltimateCinematic;
     private bool _sovereignExecutionCinematic;
     private int _sovereignExecutionImpactId;
+    private bool _ancientStaffUltimateCinematic;
     private float _idleClock = 4f;
     private float _footstepClock;
     private float _worldOneShotClock = 7f;
@@ -356,6 +357,8 @@ public sealed class CombatAudioDirector
         _sovereignExecutionCinematic =
             session.IsSovereignExecutionActive;
         _sovereignExecutionImpactId = session.SovereignExecutionImpactId;
+        _ancientStaffUltimateCinematic =
+            _player.Combat.AncientStaffUltimateCinematicRatio >= .70f;
         foreach (Projectile projectile in session.Projectiles.Projectiles)
             _knownProjectiles.Add(projectile);
     }
@@ -368,14 +371,34 @@ public sealed class CombatAudioDirector
         {
             bool sovereignUltimate = player.Combat.CurrentTechnique?.Effect ==
                 WeaponTechniqueEffect.SovereignGoldenCataclysm;
+            bool ancientStaffUltimate = player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate;
             int stage = player.Combat.TechniqueStageIndex;
-            if (!sovereignUltimate)
+            if (!sovereignUltimate && !ancientStaffUltimate)
             {
                 PlayerSoundEvent soundEvent =
                     player.Combat.State == CombatState.HeavyAttack
                         ? PlayerSoundEvent.HeavyAttack
                         : PlayerSoundEvent.Swing;
                 _audio.PlayPlayer(soundEvent, player.WeaponFamily);
+            }
+            else if (ancientStaffUltimate)
+            {
+                if (stage is >= 3 and <= 7)
+                {
+                    _audio.PlayPlayer(PlayerSoundEvent.AttackRelease,
+                        player.WeaponFamily);
+                }
+                else if (stage is 1 or 8)
+                {
+                    _audio.PlayPlayer(PlayerSoundEvent.HeavyAttack,
+                        player.WeaponFamily);
+                }
+                else if (stage is 0 or 2)
+                {
+                    _audio.PlayPlayer(PlayerSoundEvent.Special,
+                        player.WeaponFamily);
+                }
             }
             else if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
             {
@@ -413,6 +436,10 @@ public sealed class CombatAudioDirector
             player.Combat.SovereignUltimateCinematicRatio >= .70f;
         if (sovereignCinematic && !_sovereignUltimateCinematic)
             _audio.PlayPlayer(PlayerSoundEvent.Special, player.WeaponFamily);
+        bool ancientStaffCinematic =
+            player.Combat.AncientStaffUltimateCinematicRatio >= .70f;
+        if (ancientStaffCinematic && !_ancientStaffUltimateCinematic)
+            _audio.PlayPlayer(PlayerSoundEvent.Special, player.WeaponFamily);
         bool sovereignExecution =
             session.IsSovereignExecutionActive;
         if (sovereignExecution && !_sovereignExecutionCinematic)
@@ -448,6 +475,7 @@ public sealed class CombatAudioDirector
         _sovereignUltimateCinematic = sovereignCinematic;
         _sovereignExecutionCinematic = sovereignExecution;
         _sovereignExecutionImpactId = session.SovereignExecutionImpactId;
+        _ancientStaffUltimateCinematic = ancientStaffCinematic;
     }
 
     private void ObserveProjectiles(GameSession session)
@@ -781,5 +809,6 @@ public sealed class CombatAudioDirector
         _rangerUltimateCinematic=false;
         _sovereignUltimateCinematic=false;
         _sovereignExecutionCinematic=false;
+        _ancientStaffUltimateCinematic=false;
     }
 }

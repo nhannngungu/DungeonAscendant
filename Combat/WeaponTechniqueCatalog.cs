@@ -54,6 +54,22 @@ public static class WeaponTechniqueCatalog
         penetratesTerrain: true);
     private static readonly ProjectileDefinition ArcaneBolt = new(
         ProjectileType.ArcaneBolt, 420f, new Vector2(18f, 18f), 3.1f);
+    private static readonly ProjectileDefinition AncientRuneSpark = new(
+        ProjectileType.ArcaneBolt, 570f, new Vector2(11f, 11f), 2.2f);
+    private static readonly ProjectileDefinition AncientArcanePulse = new(
+        ProjectileType.ArcaneBolt, 510f, new Vector2(18f, 18f), 2.5f);
+    private static readonly ProjectileDefinition AncientTwinGlyph = new(
+        ProjectileType.ArcaneBolt, 600f, new Vector2(13f, 13f), 2.4f);
+    private static readonly ProjectileDefinition AncientSpiralLance = new(
+        ProjectileType.ArcaneBolt, 670f, new Vector2(30f, 12f), 2.5f,
+        ProjectileTrajectoryType.Penetrating, remainingPierces: 1);
+    private static readonly ProjectileDefinition AncientElderBurst = new(
+        ProjectileType.ArcaneBolt, 485f, new Vector2(30f, 30f), 2.8f,
+        impactRadius: 44f);
+    private static readonly ProjectileDefinition AncientBlinkLance = new(
+        ProjectileType.ArcaneBolt, 760f, new Vector2(38f, 12f), 2.1f,
+        ProjectileTrajectoryType.Penetrating, remainingPierces: 1,
+        impactRadius: 38f);
     private static readonly ProjectileDefinition RuneBrandSigil = new(
         ProjectileType.ArcaneBolt, 560f, new Vector2(20f, 20f), 2.2f,
         impactRadius: 1f);
@@ -498,41 +514,91 @@ public static class WeaponTechniqueCatalog
                 M(AttackKind.Heavy, 2.72f, 126, .31f, .15f, .62f, 40, 112, 88, AttackHitboxShape.FrontalFan)
             }));
 
+    public static readonly WeaponTechnique AncientStaffAstralDescent =
+        T("astral-descent", "Astral Descent", WeaponTechniqueInput.Skill2, 16,
+            effect: WeaponTechniqueEffect.AncientStaffAstralDescent,
+            stages: new[] {
+                M(AttackKind.LightThree, .70f, 30, .10f, .10f, .08f,
+                    12, 74, 72, AttackHitboxShape.Circular),
+                M(AttackKind.Heavy, .60f, 38, .08f, .12f, .24f,
+                    20, 104, 74, AttackHitboxShape.Circular)
+            });
+
     public static readonly WeaponCombatProfile Spellblade = new(
-        "spellblade", WeaponTechniqueInput.Skill1,
-        T("runic-strikes", "Runic Strikes", WeaponTechniqueInput.Skill1, 5,
-            effect: WeaponTechniqueEffect.SpellbladeRunicStrikes,
-            manual: true, stageCost: 5,
+        "ancient-staff", WeaponTechniqueInput.Skill1,
+        T("arcane-bolt-chain", "Arcane Bolt Chain", WeaponTechniqueInput.Skill1, 5,
+            effect: WeaponTechniqueEffect.AncientStaffArcaneBoltChain,
+            gain: 1, manual: true, stageCost: 4,
             stages: new[] {
-                M(AttackKind.LightOne, .82f, 18, .08f, .10f, .11f, 10, 92, 38),
-                M(AttackKind.LightTwo, .88f, 20, .07f, .10f, .11f, 12, 94, 38),
-                M(AttackKind.LightThree, 1.08f, 28, .09f, .11f, .22f, 18, 116, 30, AttackHitboxShape.Thrust, 55)
+                R(AttackKind.LightOne, .60f, 10, .06f, .04f, .12f, 3, AncientRuneSpark),
+                R(AttackKind.LightTwo, .70f, 12, .07f, .04f, .12f, 4, AncientArcanePulse),
+                R(AttackKind.LightThree, .80f, 14, .08f, .05f, .13f, 5, AncientTwinGlyph),
+                R(AttackKind.LightFour, .95f, 22, .10f, .05f, .16f, 8, AncientSpiralLance),
+                R(AttackKind.LightFive, 1.25f, 36, .15f, .07f, .28f, 18, AncientElderBurst)
             }),
-        T("rune-brand", "Rune Brand", WeaponTechniqueInput.Skill2, 16,
-            effect: WeaponTechniqueEffect.SpellbladeRuneBrand,
-            stages: new[] { R(AttackKind.LightTwo, .76f, 14, .13f, .06f, .22f, 8, RuneBrandSigil) }),
-        T("arcane-detonation", "Arcane Detonation", WeaponTechniqueInput.Skill3, 22,
-            effect: WeaponTechniqueEffect.SpellbladeArcaneDetonation,
-            stages: new[] { M(AttackKind.LightThree, .18f, 12, .25f, .15f, .36f, 4, 150, 140, AttackHitboxShape.Circular) }),
-        T("arcane-lunge", "Arcane Lunge", WeaponTechniqueInput.DashSkill, 24,
-            effect: WeaponTechniqueEffect.SpellbladeArcaneLunge,
-            stages: new[] { M(AttackKind.LightThree, 1.18f, 32, .08f, .12f, .25f, 26, 116, 30, AttackHitboxShape.Thrust, 370) }),
-        T("runic-spear", "Runic Spear", WeaponTechniqueInput.Skill1Skill2, 32,
-            effect: WeaponTechniqueEffect.SpellbladeRunicSpear,
-            stages: new[] { R(AttackKind.Heavy, 1.42f, 38, .20f, .08f, .34f, 24, RunicSpearExtension, 115) }),
-        T("resonance-breaker", "Resonance Breaker", WeaponTechniqueInput.Skill1Skill3, 36,
-            effect: WeaponTechniqueEffect.SpellbladeResonanceBreaker,
-            stages: new[] { M(AttackKind.Heavy, 1.72f, 52, .25f, .13f, .42f, 28, 86, 58, AttackHitboxShape.Chop, 70) }),
-        T("arcane-convergence", "Arcane Convergence", WeaponTechniqueInput.Skill2Skill3, 38,
-            effect: WeaponTechniqueEffect.SpellbladeArcaneConvergence,
-            stages: new[] { M(AttackKind.LightThree, .10f, 10, .28f, .12f, .88f, 0, 90, 90, AttackHitboxShape.Circular) }),
-        T("arcane-dominion", "Arcane Dominion", WeaponTechniqueInput.Ultimate, 100,
-            full: true, effect: WeaponTechniqueEffect.SpellbladeArcaneDominion,
+        T("aegis-ward", "Aegis Ward", WeaponTechniqueInput.Skill2, 6,
+            guard: true, effect: WeaponTechniqueEffect.AncientStaffAegisWard,
             stages: new[] {
-                M(AttackKind.LightOne, .10f, 10, .24f, .10f, .08f, 0, 150, 130, AttackHitboxShape.Circular),
-                M(AttackKind.LightTwo, .12f, 12, .09f, .10f, .08f, 0, 190, 150, AttackHitboxShape.Circular),
-                M(AttackKind.LightThree, .18f, 18, .09f, .12f, .10f, 0, 225, 170, AttackHitboxShape.Circular),
-                M(AttackKind.Heavy, 2.20f, 105, .25f, .16f, .62f, 18, 245, 210, AttackHitboxShape.Circular)
+                M(AttackKind.LightTwo, 0f, 0, .03f, 3.8f, .08f,
+                    0, 72, 88, AttackHitboxShape.Thrust)
+            }),
+        T("thunder-spirit", "Thunder Spirit", WeaponTechniqueInput.Skill3, 18,
+            effect: WeaponTechniqueEffect.AncientStaffThunderSpirit,
+            stages: new[] {
+                M(AttackKind.LightThree, 0f, 0, .15f, .06f, .24f,
+                    0, 1, 1, AttackHitboxShape.ShortArc)
+            }),
+        T("blink-cast", "Blink Cast", WeaponTechniqueInput.DashSkill, 20,
+            effect: WeaponTechniqueEffect.AncientStaffBlinkCast,
+            stages: new[] {
+                R(AttackKind.Heavy, 1.10f, 36, .09f, .06f, .25f,
+                    12, AncientBlinkLance)
+            }),
+        T("fourth-veil", "Fourth Veil", WeaponTechniqueInput.DashSkill2, 18,
+            effect: WeaponTechniqueEffect.AncientStaffFourthVeil,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .06f, .04f, .14f,
+                    0, 1, 1, AttackHitboxShape.ShortArc)
+            }),
+        T("rune-prison", "Rune Prison", WeaponTechniqueInput.Skill1Skill2, 26,
+            effect: WeaponTechniqueEffect.AncientStaffRunePrison, gain: 1,
+            stages: new[] {
+                M(AttackKind.LightOne, .50f, 20, .18f, .09f, .20f,
+                    0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.Heavy, .90f, 42, .16f, .11f, .30f,
+                    0, 1, 1, AttackHitboxShape.TargetZone)
+            }),
+        T("spirit-bastion", "Spirit Bastion", WeaponTechniqueInput.Skill2Skill3, 34,
+            guard: true, effect: WeaponTechniqueEffect.AncientStaffSpiritBastion,
+            gain: 1, stages: new[] {
+                M(AttackKind.LightOne, .40f, 18, .14f, .10f, .08f, 0, 1, 1, AttackHitboxShape.Circular),
+                M(AttackKind.LightTwo, .35f, 16, .08f, .08f, .07f, 0, 1, 1, AttackHitboxShape.Circular),
+                M(AttackKind.LightThree, .35f, 16, .07f, .08f, .07f, 0, 1, 1, AttackHitboxShape.Circular),
+                M(AttackKind.LightFour, .35f, 16, .07f, .08f, .09f, 0, 1, 1, AttackHitboxShape.Circular),
+                M(AttackKind.Heavy, .90f, 52, .16f, .12f, .34f, 22, 1, 1, AttackHitboxShape.Circular)
+            }),
+        T("elder-invocation", "Elder Invocation", WeaponTechniqueInput.Skill1Skill3, 38,
+            effect: WeaponTechniqueEffect.AncientStaffElderInvocation,
+            gain: 1, stages: new[] {
+                M(AttackKind.LightOne, .35f, 12, .18f, .08f, .10f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightTwo, .60f, 24, .10f, .08f, .10f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightThree, .60f, 24, .10f, .08f, .14f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.Heavy, 1.20f, 64, .20f, .12f, .38f, 16, 1, 1, AttackHitboxShape.TargetZone)
+            }),
+        T("heavenfall-thunder-gate", "Heavenfall Thunder Gate",
+            WeaponTechniqueInput.Ultimate, 100, full: true,
+            effect: WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate,
+            stages: new[] {
+                M(AttackKind.LightOne, 0f, 0, .18f, .06f, .10f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightTwo, .60f, 38, .18f, .10f, .16f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightThree, .50f, 32, .12f, .09f, .14f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightOne, .35f, 18, .09f, .07f, .08f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightTwo, .35f, 18, .08f, .07f, .08f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightThree, .35f, 18, .08f, .07f, .08f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightFour, .35f, 18, .08f, .07f, .08f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightFive, .35f, 18, .08f, .07f, .18f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.Heavy, 1.80f, 108, .30f, .14f, .52f, 0, 1, 1, AttackHitboxShape.TargetZone),
+                M(AttackKind.LightOne, 0f, 0, .03f, .02f, .30f, 0, 1, 1, AttackHitboxShape.ShortArc)
             }));
 
     public static readonly WeaponCombatProfile Breaker = new(

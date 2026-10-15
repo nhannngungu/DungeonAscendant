@@ -80,7 +80,8 @@ public sealed class Player
         BaseExperienceRequirement + (Level - 1) * ExperienceRequirementPerLevel;
     public FacingDirection Facing { get; private set; }
     public bool IsInvulnerable => _invulnerabilityTimeRemaining > 0f ||
-        Combat.IsDodgeInvulnerable;
+        Combat.IsDodgeInvulnerable || Combat.IsFourthVeilActive;
+    public bool IsTargetable => IsAlive && !Combat.IsFourthVeilActive;
     public bool IsHitFlashing => _hitFeedbackTimeRemaining > 0f;
     public bool IsSlowed => _slowTimeRemaining > 0f;
     public float SlowMovementMultiplier => IsSlowed
@@ -263,6 +264,8 @@ public sealed class Player
             verticalVelocity +=
                 GreatswordTuning.FallingBastionDownwardBoost * elapsedSeconds;
         }
+        if (Combat.IsAstralDescending)
+            verticalVelocity = MathF.Max(verticalVelocity, 760f);
         Velocity = new Vector2(
             horizontalVelocity,
             MathF.Min(TerminalFallSpeed, verticalVelocity));
@@ -593,7 +596,9 @@ public sealed class Player
                 1,
                 (int)MathF.Round(
                     contact.Damage *
-                    GreatswordTuning.IronResolveDamageTakenMultiplier));
+                    (WeaponFamily == WeaponFamily.ArcaneWarStaff
+                        ? AncientStaffTuning.AegisDamageTakenMultiplier
+                        : GreatswordTuning.IronResolveDamageTakenMultiplier)));
             ApplyHealthDamage(
                 ApplyArmorDefense(guardedDamage),
                 hardInterrupt: false);

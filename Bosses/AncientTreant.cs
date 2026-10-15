@@ -216,7 +216,7 @@ public sealed class AncientTreant
                 CurrentPoise + MaxPoise * 0.28f * elapsedSeconds);
         }
 
-        if (!player.IsAlive || IsStaggered || IsPhaseTransitioning)
+        if (!player.IsTargetable || IsStaggered || IsPhaseTransitioning)
             return;
 
         if (_rootStrikeCooldownRemaining <= 0f)

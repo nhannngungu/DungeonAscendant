@@ -38,6 +38,8 @@ public static class AbyssRingTuning
     public const float PortalStabilizeSeconds = .06f;
     public const float PortalActiveSeconds = .24f;
     public const float PortalCloseSeconds = .14f;
-    public const int GoldenGateCount = 24;
+    public const float UltimateConstellationHoldSeconds = 1.10f;
+    public const int UltimateConstellationCount = 6;
+    public const int GoldenGateCount = UltimateConstellationCount;
     public const int UltimateStrikeCount = 16;
 }

@@ -173,6 +173,10 @@ public sealed class GameRenderer : IDisposable
     private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
     private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
     private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
+    private int _observedElderSigils;
+    private float _elderSigilPulseRemaining;
+    private Vector2 _thunderSpiritVisualPosition;
+    private bool _thunderSpiritVisualInitialized;
 
     public GameRenderer(
         GraphicsDevice graphicsDevice,
@@ -343,9 +347,11 @@ public sealed class GameRenderer : IDisposable
 
         DrawRangerTrajectoryGuide(gameSession);
         DrawSpellbladeWorld(gameSession);
+        DrawAncientStaffWorld(gameSession, gameTime);
         DrawBreakerWorld(gameSession);
         DrawSovereignUltimateWorld(gameSession, gameTime);
         DrawSovereignPortals(gameSession);
+        DrawFourthVeilBackground(gameSession, gameTime);
 
         Vector2? sovereignVisualPosition = null;
         Vector2? sovereignTravelDirection = null;
@@ -359,6 +365,29 @@ public sealed class GameRenderer : IDisposable
             sovereignTravelDirection = transitDirection;
             sovereignTransitionStrength = transitStrength;
         }
+        if (gameSession.Player.Combat.IsFourthVeilVisualActive)
+        {
+            float veilStrength = gameSession.Player.Combat
+                .FourthVeilVisualStrength;
+            float drift = MathF.Sin(
+                (float)gameTime.TotalGameTime.TotalSeconds * 4.2f);
+            float facing = gameSession.Player.Facing == FacingDirection.Left
+                ? -1f : 1f;
+            _playerSpriteRenderer.DrawFourthVeilEcho(
+                gameSession.Player,
+                gameSession.Player.Position + new Vector2(
+                    -facing * (5f + drift * 2f),
+                    1f),
+                veilStrength * .68f,
+                purpleLayer: true);
+            _playerSpriteRenderer.DrawFourthVeilEcho(
+                gameSession.Player,
+                gameSession.Player.Position + new Vector2(
+                    facing * (3f - drift),
+                    -1f),
+                veilStrength * .48f,
+                purpleLayer: false);
+        }
         _playerSpriteRenderer.Draw(
             gameSession.Player,
             gameTime,
@@ -368,6 +397,7 @@ public sealed class GameRenderer : IDisposable
             sovereignVisualPosition,
             sovereignTravelDirection,
             sovereignTransitionStrength);
+        DrawFourthVeilOverlay(gameSession, gameTime);
 
         foreach (Enemy enemy in gameSession.Enemies.DefeatPresentations)
         {
@@ -463,7 +493,9 @@ public sealed class GameRenderer : IDisposable
             gameSession.Player,
             gameTime,
             gameSession.PlayerHitEffectId,
-            gameSession.PlayerHitEffectPosition);
+            gameSession.PlayerHitEffectPosition,
+            gameSession.PlayerHitTechniqueEffect,
+            gameSession.PlayerHitTechniqueStage);
 
         DrawWildForestForeground(gameSession, gameSession.Camera.ViewBounds);
         _catacombEnvironmentRenderer.DrawForeground(
@@ -494,10 +526,12 @@ public sealed class GameRenderer : IDisposable
         DrawGreatswordUltimateCinematic(gameSession);
         DrawSovereignAssaultOverlay(gameSession);
         DrawSovereignUltimateCinematic(gameSession);
+        DrawAncientStaffUltimateCinematic(gameSession, gameTime);
         DrawSovereignExecutionFrame(gameSession);
         bool hideSovereignHud =
             gameSession.Player.Combat.SovereignUltimateCinematicRatio > 0f ||
-            gameSession.IsSovereignExecutionActive;
+            gameSession.IsSovereignExecutionActive ||
+            gameSession.Player.Combat.AncientStaffUltimateCinematicRatio > 0f;
         if (!hideSovereignHud)
         {
             DrawHudPanel();
@@ -509,7 +543,7 @@ public sealed class GameRenderer : IDisposable
             DrawBrokenKingBossBar(gameSession);
             DrawHornedGeneralBossBar(gameSession);
             DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
-            DrawWeaponResource(gameSession.Player);
+            DrawWeaponResource(gameSession.Player, gameTime);
             DrawTechniqueFeedback(gameSession.Player);
             DrawDungeonStatus(gameSession);
         }
@@ -2994,6 +3028,11 @@ public sealed class GameRenderer : IDisposable
 
         if (projectile.Type == ProjectileType.ArcaneBolt)
         {
+            if (projectile.IsAncientStaffProjectile)
+            {
+                DrawAncientStaffProjectile(projectile);
+                return;
+            }
             if (projectile.TechniqueEffect ==
                 WeaponTechniqueEffect.SpellbladeRunicSpear)
             {
@@ -3153,6 +3192,1651 @@ public sealed class GameRenderer : IDisposable
         DrawWorldLine(neck + perpendicular * 8f, tip, 3f, edge);
         DrawWorldLine(neck - perpendicular * 8f, tip, 3f, edge);
         DrawWorldLine(neck, tip, 1f, core);
+    }
+
+    private void DrawAncientStaffProjectile(Projectile projectile)
+    {
+        Vector2 direction = projectile.Velocity;
+        if (direction.LengthSquared() < .01f)
+            direction = Vector2.UnitX;
+        else
+            direction.Normalize();
+        Vector2 normal = new(-direction.Y, direction.X);
+        Vector2 center = projectile.Position;
+        Color blue = new(83, 162, 238, 225);
+        Color purple = new(137, 91, 211, 205);
+        Color gold = new(232, 191, 82, 235);
+        Color white = new(235, 246, 255, 245);
+        float travelPhase = center.X * .075f + center.Y * .031f;
+
+        if (projectile.TechniqueEffect ==
+            WeaponTechniqueEffect.AncientStaffBlinkCast)
+        {
+            Vector2 tip = center + direction * 31f;
+            DrawWorldLine(center - direction * 35f, tip, 8f,
+                new Color(73, 104, 225, 72));
+            DrawWorldLine(center - direction * 27f, tip, 3f, purple);
+            DrawWorldLine(center - direction * 7f, tip, 1f, white);
+            for (int fold = -1; fold <= 1; fold += 2)
+            {
+                Vector2 wing = center + direction * 9f + normal * fold * 9f;
+                DrawWorldLine(wing, tip, 2f, gold);
+                DrawWorldLine(center - direction * 18f + normal * fold * 4f,
+                    center - direction * 7f + normal * fold * 8f,
+                    1f, blue);
+            }
+            return;
+        }
+
+        switch (projectile.SpreadArrowIndex)
+        {
+            case 0:
+                DrawWorldLine(center - direction * 13f,
+                    center + direction * 7f, 2f,
+                    new Color(72, 145, 226, 145));
+                DrawWorldLine(center - direction * 4f,
+                    center + direction * 9f, 3f, blue);
+                DrawWorldLine(center - normal * 3f,
+                    center + normal * 3f, 1f, gold);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle((int)center.X + (int)(direction.X * 5f) - 1,
+                        (int)center.Y + (int)(direction.Y * 5f) - 1, 3, 3),
+                    white);
+                break;
+            case 1:
+                DrawWorldLine(center - direction * 20f,
+                    center - direction * 5f, 5f,
+                    new Color(108, 77, 190, 80));
+                DrawWorldLine(center - direction * 13f,
+                    center + direction * 10f, 7f, purple);
+                DrawWorldLine(center - direction * 8f,
+                    center + direction * 12f, 3f, white);
+                DrawBrokenWorldRune(center - direction * 2f, 11f,
+                    travelPhase, gold, blue, 7, 1f, .70f);
+                break;
+            case 2:
+                float pairLead = projectile.Velocity.Y < 0f ? 5f : -5f;
+                center += direction * pairLead;
+                Color pairColor = projectile.Velocity.Y < 0f ? gold : blue;
+                DrawWorldLine(center - direction * 20f,
+                    center - direction * 4f, 1f, pairColor);
+                Vector2 pairTip = center + direction * 10f;
+                DrawWorldLine(center - direction * 7f + normal * 5f,
+                    pairTip, 2f, pairColor);
+                DrawWorldLine(center - direction * 7f - normal * 5f,
+                    pairTip, 1f, white);
+                DrawWorldLine(center - direction * 8f + normal * 5f,
+                    center - direction * 8f - normal * 5f,
+                    1f, purple);
+                break;
+            case 3:
+                DrawWorldLine(center - direction * 30f,
+                    center + direction * 25f, 7f,
+                    new Color(101, 62, 178, 90));
+                DrawWorldLine(center - direction * 25f,
+                    center + direction * 28f, 3f, purple);
+                DrawWorldLine(center - direction * 13f,
+                    center + direction * 30f, 1f, white);
+                Vector2 previousA = center - direction * 27f;
+                Vector2 previousB = previousA;
+                for (int segment = 1; segment <= 7; segment++)
+                {
+                    float along = -27f + segment * 7.5f;
+                    float wave = MathF.Sin(travelPhase + segment * .95f) * 8f;
+                    Vector2 pointA = center + direction * along + normal * wave;
+                    Vector2 pointB = center + direction * along - normal * wave;
+                    DrawWorldLine(previousA, pointA, 2f, gold);
+                    DrawWorldLine(previousB, pointB, 1f, blue);
+                    previousA = pointA;
+                    previousB = pointB;
+                }
+                break;
+            default:
+                DrawWorldLine(center - direction * 29f,
+                    center - direction * 10f, 5f,
+                    new Color(102, 66, 184, 72));
+                DrawWorldLine(center - direction * 14f,
+                    center + direction * 15f, 9f, purple);
+                DrawWorldLine(center - direction * 9f,
+                    center + direction * 17f, 4f, blue);
+                DrawBrokenWorldRune(center, 17f, travelPhase,
+                    gold, blue, 10, 3f, .72f);
+                DrawBrokenWorldRune(center, 10f, -travelPhase * .8f,
+                    purple, white, 7, 2f, .62f);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle((int)center.X - 3, (int)center.Y - 3, 7, 7),
+                    white);
+                for (int wake = 1; wake <= 3; wake++)
+                {
+                    Vector2 fragment = center - direction * (17f + wake * 7f) +
+                        normal * (wake % 2 == 0 ? 5f : -5f);
+                    DrawWorldLine(fragment,
+                        fragment + direction * 4f + normal * 2f,
+                        1f, wake == 2 ? gold : blue);
+                }
+                break;
+        }
+    }
+
+    private void DrawAncientStaffWorld(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (gameSession.Player.WeaponFamily != WeaponFamily.ArcaneWarStaff)
+        {
+            _thunderSpiritVisualInitialized = false;
+            return;
+        }
+
+        float pulse = .5f + .5f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 7f);
+        float runeTime = (float)gameTime.TotalGameTime.TotalSeconds;
+        Color blue = new(75, 151, 229, 205);
+        Color purple = new(126, 78, 194, 180);
+        Color gold = new(224, 183, 73, 220);
+        Color lightning = new(229, 244, 255, 235);
+
+        DrawThunderSpirit(gameSession, gameTime);
+
+        WeaponTechnique technique = gameSession.Player.Combat.CurrentTechnique;
+        if (technique == null)
+            return;
+        WeaponTechniqueEffect effect = technique.Effect;
+        int stage = gameSession.Player.Combat.TechniqueStageIndex;
+        float stageRatio = gameSession.AncientStaffUltimateStageRatio;
+        Vector2 center = gameSession.AncientStaffEffectCenter;
+
+        if (effect == WeaponTechniqueEffect.AncientStaffAegisWard)
+        {
+            float facing = gameSession.Player.Facing == FacingDirection.Left
+                ? -1f
+                : 1f;
+            Vector2 ward = gameSession.Player.Position +
+                new Vector2(facing * 43f, -7f);
+            float stress = gameSession.Player.Combat.AegisWardStress;
+            float stability = stress > .72f
+                ? .58f + .42f * MathF.Abs(MathF.Sin(runeTime * 19f))
+                : 1f;
+            Color wardBlue = new(75, 151, 229,
+                (int)(178f * stability));
+            Color wardGold = new(224, 183, 73,
+                (int)(205f * stability));
+            Color wardPurple = new(126, 78, 194,
+                (int)(105f * stability));
+
+            for (int plane = -3; plane <= 3; plane++)
+            {
+                float y = plane * 10f;
+                DrawWorldLine(
+                    ward + new Vector2(-facing * (4f + Math.Abs(plane)), y),
+                    ward + new Vector2(facing * (6f + Math.Abs(plane)),
+                        y + facing * 2f),
+                    plane == 0 ? 2f : 1f,
+                    plane == 0 ? wardGold : wardPurple);
+            }
+            DrawBrokenWorldRune(ward, 35f + pulse,
+                runeTime * .38f, wardBlue, wardGold,
+                13, 2f, .68f, 1f, 1.08f);
+            DrawBrokenWorldRune(ward, 24f,
+                -runeTime * .52f + .3f, wardGold, wardPurple,
+                9, 1f, .58f, 1f, 1.12f);
+            for (int glyph = -2; glyph <= 2; glyph++)
+            {
+                Vector2 glyphCenter = ward + new Vector2(
+                    facing * (glyph % 2 == 0 ? 3f : -2f),
+                    glyph * 12f);
+                DrawWorldLine(glyphCenter + new Vector2(-4f, 0f),
+                    glyphCenter + new Vector2(0f, -4f), 1f, wardGold);
+                DrawWorldLine(glyphCenter + new Vector2(0f, -4f),
+                    glyphCenter + new Vector2(4f, 0f), 1f, wardBlue);
+            }
+
+            if (gameSession.Player.Combat.IsBlockFeedbackActive ||
+                gameSession.Player.Combat.IsPerfectGuardFeedbackActive)
+            {
+                bool deflect = gameSession.Player.Combat
+                    .IsPerfectGuardFeedbackActive;
+                Vector2 impact = ward + new Vector2(
+                    facing * 2f,
+                    gameSession.Player.Combat.AegisImpactVerticalOffset * .72f);
+                float ripple = deflect ? 17f + pulse * 5f : 10f + pulse * 4f;
+                DrawBrokenWorldRune(impact, ripple,
+                    deflect ? -runeTime * 1.8f : runeTime,
+                    deflect ? lightning : wardBlue,
+                    deflect ? wardGold : wardPurple,
+                    deflect ? 10 : 7,
+                    deflect ? 3f : 2f,
+                    .55f,
+                    1f,
+                    .85f);
+                for (int ray = -2; ray <= 2; ray++)
+                {
+                    Vector2 rayDirection = Vector2.Normalize(new Vector2(
+                        facing,
+                        ray * .34f));
+                    DrawWorldLine(
+                        impact + rayDirection * 5f,
+                        impact + rayDirection * (deflect ? 27f : 16f),
+                        ray == 0 && deflect ? 3f : 1f,
+                        deflect && ray % 2 == 0 ? wardGold : lightning);
+                }
+            }
+
+            if (stress > .72f)
+            {
+                DrawWorldLine(ward + new Vector2(-9f, -18f),
+                    ward + new Vector2(3f, -7f), 1f, wardPurple);
+                DrawWorldLine(ward + new Vector2(3f, -7f),
+                    ward + new Vector2(-4f, 6f), 1f, wardGold);
+            }
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffRunePrison)
+        {
+            float radius = AncientStaffTuning.RunePrisonRadius +
+                gameSession.Player.Combat.ElderSigils * 8f;
+            AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+            float progress = attack == null
+                ? 1f
+                : Math.Clamp(gameSession.Player.Combat.StateElapsed /
+                    MathF.Max(.01f, attack.TotalTime), 0f, 1f);
+            float outerFormation = stage == 0
+                ? Math.Clamp(progress / .58f, 0f, 1f)
+                : 1f;
+            float innerFormation = stage == 0
+                ? Math.Clamp((progress - .20f) / .58f, 0f, 1f)
+                : 1f;
+            float restraint = gameSession.AncientStaffRestraintVisualStrength;
+            float contraction = stage == 1
+                ? MathHelper.Lerp(1f, .79f,
+                    MathHelper.SmoothStep(0f, 1f, progress))
+                : 1f;
+            radius *= contraction;
+            DrawBrokenWorldRune(center, radius,
+                -.28f + runeTime * .08f, purple, blue,
+                20, 3f, .73f, outerFormation, .29f);
+            DrawBrokenWorldRune(center, radius * .66f,
+                .42f - runeTime * .11f, gold, blue,
+                14, 2f, .62f, innerFormation, .29f);
+            DrawBrokenWorldRune(center, radius * .33f,
+                -.75f + runeTime * .16f, blue, gold,
+                9, 1f, .54f, innerFormation, .29f);
+            for (int spoke = 0; spoke < 8; spoke++)
+            {
+                float angle = MathHelper.TwoPi * spoke / 8f + .18f;
+                Vector2 inner = center + new Vector2(
+                    MathF.Cos(angle) * radius * .34f,
+                    MathF.Sin(angle) * radius * .10f);
+                Vector2 outer = center + new Vector2(
+                    MathF.Cos(angle) * radius * .85f,
+                    MathF.Sin(angle) * radius * .25f);
+                DrawWorldLine(inner, outer, 1f,
+                    spoke % 3 == 0 ? gold : purple);
+            }
+            for (int pillar = 0; pillar < 6; pillar++)
+            {
+                float angle = MathHelper.TwoPi * pillar / 6f;
+                Vector2 root = center + new Vector2(
+                    MathF.Cos(angle) * radius * .72f,
+                    MathF.Sin(angle) * radius * .20f);
+                float height = (20f + 31f * innerFormation) * restraint;
+                Vector2 top = root - new Vector2(0f, height);
+                DrawWorldLine(root, top,
+                    restraint > .8f ? 3f : 2f,
+                    pillar % 2 == 0 ? blue : purple);
+                if (restraint > .45f)
+                {
+                    Vector2 chainEnd = Vector2.Lerp(top,
+                        center - new Vector2(0f, 15f), .68f);
+                    DrawWorldLine(top, chainEnd, 1f, gold);
+                }
+            }
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffSpiritBastion)
+        {
+            AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+            float progress = attack == null ? 1f : Math.Clamp(
+                gameSession.Player.Combat.StateElapsed /
+                    MathF.Max(.01f, attack.TotalTime), 0f, 1f);
+            Vector2 bastion = gameSession.Player.Position;
+            float radius = AncientStaffTuning.SpiritBastionRadius;
+            DrawBrokenWorldRune(bastion, radius,
+                runeTime * .12f, blue, purple,
+                24, 3f, .72f, 1f, .34f);
+            float pulseRadius = radius *
+                (.48f + progress * .34f + stage * .025f);
+            DrawBrokenWorldRune(bastion, pulseRadius,
+                -runeTime * .38f, gold, lightning,
+                15, 2f, .56f, 1f, .34f);
+            Vector2 imprint = bastion - new Vector2(0f, 21f);
+            DrawWorldLine(imprint - new Vector2(9f, 0f),
+                imprint + new Vector2(9f, 0f), 5f,
+                new Color(71, 132, 215, 115));
+            DrawWorldLine(imprint, imprint + new Vector2(0f, 28f),
+                4f, new Color(95, 75, 180, 115));
+            DrawWorldLine(imprint - new Vector2(4f, -4f),
+                imprint - new Vector2(0f, 11f), 2f, gold);
+            DrawWorldLine(imprint + new Vector2(4f, 4f),
+                imprint + new Vector2(19f, 12f), 2f, blue);
+            for (int vein = 0; vein < 5; vein++)
+            {
+                float angle = MathHelper.TwoPi * vein / 5f +
+                    runeTime * .15f;
+                Vector2 inner = bastion + new Vector2(
+                    MathF.Cos(angle) * 24f,
+                    MathF.Sin(angle) * 9f);
+                Vector2 middle = bastion + new Vector2(
+                    MathF.Cos(angle + .18f) * radius * .58f,
+                    MathF.Sin(angle + .18f) * radius * .20f);
+                Vector2 outer = bastion + new Vector2(
+                    MathF.Cos(angle) * radius * .92f,
+                    MathF.Sin(angle) * radius * .31f);
+                DrawWorldLine(inner, middle, 2f,
+                    vein % 2 == 0 ? blue : purple);
+                DrawWorldLine(middle, outer, 1f,
+                    vein == stage % 5 ? lightning : gold);
+            }
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffElderInvocation)
+        {
+            AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+            float progress = attack == null ? 1f : Math.Clamp(
+                gameSession.Player.Combat.StateElapsed /
+                    MathF.Max(.01f, attack.TotalTime), 0f, 1f);
+            float apparition = stage == 0
+                ? MathHelper.SmoothStep(0f, 1f, progress)
+                : stage == 3
+                    ? 1f - progress * .76f
+                    : 1f;
+            float facing = gameSession.Player.Facing == FacingDirection.Left
+                ? -1f : 1f;
+            Vector2 commandHand = gameSession.Player.Position +
+                new Vector2(facing * 25f, -47f);
+            DrawArchmagePresence(
+                gameSession.Player.Position + new Vector2(-facing * 9f, 18f),
+                apparition * .76f,
+                1.16f,
+                commandHand,
+                runeTime);
+            for (int rune = 0; rune < 5; rune++)
+            {
+                float x = (rune - 2) * 15f;
+                float rise = (stage + progress) * (12f + rune * 2f);
+                Vector2 glyph = gameSession.Player.Position +
+                    new Vector2(x, 10f - rise);
+                DrawWorldLine(glyph - new Vector2(4f, 0f),
+                    glyph + new Vector2(0f, -5f), 1f,
+                    rune % 2 == 0 ? gold : blue);
+                DrawWorldLine(glyph + new Vector2(0f, -5f),
+                    glyph + new Vector2(4f, 0f), 1f, purple);
+            }
+            Vector2 matrix = center - new Vector2(0f, 72f);
+            DrawBrokenWorldRune(matrix, 50f + stage * 5f,
+                runeTime * .23f, purple, gold,
+                18, 2f, .66f,
+                stage == 0 ? progress : 1f, .42f);
+            DrawBrokenWorldRune(matrix, 29f,
+                -runeTime * .42f, blue, lightning,
+                11, 2f, .54f,
+                stage == 0 ? progress : 1f, .42f);
+            if (stage >= 1)
+            {
+                Vector2 strikeStart = center - new Vector2(0f, 155f);
+                Vector2 bend = Vector2.Lerp(strikeStart, center, .52f) +
+                    new Vector2(stage % 2 == 0 ? -7f : 7f, 0f);
+                DrawWorldLine(strikeStart, bend,
+                    stage == 3 ? 7f : 3f,
+                    stage == 3 ? lightning : blue);
+                DrawWorldLine(bend, center,
+                    stage == 3 ? 9f : 4f,
+                    stage == 3 ? lightning : blue);
+                DrawWorldLine(bend, bend + new Vector2(12f, 8f),
+                    1f, gold);
+            }
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffAstralDescent)
+        {
+            DrawArcaneRing(gameSession.Player.Position + new Vector2(0f, 24f),
+                36f + stage * 18f, purple, 14, 2f);
+            DrawWorldLine(gameSession.Player.Position - new Vector2(0f, 34f),
+                gameSession.Player.Position + new Vector2(0f, 36f),
+                4f, lightning);
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffBlinkCast)
+        {
+            float facing = gameSession.Player.Facing == FacingDirection.Left
+                ? -1f : 1f;
+            float trailRatio = gameSession.AncientStaffBlinkTrailRatio;
+            Vector2 origin = trailRatio > 0f
+                ? gameSession.AncientStaffBlinkOrigin
+                : gameSession.Player.Position -
+                    new Vector2(facing * AncientStaffTuning.BlinkDistance, 0f);
+            Vector2 destination = gameSession.Player.Position;
+            Color blinkPurple = new(117, 83, 201,
+                (int)(150f * trailRatio));
+            Color blinkBlue = new(75, 151, 229,
+                (int)(180f * trailRatio));
+            Color blinkGold = new(224, 183, 73,
+                (int)(110f * trailRatio));
+            DrawWorldLine(origin + new Vector2(0f, -24f),
+                origin + new Vector2(0f, 22f), 7f,
+                new Color(83, 65, 160, (int)(72f * trailRatio)));
+            DrawWorldLine(origin + new Vector2(-8f, -12f),
+                origin + new Vector2(8f, -4f), 2f, blinkBlue);
+            DrawWorldLine(origin + new Vector2(-7f, 8f),
+                origin + new Vector2(6f, 16f), 2f, blinkPurple);
+            DrawBrokenWorldRune(origin, 22f,
+                runeTime * .9f, blinkPurple, blinkBlue,
+                9, 2f, .56f, trailRatio, .82f);
+            for (int fracture = 1; fracture <= 4; fracture++)
+            {
+                float t = fracture / 5f;
+                Vector2 point = Vector2.Lerp(origin, destination, t);
+                float bend = (fracture % 2 == 0 ? 1f : -1f) *
+                    (4f + fracture);
+                DrawWorldLine(point - new Vector2(facing * 9f, bend),
+                    point + new Vector2(facing * 5f, -bend * .35f),
+                    1f,
+                    fracture == 3 ? blinkGold : blinkPurple);
+            }
+            DrawBrokenWorldRune(destination - new Vector2(0f, 5f), 16f,
+                -runeTime * 1.2f, blinkBlue, blinkGold,
+                8, 2f, .56f, 1f, .82f);
+        }
+        else if (effect ==
+            WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate)
+        {
+            DrawHeavenfallThunderGateWorld(
+                gameSession,
+                gameTime,
+                stage,
+                stageRatio,
+                center);
+        }
+    }
+
+    private void DrawHeavenfallThunderGateWorld(
+        GameSession gameSession,
+        GameTime gameTime,
+        int stage,
+        float stageRatio,
+        Vector2 center)
+    {
+        float time = (float)gameTime.TotalGameTime.TotalSeconds;
+        bool judgment = gameSession.Player.Combat.State ==
+            CombatState.ChargingHeavy;
+        float intro = judgment
+            ? gameSession.Player.Combat.AncientStaffUltimateCinematicRatio
+            : 1f;
+        Color blue = new(67, 139, 226, 188);
+        Color paleBlue = new(150, 209, 255, 220);
+        Color purple = new(112, 71, 185, 165);
+        Color gold = new(226, 184, 70, 205);
+        Color white = new(239, 248, 255, 240);
+
+        if (judgment)
+        {
+            float mark = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(intro / .68f, 0f, 1f));
+            DrawBrokenWorldRune(center,
+                24f + 23f * mark,
+                -.35f + time * .08f,
+                gold,
+                blue,
+                12,
+                2f,
+                .54f,
+                mark,
+                .30f);
+            DrawWorldLine(
+                gameSession.Player.Position - new Vector2(0f, 12f),
+                Vector2.Lerp(gameSession.Player.Position, center, mark),
+                1f,
+                new Color(222, 184, 75, (int)(112f * mark)));
+            for (int glyph = 0; glyph < 4; glyph++)
+            {
+                float side = glyph % 2 == 0 ? -1f : 1f;
+                Vector2 rune = gameSession.Player.Position + new Vector2(
+                    side * (14f + glyph * 4f),
+                    7f - mark * (22f + glyph * 10f));
+                DrawWorldLine(rune - new Vector2(3f, 0f),
+                    rune + new Vector2(0f, -5f), 1f,
+                    glyph < 2 ? gold : blue);
+                DrawWorldLine(rune + new Vector2(0f, -5f),
+                    rune + new Vector2(4f, 1f), 1f, purple);
+            }
+            return;
+        }
+
+        float sealFormation = stage == 0
+            ? MathHelper.SmoothStep(0f, 1f, stageRatio)
+            : 1f;
+        float sealIntegrity = stage == 9
+            ? 1f - MathHelper.SmoothStep(0f, 1f, stageRatio)
+            : 1f;
+        float finalContact = stage == 8
+            ? GetAncientStaffContactRatio(gameSession)
+            : 1f;
+        float contraction = stage == 8
+            ? MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(stageRatio / MathF.Max(.01f, finalContact), 0f, 1f))
+            : 0f;
+        float sealRadius = AncientStaffTuning.UltimateRadius *
+            MathHelper.Lerp(1f, .72f, contraction);
+        DrawHeavenfallGroundSeal(center, sealRadius, time,
+            sealFormation, sealIntegrity, stage, stageRatio,
+            blue, purple, gold, paleBlue);
+
+        float earthRise = stage == 1
+            ? MathHelper.SmoothStep(0f, 1f, stageRatio)
+            : stage is >= 2 and <= 9 ? 1f : 0f;
+        float aftermath = stage == 9 ? stageRatio : 0f;
+        if (stage >= 1)
+        {
+            DrawHeavenfallDebris(center, time, earthRise, aftermath,
+                stage == 8 && stageRatio >= finalContact,
+                blue, gold);
+        }
+        if (stage is 1 or 2)
+            DrawHeavenfallSuspension(gameSession, center,
+                stage == 1 ? earthRise : 1f, blue, purple, gold);
+
+        float gateFormation = stage switch
+        {
+            1 => Math.Clamp((stageRatio - .58f) / .42f, 0f, .22f),
+            2 => MathHelper.SmoothStep(0f, 1f, stageRatio),
+            >= 3 and <= 8 => 1f,
+            9 => 1f - MathHelper.SmoothStep(0f, 1f, stageRatio),
+            _ => 0f
+        };
+        Vector2 gate = center - new Vector2(0f, 205f);
+        if (gateFormation > 0f)
+            DrawHeavenfallSpaceGate(gate, time, gateFormation,
+                stage, stageRatio, blue, purple, gold, paleBlue);
+
+        float archmage = stage switch
+        {
+            1 => MathF.Sin(stageRatio * MathHelper.Pi) * .58f,
+            2 => MathF.Sin(Math.Clamp(stageRatio * 1.18f, 0f, 1f) *
+                MathHelper.Pi) * .70f,
+            8 => MathF.Sin(Math.Clamp(stageRatio / .70f, 0f, 1f) *
+                MathHelper.Pi) * .92f,
+            9 => (1f - stageRatio) * .35f,
+            _ => 0f
+        };
+        if (archmage > .01f)
+        {
+            float facing = gameSession.Player.Facing == FacingDirection.Left
+                ? -1f : 1f;
+            Vector2 gesture = stage == 8
+                ? gate + new Vector2(facing * 35f, 22f)
+                : Vector2.Lerp(gameSession.Player.Position, gate, .54f);
+            DrawArchmagePresence(
+                gameSession.Player.Position + new Vector2(-facing * 18f, 24f),
+                archmage,
+                stage == 8 ? 1.72f : 1.34f,
+                gesture,
+                time);
+            DrawWorldLine(
+                gameSession.Player.Position - new Vector2(0f, 44f),
+                gesture,
+                stage == 8 ? 3f : 2f,
+                new Color(226, 184, 70, (int)(145f * archmage)));
+            DrawWorldLine(gesture, gate,
+                1f,
+                new Color(130, 91, 204, (int)(155f * archmage)));
+        }
+
+        if (stage is >= 3 and <= 7)
+        {
+            int strikeIndex = stage - 3;
+            float contact = GetAncientStaffContactRatio(gameSession);
+            float charge = Math.Clamp(stageRatio /
+                MathF.Max(.01f, contact), 0f, 1f);
+            float afterglow = stageRatio >= contact
+                ? 1f - Math.Clamp((stageRatio - contact) /
+                    MathF.Max(.01f, 1f - contact), 0f, 1f)
+                : 0f;
+            float boltOpacity = stageRatio < contact
+                ? Math.Clamp((charge - .64f) / .36f, 0f, 1f)
+                : afterglow;
+            float offset = strikeIndex switch
+            {
+                0 => -72f,
+                1 => 48f,
+                2 => -30f,
+                3 => 78f,
+                _ => 0f
+            };
+            Vector2 impact = center + new Vector2(offset, 0f);
+            DrawHeavenfallGateCharge(gate, charge,
+                strikeIndex, blue, gold, white);
+            if (boltOpacity > .01f)
+            {
+                DrawHeavenfallLightning(gate + new Vector2(offset * .10f, 22f),
+                    impact,
+                    boltOpacity,
+                    strikeIndex,
+                    final: false,
+                    white,
+                    blue,
+                    purple,
+                    gold);
+                DrawBrokenWorldRune(impact, 22f + strikeIndex * 3f,
+                    time * .7f, gold, blue,
+                    9 + strikeIndex, 2f, .50f,
+                    boltOpacity, .25f);
+            }
+        }
+        else if (stage == 8)
+        {
+            float charge = Math.Clamp(stageRatio /
+                MathF.Max(.01f, finalContact), 0f, 1f);
+            float afterglow = stageRatio >= finalContact
+                ? 1f - Math.Clamp((stageRatio - finalContact) /
+                    MathF.Max(.01f, 1f - finalContact), 0f, 1f)
+                : 0f;
+            DrawHeavenfallGateCharge(gate, charge,
+                5, blue, gold, white);
+            if (stageRatio >= finalContact - .075f)
+            {
+                float opacity = stageRatio < finalContact
+                    ? Math.Clamp((stageRatio - (finalContact - .075f)) /
+                        .075f, 0f, 1f)
+                    : afterglow;
+                DrawHeavenfallLightning(gate + new Vector2(0f, 18f),
+                    center,
+                    opacity,
+                    5,
+                    final: true,
+                    white,
+                    blue,
+                    purple,
+                    gold);
+                float impact = stageRatio >= finalContact
+                    ? 1f - Math.Clamp((stageRatio - finalContact) / .30f,
+                        0f, 1f)
+                    : 0f;
+                DrawHeavenfallFinalGroundReaction(center, time,
+                    impact, blue, purple, gold, white);
+            }
+        }
+
+        if (stage == 9 && gameSession.ThunderSpiritState !=
+                ThunderSpiritState.Dormant)
+        {
+            float spiritReturn = 1f - stageRatio;
+            DrawWorldLine(gameSession.ThunderSpiritPosition,
+                gameSession.Player.Position - new Vector2(0f, 30f),
+                1f,
+                new Color(111, 170, 233, (int)(92f * spiritReturn)));
+            DrawBrokenWorldRune(gameSession.ThunderSpiritPosition,
+                13f + spiritReturn * 5f, -time * .44f,
+                blue, gold, 8, 1f, .52f, spiritReturn, .72f);
+        }
+    }
+
+    private static float GetAncientStaffContactRatio(GameSession gameSession)
+    {
+        AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+        return attack == null
+            ? .35f
+            : Math.Clamp(attack.StartupTime /
+                MathF.Max(.01f, attack.TotalTime), .05f, .90f);
+    }
+
+    private void DrawHeavenfallGroundSeal(
+        Vector2 center,
+        float radius,
+        float time,
+        float formation,
+        float integrity,
+        int stage,
+        float stageRatio,
+        Color blue,
+        Color purple,
+        Color gold,
+        Color paleBlue)
+    {
+        formation = Math.Clamp(formation, 0f, 1f);
+        integrity = Math.Clamp(integrity, 0f, 1f);
+        float central = Math.Clamp(formation / .24f, 0f, 1f);
+        float radial = Math.Clamp((formation - .14f) / .34f, 0f, 1f);
+        float outer = Math.Clamp((formation - .34f) / .42f, 0f, 1f);
+        float symbols = Math.Clamp((formation - .62f) / .38f, 0f, 1f);
+        float overload = stage == 8
+            ? Math.Clamp((stageRatio - .30f) / .20f, 0f, 1f)
+            : 0f;
+        Color outerBlue = new(blue.R, blue.G, blue.B,
+            (int)(blue.A * integrity));
+        Color sealGold = new(gold.R, gold.G, gold.B,
+            (int)(gold.A * integrity));
+        Color sealPurple = new(purple.R, purple.G, purple.B,
+            (int)(purple.A * integrity));
+
+        DrawBrokenWorldRune(center, radius,
+            -.24f + time * .025f,
+            outerBlue,
+            sealGold,
+            34,
+            overload > 0f ? 4f : 3f,
+            .76f,
+            outer * integrity,
+            .27f);
+        DrawBrokenWorldRune(center, radius * .70f,
+            .31f - time * .038f,
+            sealGold,
+            sealPurple,
+            24,
+            2f,
+            .67f,
+            symbols * integrity,
+            .27f);
+        DrawBrokenWorldRune(center, radius * .31f,
+            -.62f + time * .055f,
+            sealPurple,
+            paleBlue,
+            12,
+            2f,
+            .56f,
+            central * integrity,
+            .27f);
+
+        int visibleSpokes = Math.Clamp((int)MathF.Ceiling(12f * radial), 0, 12);
+        for (int spoke = 0; spoke < visibleSpokes; spoke++)
+        {
+            float angle = MathHelper.TwoPi * spoke / 12f;
+            Vector2 direction = new(
+                MathF.Cos(angle),
+                MathF.Sin(angle) * .27f);
+            Vector2 start = center + direction * radius * .32f;
+            Vector2 end = center + direction * radius *
+                (overload > 0f && spoke % 3 == 0 ? 1.10f : .90f);
+            DrawWorldLine(start, end,
+                spoke % 3 == 0 ? 2f : 1f,
+                spoke % 4 == 0 ? sealGold : outerBlue);
+            if (symbols > 0f && spoke % 2 == 0)
+            {
+                Vector2 glyph = center + direction * radius * .80f;
+                Vector2 tangent = new(-direction.Y, direction.X);
+                DrawWorldLine(glyph - tangent * 5f,
+                    glyph + tangent * 5f, 1f, sealPurple);
+            }
+        }
+    }
+
+    private void DrawHeavenfallDebris(
+        Vector2 center,
+        float time,
+        float rise,
+        float aftermath,
+        bool finalImpact,
+        Color blue,
+        Color gold)
+    {
+        float floating = Math.Clamp(rise * (1f - aftermath), 0f, 1f);
+        for (int rock = 0; rock < 13; rock++)
+        {
+            float angle = MathHelper.TwoPi * rock / 13f + .17f;
+            float ring = 52f + (rock * 37 % 145);
+            Vector2 ground = center + new Vector2(
+                MathF.Cos(angle) * ring,
+                MathF.Sin(angle) * ring * .25f);
+            float lag = Math.Clamp(rise * 1.35f - rock % 4 * .09f, 0f, 1f);
+            float lift = (24f + rock * 17f % 68f) * lag;
+            float hover = MathF.Sin(time * 1.15f + rock * 1.7f) * 3f * floating;
+            float outward = finalImpact ? 10f + rock % 4 * 5f : 0f;
+            Vector2 position = ground + new Vector2(
+                MathF.Cos(angle) * outward,
+                -lift + hover + aftermath * (35f + rock * 3f));
+            int width = 5 + rock * 7 % 12;
+            int height = 4 + rock * 5 % 8;
+            Color stone = rock % 3 == 0
+                ? new Color(58, 62, 79, (int)(185f * (1f - aftermath)))
+                : new Color(76, 70, 73, (int)(175f * (1f - aftermath)));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)position.X - width / 2,
+                    (int)position.Y - height / 2, width, height),
+                stone);
+            DrawWorldLine(position - new Vector2(width * .45f, height * .35f),
+                position + new Vector2(width * .48f, height * .18f),
+                1f, rock % 4 == 0 ? gold : blue);
+            if (rise < 1f && lag > .05f)
+            {
+                float dust = 1f - lag;
+                DrawWorldLine(ground - new Vector2(width, 0f),
+                    ground - new Vector2(width + 7f, 2f + dust * 5f),
+                    2f, new Color(105, 96, 88, (int)(90f * dust)));
+                DrawWorldLine(ground + new Vector2(width, 0f),
+                    ground + new Vector2(width + 8f, -3f - dust * 4f),
+                    1f, new Color(116, 106, 91, (int)(75f * dust)));
+            }
+        }
+    }
+
+    private void DrawHeavenfallSuspension(
+        GameSession gameSession,
+        Vector2 center,
+        float strength,
+        Color blue,
+        Color purple,
+        Color gold)
+    {
+        float radiusSquared = AncientStaffTuning.UltimateRadius *
+            AncientStaffTuning.UltimateRadius;
+        foreach (Enemy enemy in gameSession.Enemies.Enemies)
+        {
+            if (!enemy.CanBeTargeted ||
+                Vector2.DistanceSquared(center, enemy.Position) > radiusSquared)
+                continue;
+            DrawHeavenfallSuspensionBands(enemy.Bounds,
+                strength, false, blue, purple, gold);
+        }
+        if (gameSession.ShouldRenderBoss && gameSession.Boss?.IsAlive == true &&
+            Vector2.DistanceSquared(center, gameSession.Boss.Position) <=
+                radiusSquared)
+        {
+            DrawHeavenfallSuspensionBands(gameSession.Boss.Bounds,
+                strength, true, blue, purple, gold);
+        }
+    }
+
+    private void DrawHeavenfallSuspensionBands(
+        Rectangle bounds,
+        float strength,
+        bool symbolicOnly,
+        Color blue,
+        Color purple,
+        Color gold)
+    {
+        Vector2 center = bounds.Center.ToVector2();
+        float halfHeight = bounds.Height * .62f + 8f;
+        for (int band = -1; band <= 1; band++)
+        {
+            float x = band * (bounds.Width * .45f + 5f);
+            DrawWorldLine(center + new Vector2(x, halfHeight * .62f),
+                center + new Vector2(x * .72f, -halfHeight),
+                symbolicOnly ? 2f : 1f,
+                band == 0 ? gold : band < 0 ? purple : blue);
+        }
+        DrawBrokenWorldRune(center + new Vector2(0f, halfHeight * .55f),
+            bounds.Width * .60f + 8f,
+            symbolicOnly ? .35f : -.25f,
+            symbolicOnly ? gold : blue,
+            purple,
+            symbolicOnly ? 13 : 9,
+            symbolicOnly ? 2f : 1f,
+            .55f,
+            strength,
+            .25f);
+    }
+
+    private void DrawHeavenfallSpaceGate(
+        Vector2 gate,
+        float time,
+        float formation,
+        int stage,
+        float stageRatio,
+        Color blue,
+        Color purple,
+        Color gold,
+        Color paleBlue)
+    {
+        formation = Math.Clamp(formation, 0f, 1f);
+        float fracture = Math.Clamp(formation / .20f, 0f, 1f);
+        float arcs = Math.Clamp((formation - .14f) / .34f, 0f, 1f);
+        float interior = Math.Clamp((formation - .38f) / .32f, 0f, 1f);
+        float stable = Math.Clamp((formation - .68f) / .32f, 0f, 1f);
+        float width = 114f * (.18f + .82f * formation);
+        float verticalScale = .48f;
+        float finalAlignment = stage == 8
+            ? MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(stageRatio / .31f, 0f, 1f))
+            : 0f;
+
+        DrawWorldLine(gate - new Vector2(width * fracture, 0f),
+            gate + new Vector2(width * fracture, 0f),
+            2f + 3f * fracture,
+            new Color(132, 91, 202, (int)(185f * formation)));
+        if (interior > 0f)
+        {
+            for (int cloud = -3; cloud <= 3; cloud++)
+            {
+                float y = cloud * 10f * formation;
+                float normalized = y / MathF.Max(1f, 55f * formation);
+                float span = width * .84f * MathF.Sqrt(MathF.Max(0f,
+                    1f - normalized * normalized));
+                float drift = MathF.Sin(time * .65f + cloud) * 8f;
+                DrawWorldLine(gate + new Vector2(-span + drift, y),
+                    gate + new Vector2(span * .72f + drift, y),
+                    cloud == 0 ? 12f : 7f,
+                    new Color(10 + Math.Abs(cloud) * 3, 15, 38,
+                        (int)(175f * interior)));
+            }
+            for (int storm = 0; storm < 5; storm++)
+            {
+                float angle = time * (.18f + storm * .012f) +
+                    MathHelper.TwoPi * storm / 5f;
+                Vector2 start = gate + new Vector2(
+                    MathF.Cos(angle) * width * .50f,
+                    MathF.Sin(angle) * width * .17f);
+                Vector2 end = gate + new Vector2(
+                    MathF.Cos(angle + .72f) * width * .24f,
+                    MathF.Sin(angle + .72f) * width * .09f);
+                DrawWorldLine(start, end, storm == 2 ? 2f : 1f,
+                    storm % 2 == 0 ? purple : blue);
+            }
+        }
+
+        DrawBrokenWorldRune(gate, width,
+            -.32f + time * (.055f + finalAlignment * .18f),
+            purple, gold, 28, 4f, .70f, arcs, verticalScale);
+        DrawBrokenWorldRune(gate, width * .73f,
+            .44f - time * (.09f + finalAlignment * .24f),
+            blue, paleBlue, 21, 2f, .62f, stable, verticalScale);
+        DrawBrokenWorldRune(gate, width * .48f,
+            -.80f + time * .14f,
+            gold, purple, 15, 2f, .54f, stable, verticalScale);
+        for (int depth = 0; depth < 5; depth++)
+        {
+            float z = (depth + 1) / 5f;
+            float angle = time * (.11f + z * .04f) + depth * 1.21f;
+            Vector2 shard = gate + new Vector2(
+                MathF.Cos(angle) * width * (1f + z * .18f),
+                MathF.Sin(angle) * width * verticalScale * (1f + z * .12f));
+            DrawWorldLine(shard,
+                shard + new Vector2(MathF.Cos(angle) * (4f + z * 7f),
+                    MathF.Sin(angle) * (2f + z * 4f)),
+                depth % 2 == 0 ? 2f : 1f,
+                depth % 3 == 0 ? gold : purple);
+        }
+    }
+
+    private void DrawHeavenfallGateCharge(
+        Vector2 gate,
+        float charge,
+        int strikeIndex,
+        Color blue,
+        Color gold,
+        Color white)
+    {
+        charge = Math.Clamp(charge, 0f, 1f);
+        float radius = 8f + charge * (strikeIndex >= 5 ? 31f : 16f);
+        DrawBrokenWorldRune(gate + new Vector2(0f, 4f), radius,
+            -.4f + charge * 1.8f,
+            strikeIndex >= 5 ? gold : blue,
+            white,
+            strikeIndex >= 5 ? 16 : 10,
+            strikeIndex >= 5 ? 3f : 2f,
+            .58f,
+            charge,
+            .48f);
+        DrawWorldLine(gate - new Vector2(radius * charge, 0f),
+            gate + new Vector2(radius * charge, 0f),
+            1f + charge * (strikeIndex >= 5 ? 6f : 3f),
+            new Color(239, 248, 255, (int)(195f * charge)));
+    }
+
+    private void DrawHeavenfallLightning(
+        Vector2 origin,
+        Vector2 impact,
+        float opacity,
+        int variant,
+        bool final,
+        Color white,
+        Color blue,
+        Color purple,
+        Color gold)
+    {
+        opacity = Math.Clamp(opacity, 0f, 1f);
+        int segments = final ? 8 : 6;
+        Vector2 previous = origin;
+        for (int segment = 1; segment <= segments; segment++)
+        {
+            float t = segment / (float)segments;
+            float bend = segment == segments
+                ? 0f
+                : MathF.Sin((segment * 2.41f + variant * 1.73f)) *
+                    (final ? 17f : 10f) * (1f - t * .38f);
+            Vector2 next = Vector2.Lerp(origin, impact, t) +
+                new Vector2(bend, 0f);
+            DrawWorldLine(previous, next,
+                (final ? 17f : 7f) * opacity,
+                new Color(53, 112, 207, (int)(120f * opacity)));
+            DrawWorldLine(previous, next,
+                (final ? 8f : 3f) * opacity,
+                new Color(white.R, white.G, white.B,
+                    (int)(white.A * opacity)));
+            if (segment is 2 or 4 || final && segment == 6)
+            {
+                float side = (segment + variant) % 2 == 0 ? -1f : 1f;
+                Vector2 branch = next + new Vector2(
+                    side * (final ? 34f : 20f),
+                    13f + segment * 3f);
+                DrawWorldLine(next, branch,
+                    final ? 3f : 2f,
+                    new Color(purple.R, purple.G, purple.B,
+                        (int)(155f * opacity)));
+                DrawWorldLine(next, Vector2.Lerp(next, branch, .56f),
+                    1f,
+                    new Color(gold.R, gold.G, gold.B,
+                        (int)(145f * opacity)));
+            }
+            previous = next;
+        }
+    }
+
+    private void DrawHeavenfallFinalGroundReaction(
+        Vector2 center,
+        float time,
+        float impact,
+        Color blue,
+        Color purple,
+        Color gold,
+        Color white)
+    {
+        if (impact <= .01f)
+            return;
+        float expansion = 1f - impact;
+        DrawBrokenWorldRune(center, 55f + expansion * 165f,
+            time * .10f, white, blue,
+            26, 4f, .60f, impact, .26f);
+        DrawBrokenWorldRune(center, 36f + expansion * 115f,
+            -time * .18f, gold, purple,
+            20, 3f, .55f, impact, .26f);
+        for (int crack = 0; crack < 12; crack++)
+        {
+            float angle = MathHelper.TwoPi * crack / 12f + .12f;
+            Vector2 direction = new(MathF.Cos(angle), MathF.Sin(angle) * .27f);
+            Vector2 start = center + direction * 21f;
+            Vector2 middle = center + direction * (55f + expansion * 38f) +
+                new Vector2((crack % 2 == 0 ? -1f : 1f) * 7f, 0f);
+            Vector2 end = center + direction * (95f + expansion * 95f);
+            DrawWorldLine(start, middle, crack % 3 == 0 ? 3f : 2f,
+                crack % 4 == 0 ? gold : blue);
+            DrawWorldLine(middle, end, 1f,
+                crack % 3 == 0 ? white : purple);
+        }
+    }
+
+    private void DrawThunderSpirit(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsThunderSpiritVisualVisible)
+        {
+            _thunderSpiritVisualInitialized = false;
+            return;
+        }
+
+        float elapsed = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds,
+            .05f);
+        float time = (float)gameTime.TotalGameTime.TotalSeconds;
+        Vector2 desired = gameSession.ThunderSpiritPosition;
+        if (!_thunderSpiritVisualInitialized)
+        {
+            _thunderSpiritVisualPosition = desired + new Vector2(0f, 18f);
+            _thunderSpiritVisualInitialized = true;
+        }
+        float distance = Vector2.Distance(
+            _thunderSpiritVisualPosition,
+            desired);
+        float followRate = distance > 115f ? 13f : 6.5f;
+        float follow = 1f - MathF.Exp(-followRate * elapsed);
+        _thunderSpiritVisualPosition = Vector2.Lerp(
+            _thunderSpiritVisualPosition,
+            desired,
+            follow);
+
+        ThunderSpiritState state = gameSession.ThunderSpiritState;
+        float summon = gameSession.ThunderSpiritSummonVisualRatio;
+        float dismiss = gameSession.ThunderSpiritDismissVisualRatio;
+        float form = state == ThunderSpiritState.Dormant
+            ? dismiss
+            : summon;
+        float hover = MathF.Sin(time * 2.7f) * 3.5f * form;
+        float sway = MathF.Sin(time * 1.35f) * 1.8f;
+        Vector2 spirit = _thunderSpiritVisualPosition +
+            new Vector2(sway, hover);
+
+        WeaponTechniqueEffect effect =
+            gameSession.Player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        AttackDefinition attack = gameSession.Player.Combat.CurrentAttack;
+        float stageProgress = attack == null
+            ? 0f
+            : Math.Clamp(gameSession.Player.Combat.StateElapsed /
+                MathF.Max(.01f, attack.TotalTime), 0f, 1f);
+        float stretch = Math.Clamp(distance / 150f, 0f, 1f);
+
+        if (effect == WeaponTechniqueEffect.AncientStaffSpiritBastion)
+        {
+            float merge = gameSession.Player.Combat.TechniqueStageIndex == 0
+                ? MathHelper.SmoothStep(0f, 1f, stageProgress)
+                : gameSession.Player.Combat.TechniqueStageIndex < 4
+                    ? 1f
+                    : 1f - stageProgress;
+            float facing = gameSession.Player.Facing == FacingDirection.Left
+                ? -1f : 1f;
+            Vector2 wardCore = gameSession.Player.Position +
+                new Vector2(facing * 38f, -8f);
+            spirit = Vector2.Lerp(spirit, wardCore, merge);
+            stretch = MathF.Max(stretch, merge);
+            form *= 1f - merge * .55f;
+        }
+        else if (effect == WeaponTechniqueEffect.AncientStaffElderInvocation)
+        {
+            int stage = gameSession.Player.Combat.TechniqueStageIndex;
+            Vector2 commandPoint = stage == 0
+                ? gameSession.Player.Position + new Vector2(42f, -82f)
+                : gameSession.AncientStaffEffectCenter + new Vector2(0f, -92f);
+            float command = stage == 0
+                ? stageProgress * .72f
+                : .72f + stageProgress * .22f;
+            spirit = Vector2.Lerp(spirit, commandPoint, command);
+            stretch = MathF.Max(stretch, .25f + command * .42f);
+        }
+
+        Color blue = new(72, 158, 235, (int)(205f * form));
+        Color deep = new(95, 66, 174, (int)(118f * form));
+        Color gold = new(226, 185, 75, (int)(205f * form));
+        Color white = new(235, 248, 255,
+            (int)((state == ThunderSpiritState.Discharged ? 125f : 240f) *
+                form));
+        if (state == ThunderSpiritState.Discharged)
+        {
+            blue = new Color(69, 105, 164, (int)(135f * form));
+            gold = new Color(156, 126, 71, (int)(115f * form));
+        }
+
+        if (summon < 1f && state != ThunderSpiritState.Dormant)
+        {
+            float convergence = MathHelper.SmoothStep(0f, 1f, summon);
+            DrawBrokenWorldRune(desired + new Vector2(0f, 8f),
+                30f - convergence * 7f,
+                time * .8f, deep, gold, 12, 2f, .58f,
+                Math.Clamp(summon * 1.6f, 0f, 1f), 1.12f);
+            for (int glyph = 0; glyph < 5; glyph++)
+            {
+                float angle = MathHelper.TwoPi * glyph / 5f + time * .4f;
+                Vector2 outer = desired + new Vector2(
+                    MathF.Cos(angle) * 31f,
+                    MathF.Sin(angle) * 24f);
+                Vector2 inner = Vector2.Lerp(outer, desired,
+                    .35f + convergence * .48f);
+                DrawWorldLine(outer, inner, 1f,
+                    glyph % 2 == 0 ? gold : blue);
+            }
+        }
+
+        float bodyLength = 23f + stretch * 13f;
+        Vector2 head = spirit - new Vector2(0f, 17f);
+        Vector2 shoulder = spirit - new Vector2(0f, 7f);
+        Vector2 lower = spirit + new Vector2(0f, bodyLength);
+        DrawWorldLine(shoulder - new Vector2(8f, 0f),
+            shoulder + new Vector2(8f, 0f), 8f, deep);
+        DrawWorldLine(shoulder, lower, 10f,
+            new Color(71, 102, 178, (int)(86f * form)));
+        DrawWorldLine(shoulder, lower - new Vector2(0f, 4f), 4f, blue);
+        DrawWorldLine(lower - new Vector2(0f, 7f),
+            lower + new Vector2(-5f, 7f), 2f, deep);
+        DrawWorldLine(lower - new Vector2(0f, 5f),
+            lower + new Vector2(5f, 5f), 1f, blue);
+
+        DrawWorldLine(head + new Vector2(0f, -7f),
+            head + new Vector2(6f, 1f), 3f, blue);
+        DrawWorldLine(head + new Vector2(6f, 1f),
+            head + new Vector2(0f, 7f), 3f, deep);
+        DrawWorldLine(head + new Vector2(0f, 7f),
+            head + new Vector2(-6f, 1f), 3f, blue);
+        DrawWorldLine(head + new Vector2(-6f, 1f),
+            head + new Vector2(0f, -7f), 2f, gold);
+        DrawWorldLine(head + new Vector2(-7f, -2f),
+            head + new Vector2(-3f, -10f), 2f, gold);
+        DrawWorldLine(head + new Vector2(7f, -2f),
+            head + new Vector2(3f, -10f), 2f, gold);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)head.X - 2, (int)head.Y, 5, 3),
+            white);
+
+        bool attacking = gameSession.AncientStaffEffectRatio > 0f &&
+            gameSession.ThunderSpiritLastTarget != Vector2.Zero;
+        Vector2 targetDirection = attacking
+            ? gameSession.ThunderSpiritLastTarget - spirit
+            : new Vector2(
+                gameSession.Player.Facing == FacingDirection.Left ? -1f : 1f,
+                -.12f);
+        if (targetDirection.LengthSquared() < .01f)
+            targetDirection = Vector2.UnitX;
+        else
+            targetDirection.Normalize();
+        Vector2 perpendicular = new(-targetDirection.Y, targetDirection.X);
+        float extension = state == ThunderSpiritState.Empowered ? 22f : 16f;
+        Vector2 leftHand = shoulder - perpendicular * 8f +
+            targetDirection * extension;
+        Vector2 rightHand = shoulder + perpendicular * 8f +
+            targetDirection * (extension - 3f);
+        DrawWorldLine(shoulder - perpendicular * 7f, leftHand,
+            state == ThunderSpiritState.Empowered ? 4f : 3f, blue);
+        DrawWorldLine(shoulder + perpendicular * 7f, rightHand,
+            3f, white);
+        DrawWorldLine(leftHand - perpendicular * 3f,
+            leftHand + perpendicular * 4f, 1f, gold);
+
+        float haloRadius = state == ThunderSpiritState.Empowered ? 24f : 18f;
+        DrawBrokenWorldRune(spirit - new Vector2(0f, 5f), haloRadius,
+            time * (state == ThunderSpiritState.Empowered ? .85f : .42f),
+            state == ThunderSpiritState.Discharged ? deep : blue,
+            gold,
+            state == ThunderSpiritState.Empowered ? 11 : 8,
+            state == ThunderSpiritState.Empowered ? 2f : 1f,
+            .52f,
+            form,
+            .78f);
+
+        if (distance > 34f)
+        {
+            Vector2 trailDirection = desired - _thunderSpiritVisualPosition;
+            if (trailDirection.LengthSquared() > .01f)
+                trailDirection.Normalize();
+            for (int trail = 1; trail <= 3; trail++)
+            {
+                Vector2 fragment = spirit - trailDirection *
+                    (11f + trail * 7f) + perpendicular *
+                    (trail % 2 == 0 ? 4f : -4f);
+                DrawWorldLine(fragment, fragment + trailDirection * 6f,
+                    1f, trail == 2 ? gold : deep);
+            }
+        }
+
+        if (attacking)
+        {
+            Vector2 target = gameSession.ThunderSpiritLastTarget;
+            Vector2 first = Vector2.Lerp(leftHand, target, .30f) +
+                perpendicular * 5f;
+            Vector2 second = Vector2.Lerp(leftHand, target, .64f) -
+                perpendicular * 7f;
+            DrawWorldLine(leftHand, first, 4f,
+                new Color(63, 129, 226, (int)(125f * form)));
+            DrawWorldLine(first, second, 3f, blue);
+            DrawWorldLine(second, target, 2f, white);
+            DrawWorldLine(first, first + perpendicular * 10f, 1f, blue);
+            DrawWorldLine(second, second - perpendicular * 8f, 1f, gold);
+        }
+
+        if (state == ThunderSpiritState.Dormant && dismiss > 0f)
+        {
+            for (int fragment = 0; fragment < 5; fragment++)
+            {
+                float side = fragment % 2 == 0 ? -1f : 1f;
+                Vector2 start = spirit + new Vector2(
+                    side * (4f + fragment * 2f),
+                    -fragment * 7f);
+                DrawWorldLine(start,
+                    start + new Vector2(side * 3f, -7f - fragment),
+                    1f,
+                    fragment == 4 ? white : fragment % 2 == 0 ? gold : blue);
+            }
+        }
+    }
+
+    private void DrawArchmagePresence(
+        Vector2 baseCenter,
+        float opacity,
+        float scale,
+        Vector2 gestureTarget,
+        float time)
+    {
+        opacity = Math.Clamp(opacity, 0f, 1f);
+        if (opacity <= .01f)
+            return;
+        Color spectral = new(63, 88, 158, (int)(82f * opacity));
+        Color edge = new(100, 128, 205, (int)(128f * opacity));
+        Color purple = new(116, 76, 190, (int)(105f * opacity));
+        Color gold = new(224, 184, 76, (int)(155f * opacity));
+        Color eyes = new(231, 244, 255, (int)(205f * opacity));
+        float drift = MathF.Sin(time * .72f) * 2f;
+        Vector2 head = baseCenter + new Vector2(0f, -104f * scale + drift);
+        Vector2 shoulders = baseCenter + new Vector2(0f, -82f * scale);
+        Vector2 robe = baseCenter + new Vector2(0f, -18f * scale);
+
+        DrawWorldLine(shoulders - new Vector2(25f * scale, 0f),
+            shoulders + new Vector2(25f * scale, 0f),
+            15f * scale, spectral);
+        DrawWorldLine(shoulders, robe,
+            24f * scale, spectral);
+        DrawWorldLine(shoulders - new Vector2(18f * scale, 0f),
+            robe - new Vector2(27f * scale, -4f),
+            8f * scale, purple);
+        DrawWorldLine(shoulders + new Vector2(18f * scale, 0f),
+            robe + new Vector2(27f * scale, -4f),
+            8f * scale, edge);
+        DrawWorldLine(robe - new Vector2(12f * scale, 0f),
+            baseCenter - new Vector2(28f * scale, 0f),
+            5f * scale, spectral);
+        DrawWorldLine(robe + new Vector2(12f * scale, 0f),
+            baseCenter + new Vector2(28f * scale, 0f),
+            4f * scale, spectral);
+
+        DrawWorldLine(head + new Vector2(0f, -13f * scale),
+            head + new Vector2(10f * scale, 1f), 5f * scale, edge);
+        DrawWorldLine(head + new Vector2(10f * scale, 1f),
+            head + new Vector2(0f, 13f * scale), 5f * scale, spectral);
+        DrawWorldLine(head + new Vector2(0f, 13f * scale),
+            head + new Vector2(-10f * scale, 1f), 5f * scale, purple);
+        DrawWorldLine(head + new Vector2(-10f * scale, 1f),
+            head + new Vector2(0f, -13f * scale), 4f * scale, edge);
+        DrawWorldLine(head - new Vector2(7f * scale, 1f),
+            head - new Vector2(2f * scale, 1f), 2f, eyes);
+        DrawWorldLine(head + new Vector2(2f * scale, -1f),
+            head + new Vector2(7f * scale, -1f), 2f, eyes);
+
+        DrawBrokenWorldRune(head, 28f * scale,
+            time * .17f, gold, edge,
+            13, 2f, .58f, opacity, 1f);
+        DrawBrokenWorldRune(head, 20f * scale,
+            -.35f - time * .11f, purple, gold,
+            9, 1f, .52f, opacity, 1f);
+
+        Vector2 raisedShoulder = shoulders + new Vector2(15f * scale, 0f);
+        Vector2 elbow = Vector2.Lerp(raisedShoulder, gestureTarget, .52f) +
+            new Vector2(-5f * scale, -17f * scale);
+        DrawWorldLine(raisedShoulder, elbow, 9f * scale, spectral);
+        DrawWorldLine(elbow, gestureTarget, 7f * scale, edge);
+        Vector2 handDirection = gestureTarget - elbow;
+        if (handDirection.LengthSquared() < .01f)
+            handDirection = Vector2.UnitX;
+        else
+            handDirection.Normalize();
+        Vector2 handNormal = new(-handDirection.Y, handDirection.X);
+        for (int finger = -2; finger <= 2; finger++)
+        {
+            Vector2 root = gestureTarget + handNormal * finger * 2.2f;
+            DrawWorldLine(root,
+                root + handDirection * (8f + (2 - Math.Abs(finger)) * 2f),
+                1f, finger == 0 ? gold : edge);
+        }
+
+        for (int fragment = 0; fragment < 5; fragment++)
+        {
+            float side = fragment % 2 == 0 ? -1f : 1f;
+            Vector2 start = robe + new Vector2(
+                side * (11f + fragment * 5f),
+                8f + fragment * 8f);
+            DrawWorldLine(start,
+                start + new Vector2(side * 5f, 6f + fragment),
+                1f,
+                fragment % 3 == 0 ? gold : spectral);
+        }
+    }
+
+    private void DrawFourthVeilBackground(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.Player.Combat.IsFourthVeilVisualActive)
+            return;
+        float strength = gameSession.Player.Combat.FourthVeilVisualStrength;
+        float time = (float)gameTime.TotalGameTime.TotalSeconds;
+        Rectangle body = gameSession.Player.Bounds;
+        Vector2 center = body.Center.ToVector2();
+        for (int layer = 3; layer >= 1; layer--)
+        {
+            Rectangle separation = body;
+            separation.Inflate(9 + layer * 8, 7 + layer * 7);
+            _spriteBatch.Draw(_pixel, separation,
+                new Color(27, 24, 68,
+                    (int)(strength * (8f + layer * 5f))));
+        }
+
+        bool entering = gameSession.Player.Combat.IsFourthVeilActive &&
+            gameSession.Player.Combat.CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.AncientStaffFourthVeil;
+        bool exiting = !gameSession.Player.Combat.IsFourthVeilActive;
+        float presence = entering
+            ? MathF.Sin(strength * MathF.PI)
+            : exiting
+                ? MathF.Sin((1f - strength) * MathF.PI)
+                : 0f;
+        if (presence > .02f)
+        {
+            DrawArchmagePresence(
+                center + new Vector2(0f, 20f),
+                presence * .54f,
+                .82f,
+                center + new Vector2(
+                    gameSession.Player.Facing == FacingDirection.Left
+                        ? -16f : 16f,
+                    -35f),
+                time);
+        }
+
+        float bend = 7f + strength * 10f;
+        for (int fracture = 0; fracture < 5; fracture++)
+        {
+            float angle = MathHelper.TwoPi * fracture / 5f + time * .08f;
+            Vector2 start = center + new Vector2(
+                MathF.Cos(angle) * (26f + fracture * 2f),
+                MathF.Sin(angle) * (35f + fracture));
+            Vector2 middle = start + new Vector2(
+                MathF.Cos(angle + .55f) * bend,
+                MathF.Sin(angle + .55f) * bend);
+            DrawWorldLine(start, middle, 2f,
+                new Color(92, 74, 177, (int)(125f * strength)));
+            DrawWorldLine(middle,
+                middle + new Vector2(
+                    MathF.Cos(angle - .35f) * 6f,
+                    MathF.Sin(angle - .35f) * 6f),
+                1f,
+                new Color(91, 147, 222, (int)(145f * strength)));
+        }
+    }
+
+    private void DrawFourthVeilOverlay(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.Player.Combat.IsFourthVeilVisualActive)
+            return;
+        float strength = gameSession.Player.Combat.FourthVeilVisualStrength;
+        float time = (float)gameTime.TotalGameTime.TotalSeconds;
+        float pulse = .5f + .5f * MathF.Sin(time * 5.5f);
+        Rectangle body = gameSession.Player.Bounds;
+        Vector2 center = body.Center.ToVector2();
+        Color purple = new(116, 82, 203,
+            (int)((92f + pulse * 45f) * strength));
+        Color blue = new(84, 145, 224,
+            (int)((105f + pulse * 38f) * strength));
+        Color gold = new(220, 181, 78, (int)(105f * strength));
+        Color white = new(232, 244, 255, (int)(125f * strength));
+
+        for (int contour = -1; contour <= 1; contour += 2)
+        {
+            float x = contour * (body.Width * .58f + pulse * 2f);
+            DrawWorldLine(center + new Vector2(x, -body.Height * .42f),
+                center + new Vector2(x + contour * 4f, -5f),
+                2f, contour < 0 ? purple : blue);
+            DrawWorldLine(center + new Vector2(x + contour * 4f, -5f),
+                center + new Vector2(x, body.Height * .42f),
+                1f, contour < 0 ? blue : purple);
+        }
+
+        if (MathF.Abs(gameSession.Player.Velocity.X) > 24f)
+        {
+            float travel = MathF.Sign(gameSession.Player.Velocity.X);
+            for (int echo = 1; echo <= 3; echo++)
+            {
+                Vector2 foot = center + new Vector2(
+                    -travel * (10f + echo * 10f),
+                    body.Height * .46f - echo % 2 * 3f);
+                DrawWorldLine(foot - new Vector2(5f, 0f), foot,
+                    1f, echo == 2 ? gold : purple);
+                DrawWorldLine(foot, foot + new Vector2(
+                    -travel * 5f, -5f), 1f, blue);
+                DrawWorldLine(foot + new Vector2(-travel * 5f, -5f),
+                    foot + new Vector2(-travel * 2f, -9f), 1f, purple);
+            }
+        }
+
+        float remaining = gameSession.Player.Combat.FourthVeilRatio;
+        int visibleMarks = gameSession.Player.Combat.IsFourthVeilActive
+            ? Math.Clamp((int)MathF.Ceiling(remaining * 12f), 0, 12)
+            : 0;
+        float timerRadius = MathF.Max(body.Width, body.Height) * .58f;
+        for (int mark = 0; mark < 12; mark++)
+        {
+            float angle = -MathHelper.PiOver2 +
+                MathHelper.TwoPi * mark / 12f;
+            Vector2 radial = new(MathF.Cos(angle), MathF.Sin(angle));
+            Vector2 start = center + radial * timerRadius;
+            DrawWorldLine(start, start + radial * (mark % 3 == 0 ? 6f : 3f),
+                mark < visibleMarks ? 2f : 1f,
+                mark < visibleMarks
+                    ? (remaining < .17f && mark % 2 == 0 ? white : gold)
+                    : new Color(65, 58, 91, 70));
+        }
+
+        if (!gameSession.Player.Combat.IsFourthVeilActive)
+        {
+            float convergence = 1f - strength;
+            DrawBrokenWorldRune(center, 31f - convergence * 12f,
+                -time * 1.3f, purple, gold, 10, 2f, .55f,
+                strength, 1f);
+            DrawWorldLine(center - new Vector2(18f * strength, 0f),
+                center + new Vector2(18f * strength, 0f), 2f, white);
+        }
+    }
+
+    private void DrawAncientStaffUltimateCinematic(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        float ratio = gameSession.Player.Combat
+            .AncientStaffUltimateCinematicRatio;
+        if (ratio <= 0f && !gameSession.IsAncientStaffUltimateActive)
+            return;
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        float time = (float)gameTime.TotalGameTime.TotalSeconds;
+        if (ratio > 0f)
+        {
+            float enter = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(ratio / .18f, 0f, 1f));
+            float leave = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((1f - ratio) / .13f, 0f, 1f));
+            float visibility = enter * leave;
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                new Color(3, 6, 17, (int)(188f * visibility)));
+
+            Vector2 runeCenter = new(width * .62f, height * .45f);
+            DrawBrokenWorldRune(runeCenter, 142f,
+                -.32f + ratio * .72f,
+                new Color(84, 143, 229, (int)(185f * visibility)),
+                new Color(226, 184, 70, (int)(220f * visibility)),
+                30, 4f, .68f, visibility, .72f);
+            DrawBrokenWorldRune(runeCenter, 96f,
+                .44f - ratio * 1.05f,
+                new Color(124, 79, 198, (int)(175f * visibility)),
+                new Color(225, 241, 255, (int)(195f * visibility)),
+                21, 2f, .58f, visibility, .72f);
+            for (int line = 0; line < 7; line++)
+            {
+                float y = height * (.23f + line * .075f);
+                float offset = MathF.Sin(line * 1.47f) * width * .035f;
+                DrawWorldLine(
+                    new Vector2(width * .48f + offset, y),
+                    new Vector2(width * (.90f - line * .018f),
+                        y - height * .10f),
+                    line % 3 == 0 ? 2f : 1f,
+                    line % 2 == 0
+                        ? new Color(73, 125, 210, (int)(105f * visibility))
+                        : new Color(129, 82, 190, (int)(90f * visibility)));
+            }
+
+            Vector2 archmageBase = new(width * .69f, height * .75f);
+            Vector2 gesture = new(width * .52f, height * .40f);
+            DrawArchmagePresence(archmageBase,
+                visibility * .80f,
+                MathF.Max(1.45f, height / 470f),
+                gesture,
+                time * .32f);
+
+            float portrait = MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp((ratio - .12f) / .24f, 0f, 1f)) * leave;
+            if (portrait > 0f)
+            {
+                float portraitScale = MathHelper.Lerp(3.2f, 3.65f, portrait);
+                Vector2 portraitAnchor = new(width * .29f, height * .84f);
+                _spriteBatch.End();
+                _spriteBatch.Begin(
+                    samplerState: SamplerState.PointClamp,
+                    transformMatrix: Matrix.CreateScale(portraitScale) *
+                        Matrix.CreateTranslation(
+                            portraitAnchor.X,
+                            portraitAnchor.Y,
+                            0f));
+                _playerSpriteRenderer.DrawCinematicCutIn(
+                    gameSession.Player,
+                    Vector2.Zero);
+                _spriteBatch.End();
+                _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+                Vector2 crystal = new(width * .43f, height * .30f);
+                DrawBrokenWorldRune(crystal, 20f + ratio * 9f,
+                    -ratio * 2.2f,
+                    new Color(228, 245, 255, (int)(230f * portrait)),
+                    new Color(224, 183, 73, (int)(205f * portrait)),
+                    10, 2f, .56f, portrait, .72f);
+            }
+
+            if (ratio >= .38f)
+                DrawCenteredDebugText(
+                    "HEAVENFALL THUNDER GATE",
+                    width / 2,
+                    (int)(height * .80f),
+                    new Color(229, 197, 96, (int)(245f * visibility)),
+                    3);
+            if (ratio >= .69f)
+                DrawCenteredDebugText(
+                    "RISE... AND BE JUDGED!",
+                    width / 2,
+                    (int)(height * .87f),
+                    new Color(225, 241, 255, (int)(225f * visibility)),
+                    2);
+            return;
+        }
+
+        int stage = gameSession.AncientStaffUltimateStage;
+        float stageRatio = gameSession.AncientStaffUltimateStageRatio;
+        if (stage == 8)
+        {
+            float contact = GetAncientStaffContactRatio(gameSession);
+            float impact = 1f - Math.Clamp(
+                MathF.Abs(stageRatio - contact) / .085f,
+                0f,
+                1f);
+            if (impact > 0f)
+            {
+                _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                    new Color(2, 5, 15, (int)(105f * impact)));
+                Vector2 impactScreen = Vector2.Transform(
+                    gameSession.AncientStaffEffectCenter,
+                    gameSession.Camera.Transform);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle((int)impactScreen.X - 4, 0, 9, height),
+                    new Color(225, 244, 255, (int)(190f * impact)));
+                DrawWorldLine(
+                    new Vector2(impactScreen.X - 28f, height * .12f),
+                    new Vector2(impactScreen.X + 18f, height * .90f),
+                    2f,
+                    new Color(225, 184, 72, (int)(145f * impact)));
+            }
+        }
+        else if (stage == 9)
+        {
+            float recovery = 1f - stageRatio;
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                new Color(13, 16, 35, (int)(28f * recovery)));
+        }
     }
 
     private void DrawSpellbladeWorld(GameSession gameSession)
@@ -3407,6 +5091,50 @@ public sealed class GameRenderer : IDisposable
                 MathF.Sin(angle) * radius * .34f);
             DrawWorldLine(previous, next, thickness, color);
             previous = next;
+        }
+    }
+
+    private void DrawBrokenWorldRune(
+        Vector2 center,
+        float radius,
+        float rotation,
+        Color primary,
+        Color accent,
+        int segments,
+        float thickness,
+        float arcFraction,
+        float completion = 1f,
+        float verticalScale = .72f)
+    {
+        completion = Math.Clamp(completion, 0f, 1f);
+        int visibleSegments = Math.Clamp(
+            (int)MathF.Ceiling(segments * completion),
+            0,
+            segments);
+        for (int index = 0; index < visibleSegments; index++)
+        {
+            float startAngle = rotation + MathHelper.TwoPi *
+                index / segments + .035f;
+            float endAngle = rotation + MathHelper.TwoPi *
+                (index + arcFraction) / segments;
+            Vector2 start = center + new Vector2(
+                MathF.Cos(startAngle) * radius,
+                MathF.Sin(startAngle) * radius * verticalScale);
+            Vector2 end = center + new Vector2(
+                MathF.Cos(endAngle) * radius,
+                MathF.Sin(endAngle) * radius * verticalScale);
+            DrawWorldLine(start, end,
+                index % 4 == 0 ? thickness + 1f : thickness,
+                index % 2 == 0 ? primary : accent);
+            if (index % 2 == 0)
+            {
+                Vector2 mark = center + new Vector2(
+                    MathF.Cos(startAngle) * (radius + 3f),
+                    MathF.Sin(startAngle) * (radius + 3f) * verticalScale);
+                Vector2 direction = Vector2.Normalize(mark - center);
+                DrawWorldLine(mark, mark + direction * (3f + index % 3),
+                    1f, accent);
+            }
         }
     }
 
@@ -6723,7 +8451,7 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
-    private void DrawWeaponResource(PlayerCharacter player)
+    private void DrawWeaponResource(PlayerCharacter player, GameTime gameTime)
     {
         int maximum = player.Combat.Resources.ActiveMaximum;
         if (maximum <= 0)
@@ -6753,6 +8481,12 @@ public sealed class GameRenderer : IDisposable
             return;
         }
 
+        if (player.WeaponFamily == WeaponFamily.ArcaneWarStaff)
+        {
+            DrawElderSigils(player, gameTime);
+            return;
+        }
+
         int value = player.Combat.Resources.ActiveValue;
         Color color = player.WeaponFamily switch
         {
@@ -6770,6 +8504,58 @@ public sealed class GameRenderer : IDisposable
                 pip,
                 index < value ? color : new Color(54, 59, 64));
             DrawRectangleOutline(pip, 1, new Color(190, 194, 191));
+        }
+    }
+
+    private void DrawElderSigils(PlayerCharacter player, GameTime gameTime)
+    {
+        int value = player.Combat.ElderSigils;
+        if (value != _observedElderSigils)
+        {
+            _elderSigilPulseRemaining = value > _observedElderSigils
+                ? .42f
+                : 0f;
+            _observedElderSigils = value;
+        }
+        _elderSigilPulseRemaining = MathF.Max(
+            0f,
+            _elderSigilPulseRemaining - MathF.Min(
+                (float)gameTime.ElapsedGameTime.TotalSeconds,
+                .05f));
+        float pulse = _elderSigilPulseRemaining / .42f;
+        Color dormant = new(55, 58, 72);
+        Color blue = new(76, 151, 224);
+        Color gold = new(225, 182, 72);
+        Color purple = new(129, 83, 192);
+        for (int index = 0; index < AncientStaffTuning.MaximumElderSigils;
+             index++)
+        {
+            bool active = index < value;
+            Vector2 center = new(48f + index * 19f, 93f);
+            float scale = active && index == value - 1
+                ? 1f + pulse * .22f
+                : 1f;
+            float radius = 5f * scale;
+            Color primary = active ? blue : dormant;
+            Color accent = active
+                ? (index % 2 == 0 ? gold : purple)
+                : new Color(81, 83, 91);
+            DrawWorldLine(center + new Vector2(0f, -radius),
+                center + new Vector2(radius, 0f), 2f, primary);
+            DrawWorldLine(center + new Vector2(radius, 0f),
+                center + new Vector2(0f, radius), 1f, accent);
+            DrawWorldLine(center + new Vector2(0f, radius),
+                center + new Vector2(-radius, 0f), 2f, primary);
+            DrawWorldLine(center + new Vector2(-radius, 0f),
+                center + new Vector2(0f, -radius), 1f, accent);
+            if (active)
+            {
+                DrawWorldLine(center - new Vector2(2f, 0f),
+                    center + new Vector2(2f, 0f), 1f,
+                    pulse > 0f && index == value - 1
+                        ? new Color(241, 245, 255)
+                        : gold);
+            }
         }
     }
 
@@ -6991,6 +8777,12 @@ public sealed class GameRenderer : IDisposable
         float pulse = .5f + .5f * MathF.Sin(
             (float)gameTime.TotalGameTime.TotalSeconds * 7f);
 
+        DrawSovereignConstellationRoute(
+            gameSession,
+            center,
+            stage,
+            stageRatio);
+
         if (stage <= 0)
         {
             Color judgment = new(218, 166, 53, (int)(65f + pulse * 45f));
@@ -7026,30 +8818,38 @@ public sealed class GameRenderer : IDisposable
                     restraint);
             }
 
-            Vector2 from = gameSession.Player.Bounds.Center.ToVector2();
-            Vector2 delta = center - from;
+            int activePortal = SovereignPortalSystem
+                .GetUltimateStepPortalIndex(stage);
+            int nextPortal = stage < AbyssRingTuning.UltimateStrikeCount
+                ? SovereignPortalSystem.GetUltimateStepPortalIndex(stage + 1)
+                : AbyssRingTuning.UltimateConstellationCount - 1;
+            Vector2 from = SovereignPortalSystem
+                .GetUltimateConstellationPosition(center, activePortal);
+            Vector2 destination = SovereignPortalSystem
+                .GetUltimateConstellationPosition(center, nextPortal);
+            Vector2 delta = destination - from;
             float length = delta.Length();
             if (length > .01f)
             {
                 Vector2 direction = delta / length;
                 Vector2 normal = new(-direction.Y, direction.X);
-                float routeStart = acceleration > .70f ? .34f : .08f;
-                Vector2 start = Vector2.Lerp(from, center, routeStart);
                 float routePulse = 1f - Math.Clamp(
-                    MathF.Abs(stageRatio - .42f) * 2.2f,
+                    MathF.Abs(stageRatio - .48f) * 2.1f,
                     0f,
                     1f);
-                Vector2 bend = normal * ((stage % 4) - 1.5f) *
-                    MathHelper.Lerp(13f, 5f, acceleration);
-                Vector2 middle = Vector2.Lerp(start, center, .54f) + bend;
+                float bendSign = stage % 2 == 0 ? -1f : 1f;
+                Vector2 bend = normal * bendSign *
+                    MathHelper.Lerp(12f, 5f, acceleration);
+                Vector2 middle = Vector2.Lerp(from, destination, .50f) + bend;
                 Color shadow = new(5, 4, 8, (int)(105f * detail));
                 Color route = new(245, 190, 58,
                     (int)((55f + routePulse * 130f) * detail));
-                DrawWorldLine(start, middle, 5f, shadow);
-                DrawWorldLine(middle, center, 5f, shadow);
-                DrawWorldLine(start, middle, acceleration > .70f ? 1f : 2f,
+                DrawWorldLine(from, middle, 5f, shadow);
+                DrawWorldLine(middle, destination, 5f, shadow);
+                DrawWorldLine(from, middle,
+                    acceleration > .70f ? 1f : 2f,
                     route);
-                DrawWorldLine(middle, center,
+                DrawWorldLine(middle, destination,
                     acceleration > .70f ? 1f : 2f, route);
             }
             return;
@@ -7059,21 +8859,36 @@ public sealed class GameRenderer : IDisposable
         {
             float setup = MathHelper.SmoothStep(0f, 1f,
                 Math.Clamp(stageRatio / .38f, 0f, 1f));
-            Vector2 gate = new(center.X, target.Top - 48f);
+            Vector2 gate = gameSession.Player.Bounds.Center.ToVector2();
+            Vector2 descent = center - gate;
+            if (descent.LengthSquared() < .001f)
+                descent = Vector2.UnitY;
+            descent.Normalize();
+            Vector2 platform = new(-descent.Y, descent.X);
             Color dark = new(4, 3, 8, (int)(220f * setup));
             Color gold = new(255, 207, 76, (int)(235f * setup));
-            DrawWorldLine(gate - new Vector2(13f, 0f),
-                gate + new Vector2(13f, 0f), 24f, dark);
-            DrawPortalArc(gate, Vector2.UnitX, Vector2.UnitY,
-                15f * setup, 29f * setup,
+            DrawWorldLine(gate - platform * 18f,
+                gate + platform * 18f, 25f, dark);
+            DrawPortalArc(gate, descent, platform,
+                17f * setup, 34f * setup,
                 -.20f, MathHelper.TwoPi * .44f, 3f, gold);
-            DrawPortalArc(gate, Vector2.UnitX, Vector2.UnitY,
-                15f * setup, 29f * setup,
+            DrawPortalArc(gate, descent, platform,
+                17f * setup, 34f * setup,
                 MathHelper.Pi - .20f, MathHelper.TwoPi * .44f, 3f, gold);
-            DrawWorldLine(gate + new Vector2(0f, 18f), center,
+            Vector2 launchPoint = gate + descent * 18f;
+            DrawWorldLine(launchPoint, center,
                 7f, new Color(5, 4, 8, (int)(190f * setup)));
-            DrawWorldLine(gate + new Vector2(0f, 18f), center,
+            DrawWorldLine(launchPoint, center,
                 2f, gold);
+            for (int spark = -2; spark <= 2; spark++)
+            {
+                Vector2 sparkDirection = -descent * (10f + Math.Abs(spark) * 3f) +
+                    platform * spark * 5f;
+                DrawWorldLine(gate - descent * 3f,
+                    gate + sparkDirection * setup,
+                    spark == 0 ? 2f : 1f,
+                    gold);
+            }
             for (int crack = -2; crack <= 2; crack++)
             {
                 DrawWorldLine(center,
@@ -7082,6 +8897,62 @@ public sealed class GameRenderer : IDisposable
                     crack == 0 ? 2f : 1f,
                     gold);
             }
+        }
+    }
+
+    private void DrawSovereignConstellationRoute(
+        GameSession gameSession,
+        Vector2 center,
+        int stage,
+        float stageRatio)
+    {
+        if (stage > AbyssRingTuning.UltimateStrikeCount + 1)
+            return;
+
+        int revealed = stage <= 0
+            ? AbyssRingTuning.UltimateConstellationCount
+            : Math.Min(
+                AbyssRingTuning.UltimateConstellationCount,
+                3 + stage / 3);
+        Color shadow = new(3, 3, 7, stage <= 0 ? 82 : 54);
+        Color thread = new(154, 111, 31, stage <= 0 ? 88 : 58);
+        for (int index = 0; index < revealed; index++)
+        {
+            int next = index == revealed - 1 ? 0 : index + 1;
+            Vector2 from = SovereignPortalSystem
+                .GetUltimateConstellationPosition(center, index);
+            Vector2 to = SovereignPortalSystem
+                .GetUltimateConstellationPosition(center, next);
+            DrawWorldLine(from, to, 3f, shadow);
+            DrawWorldLine(from, to, 1f, thread);
+        }
+
+        int active = SovereignPortalSystem.GetUltimateStepPortalIndex(stage);
+        int nextActive = stage < AbyssRingTuning.UltimateStrikeCount
+            ? SovereignPortalSystem.GetUltimateStepPortalIndex(stage + 1)
+            : AbyssRingTuning.UltimateConstellationCount - 1;
+        Vector2 activePoint = SovereignPortalSystem
+            .GetUltimateConstellationPosition(center, active);
+        Vector2 nextPoint = SovereignPortalSystem
+            .GetUltimateConstellationPosition(center, nextActive);
+        float preview = stage <= 0
+            ? .35f
+            : MathHelper.SmoothStep(0f, 1f,
+                Math.Clamp(stageRatio / .42f, 0f, 1f));
+        Vector2 routeEnd = Vector2.Lerp(activePoint, nextPoint, preview);
+        DrawWorldLine(activePoint, routeEnd, 4f,
+            new Color(4, 3, 8, 155));
+        DrawWorldLine(activePoint, routeEnd, 1f,
+            new Color(244, 187, 57, 178));
+
+        Vector2 converging = center - nextPoint;
+        if (converging.LengthSquared() > .001f)
+        {
+            converging.Normalize();
+            DrawWorldLine(nextPoint,
+                nextPoint + converging * 14f,
+                1f,
+                new Color(229, 176, 55, 104));
         }
     }
 
@@ -7094,16 +8965,60 @@ public sealed class GameRenderer : IDisposable
             SovereignPortal portal = portals[index];
             float hierarchy = GetSovereignPortalHierarchy(
                 gameSession,
+                portal);
+            Vector2? directionOverride = null;
+            float contactPulse = 0f;
+            bool dominant = false;
+            if (portal.ConstellationIndex >= 0 &&
+                gameSession.IsSovereignUltimateActive)
+            {
+                int stage = gameSession.SovereignUltimateStage;
+                int active = SovereignPortalSystem
+                    .GetUltimateStepPortalIndex(stage);
+                if (portal.ConstellationIndex == active)
+                {
+                    int next = stage < AbyssRingTuning.UltimateStrikeCount
+                        ? SovereignPortalSystem
+                            .GetUltimateStepPortalIndex(stage + 1)
+                        : AbyssRingTuning.UltimateConstellationCount - 1;
+                    Vector2 destination = SovereignPortalSystem
+                        .GetUltimateConstellationPosition(
+                            gameSession.SovereignUltimateTargetBounds
+                                .Center.ToVector2(),
+                            next);
+                    Vector2 launch = destination - portal.Position;
+                    if (launch.LengthSquared() > .001f)
+                    {
+                        launch.Normalize();
+                        directionOverride = launch;
+                    }
+                    float contactCenter = stage ==
+                            AbyssRingTuning.UltimateStrikeCount + 1
+                        ? .25f
+                        : .18f;
+                    contactPulse = 1f - Math.Clamp(
+                        MathF.Abs(gameSession.SovereignUltimateStageRatio -
+                            contactCenter) / .18f,
+                        0f,
+                        1f);
+                }
+                dominant = portal.ConstellationIndex ==
+                        AbyssRingTuning.UltimateConstellationCount - 1 &&
+                    stage >= AbyssRingTuning.UltimateStrikeCount - 1;
+            }
+            DrawSovereignPortal(
                 portal,
-                index);
-            DrawSovereignPortal(portal, index, hierarchy);
+                index,
+                hierarchy,
+                directionOverride,
+                contactPulse,
+                dominant);
         }
     }
 
     private static float GetSovereignPortalHierarchy(
         GameSession gameSession,
-        SovereignPortal portal,
-        int portalIndex)
+        SovereignPortal portal)
     {
         if (portal.Type != SovereignPortalType.Decorative && portal.IsLogical)
             return 1f;
@@ -7112,25 +9027,28 @@ public sealed class GameRenderer : IDisposable
             return .38f;
 
         int stage = Math.Max(0, gameSession.SovereignUltimateStage);
-        int routeCenter = stage <= 0
-            ? 0
-            : (stage * 5 + stage / 4 * 3) %
-                AbyssRingTuning.GoldenGateCount;
-        int gateIndex = portalIndex % AbyssRingTuning.GoldenGateCount;
-        int distance = Math.Abs(gateIndex - routeCenter);
-        distance = Math.Min(distance,
-            AbyssRingTuning.GoldenGateCount - distance);
-        if (stage == AbyssRingTuning.UltimateStrikeCount + 1)
-            return gateIndex is 17 or 18 or 19 ? .82f : .16f;
-        if (distance <= 2)
-            return .78f - distance * .12f;
-        return gateIndex < routeCenter ? .18f : .28f;
+        int active = SovereignPortalSystem.GetUltimateStepPortalIndex(stage);
+        int next = stage < AbyssRingTuning.UltimateStrikeCount
+            ? SovereignPortalSystem.GetUltimateStepPortalIndex(stage + 1)
+            : AbyssRingTuning.UltimateConstellationCount - 1;
+        if (portal.ConstellationIndex == active)
+            return 1f;
+        if (portal.ConstellationIndex == next)
+            return .62f;
+        if (stage == AbyssRingTuning.UltimateStrikeCount + 1 &&
+            portal.ConstellationIndex ==
+                AbyssRingTuning.UltimateConstellationCount - 1)
+            return .94f;
+        return stage <= 0 ? .46f : .25f;
     }
 
     private void DrawSovereignPortal(
         SovereignPortal portal,
         int portalIndex,
-        float hierarchy)
+        float hierarchy,
+        Vector2? directionOverride,
+        float contactPulse,
+        bool dominant)
     {
         bool decorative = portal.Type == SovereignPortalType.Decorative ||
             !portal.IsLogical;
@@ -7145,6 +9063,27 @@ public sealed class GameRenderer : IDisposable
             ? MathF.Sin(Math.Min(1f, portal.ActiveRatio * 3.4f) *
                 MathHelper.Pi)
             : 0f;
+        if (portal.IsPortalStep)
+        {
+            float stepPulse = portal.Flow switch
+            {
+                SovereignPortalFlow.Entry when
+                    portal.Phase == SovereignPortalPhase.Anticipating =>
+                        MathF.Sin(portal.PhaseRatio * MathHelper.Pi),
+                SovereignPortalFlow.Entry when
+                    portal.Phase == SovereignPortalPhase.Opening =>
+                        1f - portal.PhaseRatio,
+                SovereignPortalFlow.Exit when
+                    portal.Phase == SovereignPortalPhase.Stabilizing =>
+                        MathF.Sin(portal.PhaseRatio * MathHelper.Pi),
+                SovereignPortalFlow.Exit when
+                    portal.Phase == SovereignPortalPhase.Active =>
+                        1f - portal.ActiveRatio,
+                _ => 0f
+            };
+            usePulse = Math.Max(usePulse, stepPulse);
+        }
+        usePulse = Math.Max(usePulse, contactPulse);
         float open = Math.Max(.04f, portal.OpenRatio);
         float radiusX = (portal.Type == SovereignPortalType.Strike
                 ? 14f
@@ -7163,7 +9102,12 @@ public sealed class GameRenderer : IDisposable
         {
             radiusX *= 1f - usePulse * .10f;
         }
-        Vector2 direction = portal.Direction;
+        if (dominant)
+        {
+            radiusX *= 1.16f;
+            radiusY *= 1.18f;
+        }
+        Vector2 direction = directionOverride ?? portal.Direction;
         Vector2 vertical = new(-direction.Y, direction.X);
 
         if (portal.Phase == SovereignPortalPhase.Anticipating)
@@ -7185,8 +9129,9 @@ public sealed class GameRenderer : IDisposable
             radiusX * .72f, radiusY * .75f, visibility);
         DrawPortalEnergyFlow(portal, direction, vertical, radiusX, radiusY,
             visibility, usePulse);
-        if (portal.Type == SovereignPortalType.Transit &&
-            portal.Flow == SovereignPortalFlow.Exit &&
+        if ((portal.Type == SovereignPortalType.Transit &&
+                portal.Flow == SovereignPortalFlow.Exit ||
+                portal.ConstellationIndex >= 0 && contactPulse > .04f) &&
             usePulse > .04f)
         {
             DrawPortalPushOff(portal, direction, vertical, radiusX, radiusY,
@@ -7907,6 +9852,38 @@ public sealed class GameRenderer : IDisposable
             new Vector2(frame.Left + corner, frame.Bottom), 1f, gold);
         DrawWorldLine(new Vector2(frame.Right, frame.Bottom),
             new Vector2(frame.Right - corner, frame.Bottom), 1f, gold);
+
+        Vector2 targetCenter = target.Center.ToVector2();
+        float convergence = stage <= 0 ? .78f : .42f;
+        for (int directionIndex = 0; directionIndex < 4; directionIndex++)
+        {
+            float angle = directionIndex * MathHelper.PiOver2 +
+                MathHelper.PiOver4;
+            Vector2 direction = new(MathF.Cos(angle), MathF.Sin(angle));
+            float outerDistance = Math.Max(target.Width, target.Height) *
+                (.72f + pulse * .08f);
+            Vector2 outer = targetCenter + direction * outerDistance;
+            Vector2 inner = targetCenter + direction *
+                (outerDistance * .56f);
+            DrawWorldLine(outer, inner, 2f,
+                new Color(4, 3, 8, (int)(165f * convergence)));
+            DrawWorldLine(outer, inner, 1f,
+                new Color(235, 179, 51, (int)(150f * convergence)));
+        }
+        DrawPortalArc(targetCenter, Vector2.UnitX, Vector2.UnitY,
+            target.Width * .34f + 6f,
+            target.Height * .24f + 4f,
+            stage * .27f + pulse * .12f,
+            MathHelper.Pi * .72f,
+            1f,
+            new Color(219, 165, 45, stage <= 0 ? 150 : 76));
+        DrawPortalArc(targetCenter, Vector2.UnitX, Vector2.UnitY,
+            target.Width * .34f + 6f,
+            target.Height * .24f + 4f,
+            MathHelper.Pi + stage * .27f + pulse * .12f,
+            MathHelper.Pi * .72f,
+            1f,
+            new Color(219, 165, 45, stage <= 0 ? 150 : 76));
 
         if (stage is >= 1 and <= 16)
         {

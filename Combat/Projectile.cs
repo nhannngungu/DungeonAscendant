@@ -58,6 +58,9 @@ public sealed class Projectile
     public bool IsSpellbladeProjectile => TechniqueEffect is
         WeaponTechniqueEffect.SpellbladeRuneBrand or
         WeaponTechniqueEffect.SpellbladeRunicSpear;
+    public bool IsAncientStaffProjectile => TechniqueEffect is
+        WeaponTechniqueEffect.AncientStaffArcaneBoltChain or
+        WeaponTechniqueEffect.AncientStaffBlinkCast;
     internal HashSet<Enemy> HitEnemies { get; } = new();
     internal bool HasHitBoss { get; set; }
     public Rectangle Bounds => DungeonCollision.CreateBounds(Position, Size);

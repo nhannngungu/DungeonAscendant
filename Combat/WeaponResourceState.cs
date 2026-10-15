@@ -31,6 +31,7 @@ public sealed class WeaponResourceState
     public float BreakerInertia { get; private set; }
     public float BreakerInertiaRatio =>
         BreakerTuning.InertiaRatio(BreakerInertia);
+    public int ElderSigils { get; private set; }
     public int ActiveValue => Family switch
     {
         WeaponFamily.DualSwords => DuelistMomentum <= 0f
@@ -45,10 +46,13 @@ public sealed class WeaponResourceState
         WeaponFamily.SpikedMace => BreakerInertia <= 0f
             ? 0
             : Math.Clamp((int)MathF.Ceiling(BreakerInertia / 10f), 1, 10),
+        WeaponFamily.ArcaneWarStaff => ElderSigils,
         _ => 0
     };
     public int ActiveMaximum => Family == WeaponFamily.HunterBow
         ? 4
+        : Family == WeaponFamily.ArcaneWarStaff
+            ? AncientStaffTuning.MaximumElderSigils
         : Family is WeaponFamily.DualSwords or
         WeaponFamily.ChainFlail or
         WeaponFamily.SpikedMace ? 10 : 0;
@@ -137,6 +141,18 @@ public sealed class WeaponResourceState
             AddDuelistMomentum(gain);
         else if (Family == WeaponFamily.ChainFlail)
             AddChainMomentum(gain);
+        else if (Family == WeaponFamily.ArcaneWarStaff && gain > 0)
+            AddElderSigil(gain);
+    }
+
+    public void AddElderSigil(int amount = 1)
+    {
+        if (Family != WeaponFamily.ArcaneWarStaff || amount <= 0)
+            return;
+        ElderSigils = Math.Min(
+            AncientStaffTuning.MaximumElderSigils,
+            ElderSigils + amount);
+        MarkCombatActivity();
     }
 
     public void AddDuelistMomentum(float amount)
@@ -309,6 +325,7 @@ public sealed class WeaponResourceState
 
         float amount = BreakerInertia;
         BreakerInertia = 0f;
+        ElderSigils = 0;
         MarkCombatActivity();
         return amount;
     }
