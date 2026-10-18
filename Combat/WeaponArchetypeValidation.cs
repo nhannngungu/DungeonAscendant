@@ -13,22 +13,10 @@ public static class WeaponArchetypeValidation
 {
     public static void ValidateOrThrow()
     {
-        WeaponDefinition[] weapons =
-        {
-            EquipmentCatalog.KnightLongSword,
-            EquipmentCatalog.DuelistDualSwords,
-            EquipmentCatalog.IronVanguardGreatsword,
-            EquipmentCatalog.RaiderWarAxe,
-            EquipmentCatalog.HunterBow,
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.ReckonerChainFlail,
-            EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.ForbiddenSovereignAbyssRing,
-            EquipmentCatalog.ShadowReaperScythe
-        };
         var families = new HashSet<WeaponFamily>();
 
-        foreach (WeaponDefinition weapon in weapons)
+        foreach (WeaponDefinition weapon in
+                 EquipmentCatalog.AllImplementedWeapons)
         {
             Require(families.Add(weapon.Family),
                 "Every test weapon must use a unique family.");
@@ -70,9 +58,6 @@ public static class WeaponArchetypeValidation
 
         Require(families.Count == EquipmentCatalog.WeaponSampleCount,
             "The debug catalog must cover all implemented weapon families.");
-        Require(EquipmentCatalog.BreakerSpikedMace.CombatProfile
-                .Get(WeaponTechniqueInput.Ultimate).StageCount == 1,
-            "Worldbreaker must remain one enormous hit.");
         Require(EquipmentCatalog.KnightLongSword.UsesShield,
             "Knight requires its large shield.");
         Require(!EquipmentCatalog.IronVanguardGreatsword.UsesShield,

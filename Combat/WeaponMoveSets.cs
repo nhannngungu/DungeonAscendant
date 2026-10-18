@@ -9,13 +9,14 @@ public static class WeaponMoveSets
     private static readonly ProjectileDefinition ArcaneBolt = new(
         ProjectileType.ArcaneBolt, 390f, new Vector2(18f, 18f), 3.2f);
 
-    public static readonly WeaponMoveSet LongSword = new(
-        "long-sword",
+    public static readonly WeaponMoveSet KnightSwordAndShield = new(
+        "knight-sword-and-shield",
         new[]
         {
             Melee(AttackKind.LightOne, 1f, 14f, 8f, .08f, .10f, .18f, 18f, 72f, 48f, AttackHitboxShape.StandardArc, 48f),
-            Melee(AttackKind.LightTwo, 1.1f, 18f, 9f, .09f, .10f, .20f, 22f, 78f, 50f, AttackHitboxShape.StandardArc, 44f),
-            Melee(AttackKind.LightThree, 1.4f, 32f, 11f, .14f, .12f, .34f, 38f, 88f, 54f, AttackHitboxShape.StandardArc, 58f)
+            Melee(AttackKind.LightTwo, 1.05f, 18f, 9f, .09f, .10f, .20f, 22f, 78f, 50f, AttackHitboxShape.StandardArc, 44f),
+            Melee(AttackKind.LightThree, 1.15f, 24f, 10f, .12f, .10f, .22f, 24f, 96f, 42f, AttackHitboxShape.Thrust, 56f),
+            Melee(AttackKind.LightFour, 1.45f, 38f, 12f, .18f, .13f, .34f, 38f, 88f, 60f, AttackHitboxShape.Chop, 115f)
         },
         Melee(AttackKind.Heavy, 1.9f, 55f, 30f, .32f, .14f, .42f, 64f, 100f, 34f, AttackHitboxShape.Thrust, 72f));
 
@@ -64,26 +65,6 @@ public static class WeaponMoveSets
         },
         Melee(AttackKind.Heavy, 1.55f, 38f, 18f, .14f, .12f, .30f,
             28f, 104f, 72f, AttackHitboxShape.WideArc, 44f));
-
-    public static readonly WeaponMoveSet BattleAxe = new(
-        "battle-axe",
-        new[]
-        {
-            Melee(AttackKind.LightOne, 1.16f, 34f, 11f, .15f, .11f, .26f, 55f, 68f, 56f, AttackHitboxShape.Chop, 36f),
-            Melee(AttackKind.LightTwo, 1.34f, 46f, 13f, .18f, .12f, .31f, 72f, 76f, 58f, AttackHitboxShape.StandardArc, 34f),
-            Melee(AttackKind.LightThree, 1.62f, 68f, 16f, .24f, .14f, .43f, 98f, 80f, 66f, AttackHitboxShape.Chop, 42f)
-        },
-        Melee(AttackKind.Heavy, 2.35f, 115f, 31f, .46f, .18f, .58f, 142f, 84f, 76f, AttackHitboxShape.Chop, 30f));
-
-    public static readonly WeaponMoveSet Spear = new(
-        "spear",
-        new[]
-        {
-            Melee(AttackKind.LightOne, .92f, 18f, 8f, .07f, .10f, .18f, 20f, 122f, 22f, AttackHitboxShape.Thrust, 46f),
-            Melee(AttackKind.LightTwo, 1.02f, 22f, 9f, .09f, .11f, .20f, 24f, 132f, 24f, AttackHitboxShape.Thrust, 52f),
-            Melee(AttackKind.LightThree, 1.18f, 28f, 11f, .13f, .13f, .29f, 34f, 96f, 46f, AttackHitboxShape.StandardArc, 36f)
-        },
-        Melee(AttackKind.Heavy, 1.9f, 58f, 27f, .34f, .16f, .46f, 52f, 158f, 24f, AttackHitboxShape.Thrust, 150f));
 
     public static readonly WeaponMoveSet DualDaggers = new(
         "dual-daggers",

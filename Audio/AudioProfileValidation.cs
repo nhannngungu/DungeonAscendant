@@ -9,7 +9,16 @@ namespace DungeonAscendant.Audio;
 
 public static class AudioProfileValidation
 {
-    private static readonly WeaponFamily[] Weapons = { WeaponFamily.LongSword, WeaponFamily.DualSwords, WeaponFamily.HunterBow, WeaponFamily.WarAxe, WeaponFamily.ArcaneWarStaff, WeaponFamily.SpikedMace, WeaponFamily.ChainFlail };
+    private static readonly WeaponFamily[] Weapons =
+    {
+        WeaponFamily.LongSword,
+        WeaponFamily.DualSwords,
+        WeaponFamily.GreatSword,
+        WeaponFamily.HunterBow,
+        WeaponFamily.Scythe,
+        WeaponFamily.ArcaneWarStaff,
+        WeaponFamily.AbyssRing
+    };
 
     public static void ValidateOrThrow()
     {

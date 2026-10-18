@@ -50,24 +50,15 @@ public static class EquipmentRebuildValidation
         resources.SetFamily(WeaponFamily.DualSwords);
         resources.AddDuelistMomentum(75f);
         resources.OnOwnerDamaged();
-        Require(MathF.Abs(resources.DuelistMomentum - 47f) < .01f,
+        Require(MathF.Abs(resources.DuelistMomentum - 60f) < .01f,
             "Duelist damage loss must be meaningful without clearing Momentum.");
-        resources.SetFamily(WeaponFamily.SpikedMace);
-        resources.AddBreakerInertia(140f);
-        Require(resources.BreakerInertia == BreakerTuning.MaximumInertia &&
-            resources.SpendAllBreakerInertia() ==
-                BreakerTuning.MaximumInertia,
-            "Breaker Inertia must cap at 100 and be consumable.");
-
         ValidateEveryTechniqueStarts();
+        ValidateUltimateControlImmunity();
         ValidateKnightCombat();
         ValidateDuelistCombat();
         ValidateGreatswordCombat();
         ValidateRangerCombat();
-        ValidateRaiderCombat();
         ValidateSpellbladeCombat();
-        ValidateBreakerCombat();
-        ValidateReckonerCombat();
         ValidateSovereignCombat();
         ValidateCommittedActionFlow();
     }
@@ -107,10 +98,8 @@ public static class EquipmentRebuildValidation
             EquipmentCatalog.KnightLongSword,
             EquipmentCatalog.DuelistDualSwords,
             EquipmentCatalog.IronVanguardGreatsword,
-            EquipmentCatalog.RaiderWarAxe,
             EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.ReckonerChainFlail,
+            EquipmentCatalog.ShadowReaperScythe,
             EquipmentCatalog.ForbiddenSovereignAbyssRing
         };
         WeaponTechniqueInput[] actions =
@@ -215,160 +204,6 @@ public static class EquipmentRebuildValidation
         }
     }
 
-    private static void ValidateReckonerCombat()
-    {
-        WeaponCombatProfile profile = EquipmentCatalog.ReckonerChainFlail
-            .CombatProfile;
-        Require(profile.DashInput == WeaponTechniqueInput.Skill1,
-            "Reckoner dash technique must be Shift+J.");
-        Require(profile.Get(WeaponTechniqueInput.Skill1).Id == "chain-lash" &&
-            profile.Get(WeaponTechniqueInput.Skill2).Id ==
-                "orbiting-maelstrom" &&
-            profile.Get(WeaponTechniqueInput.Skill3).Id == "chain-harpoon" &&
-            profile.Get(WeaponTechniqueInput.DashSkill).Id ==
-                "reapers-passage" &&
-            profile.Get(WeaponTechniqueInput.Skill1Skill2).Id ==
-                "crescent-requiem" &&
-            profile.Get(WeaponTechniqueInput.Skill1Skill3).Id ==
-                "serpents-fang" &&
-            profile.Get(WeaponTechniqueInput.Skill2Skill3).Id ==
-                "vortex-snare" &&
-            profile.Get(WeaponTechniqueInput.Ultimate).Id ==
-                "chains-of-judgment",
-            "Reckoner J/K/L chord mapping is incomplete.");
-
-        WeaponTechnique lash = profile.Get(WeaponTechniqueInput.Skill1);
-        WeaponTechnique orbit = profile.Get(WeaponTechniqueInput.Skill2);
-        WeaponTechnique harpoon = profile.Get(WeaponTechniqueInput.Skill3);
-        WeaponTechnique vortex = profile.Get(
-            WeaponTechniqueInput.Skill2Skill3);
-        WeaponTechnique ultimate = profile.Get(WeaponTechniqueInput.Ultimate);
-        Require(lash.StageCount == 3 && lash.RequiresRepeatedInput &&
-            lash.AdditionalStageStaminaCost == 6f,
-            "Chain Lash must remain a forgiving paid three-input rhythm chain.");
-        Require(orbit.StageCount == 2 &&
-            orbit.StaminaCost == ReckonerTuning.OrbitActivationStamina,
-            "Orbiting Maelstrom must have activation and release stages.");
-        Require(harpoon.StageCount == 2 &&
-            harpoon.GetStage(0).Range == ReckonerTuning.HarpoonMaximumDistance,
-            "Chain Harpoon must have capped outbound and return stages.");
-        Require(vortex.StageCount == 7 &&
-            vortex.GetStage(6).HitboxShape == AttackHitboxShape.Thrust,
-            "Vortex Snare must preserve launch, bounded passes, and retract.");
-        Require(ultimate.RequiresFullStamina && ultimate.StageCount == 8 &&
-            ultimate.GetStage(6).PoiseDamage >= 80f &&
-            ultimate.GetStage(7).PoiseDamage >= 120f,
-            "Chains of Judgment must preserve convergence and final judgment.");
-
-        var resource = new WeaponResourceState();
-        resource.SetFamily(WeaponFamily.ChainFlail);
-        resource.AddChainMomentum(500f);
-        Require(resource.ChainMomentum == ReckonerTuning.MomentumMaximum,
-            "Chain Momentum exceeded its 100 point cap.");
-        resource.OnOwnerDamaged();
-        Require(resource.ChainMomentum ==
-                ReckonerTuning.MomentumMaximum -
-                    ReckonerTuning.HeavyDamageMomentumLoss,
-            "Heavy damage did not remove the bounded Chain Momentum amount.");
-        resource.Update(ReckonerTuning.MomentumDecayDelaySeconds - .05f);
-        float beforeDecay = resource.ChainMomentum;
-        resource.Update(.10f);
-        Require(resource.ChainMomentum < beforeDecay,
-            "Chain Momentum did not decay after its inactivity grace period.");
-        Require(resource.SpendAllChainMomentum() > 0f &&
-            resource.ChainMomentum == 0f,
-            "Chain Momentum could not be consumed independently of Stamina.");
-
-        AttackDefinition firstLash = lash.GetStage(0);
-        Vector2 waitingHead = ChainFlailMotion.GetHeadOffset(
-            lash.Effect, 0, firstLash, firstLash.StartupTime * .5f,
-            firstLash.Range, 0f, 0f, 1);
-        Vector2 caughtHead = ChainFlailMotion.GetHeadOffset(
-            lash.Effect, 0, firstLash,
-            firstLash.StartupTime + firstLash.ActiveTime * .8f,
-            firstLash.Range, 0f, 0f, 1);
-        Require(Vector2.Distance(waitingHead, caughtHead) > 45f,
-            "Chain head no longer visibly lags then catches the handle.");
-
-        AttackDefinition serpent = profile.Get(
-            WeaponTechniqueInput.Skill1Skill3).GetStage(0);
-        Vector2 leftCurve = ChainFlailMotion.GetHeadOffset(
-            WeaponTechniqueEffect.ReckonerSerpentsFang,
-            0, serpent, serpent.StartupTime + serpent.ActiveTime * .5f,
-            serpent.Range, 0f, 0f, -1);
-        Vector2 rightCurve = ChainFlailMotion.GetHeadOffset(
-            WeaponTechniqueEffect.ReckonerSerpentsFang,
-            0, serpent, serpent.StartupTime + serpent.ActiveTime * .5f,
-            serpent.Range, 0f, 0f, 1);
-        Require(MathF.Sign(leftCurve.Y + 31f) !=
-                MathF.Sign(rightCurve.Y + 31f),
-            "Serpent's Fang A/D paths must curve to opposite sides.");
-
-        var heldOrbit = new PlayerCombat();
-        heldOrbit.ApplyLoadout(
-            EquipmentCatalog.ReckonerChainFlail,
-            EquipmentCatalog.CreateStartingArmor());
-        heldOrbit.Update(
-            Frame(.016f),
-            ReckonerOrbitInput(pressed: true, held: true),
-            true,
-            FacingDirection.Right);
-        for (int frame = 0; frame < 55; frame++)
-        {
-            heldOrbit.Update(
-                Frame(.05f),
-                ReckonerOrbitInput(held: true),
-                true,
-                FacingDirection.Right);
-        }
-        Require(heldOrbit.CurrentTechnique?.Effect ==
-                WeaponTechniqueEffect.ReckonerOrbitingMaelstrom &&
-            heldOrbit.ReckonerOrbitStage == 3 &&
-            heldOrbit.Resources.ChainMomentum > 0f &&
-            heldOrbit.Stamina.Current <
-                heldOrbit.Stamina.Maximum - orbit.StaminaCost,
-            "Held Orbit did not stage up, build Momentum, and drain Stamina.");
-        heldOrbit.Update(
-            Frame(.05f),
-            ReckonerOrbitInput(held: false, released: true),
-            true,
-            FacingDirection.Right);
-        Require(heldOrbit.TechniqueStageIndex == 1,
-            "Orbit release did not enter its controlled recovery arc.");
-
-        var lowHarpoon = new PlayerCombat();
-        lowHarpoon.ApplyLoadout(
-            EquipmentCatalog.ReckonerChainFlail,
-            EquipmentCatalog.CreateStartingArmor());
-        StartInput(lowHarpoon, EquipmentCatalog.ReckonerChainFlail,
-            WeaponTechniqueInput.Skill3);
-        Require(lowHarpoon.RegisterReckonerHarpoonOutboundTarget(false) &&
-            lowHarpoon.TechniqueStageIndex == 1,
-            "Low-Momentum Harpoon did not return after its first target.");
-
-        var highUltimate = new PlayerCombat();
-        highUltimate.ApplyLoadout(
-            EquipmentCatalog.ReckonerChainFlail,
-            EquipmentCatalog.CreateStartingArmor());
-        highUltimate.Resources.AddChainMomentum(85f);
-        StartInput(highUltimate, EquipmentCatalog.ReckonerChainFlail,
-            WeaponTechniqueInput.Ultimate);
-        Require(highUltimate.Stamina.Current == 0f &&
-            highUltimate.Resources.ChainMomentum == 0f &&
-            MathF.Abs(highUltimate.ReckonerMomentumSnapshot - 85f) < .01f &&
-            highUltimate.EffectiveTechniqueStageCount == 8,
-            "High-Momentum Judgment did not snapshot/consume both resources with capped passes.");
-
-        var lowUltimate = new PlayerCombat();
-        lowUltimate.ApplyLoadout(
-            EquipmentCatalog.ReckonerChainFlail,
-            EquipmentCatalog.CreateStartingArmor());
-        StartInput(lowUltimate, EquipmentCatalog.ReckonerChainFlail,
-            WeaponTechniqueInput.Ultimate);
-        Require(lowUltimate.EffectiveTechniqueStageCount == 6,
-            "Low-Momentum Judgment must remain useful with three circle passes.");
-    }
-
     private static void ValidateSpellbladeCombat()
     {
         WeaponCombatProfile profile = EquipmentCatalog.ArcaneWarStaff
@@ -435,350 +270,6 @@ public static class EquipmentRebuildValidation
         Require(caster.CurrentTechnique?.Id == "heavenfall-thunder-gate" &&
             caster.Stamina.Current == 0f,
             "Heavenfall must validate a target then consume full stamina once.");
-    }
-
-    private static void ValidateBreakerCombat()
-    {
-        WeaponCombatProfile profile = EquipmentCatalog.BreakerSpikedMace
-            .CombatProfile;
-        Require(profile.DashInput == WeaponTechniqueInput.Skill1,
-            "Breaker dash technique must be Shift+J.");
-        Require(profile.Get(WeaponTechniqueInput.Skill1).Id == "iron-crush" &&
-            profile.Get(WeaponTechniqueInput.Skill2).Id == "pendulum-swing" &&
-            profile.Get(WeaponTechniqueInput.Skill3).Id == "earthbreaker" &&
-            profile.Get(WeaponTechniqueInput.DashSkill).Id ==
-                "battering-rush" &&
-            profile.Get(WeaponTechniqueInput.Skill1Skill2).Id ==
-                "titans-backhand" &&
-            profile.Get(WeaponTechniqueInput.Skill1Skill3).Id ==
-                "anvil-fall" &&
-            profile.Get(WeaponTechniqueInput.Skill2Skill3).Id ==
-                "cataclysm-wheel" &&
-            profile.Get(WeaponTechniqueInput.Ultimate).Id == "worldbreaker",
-            "Breaker J/K/L chord mapping is incomplete.");
-
-        WeaponTechnique crush = profile.Get(WeaponTechniqueInput.Skill1);
-        WeaponTechnique pendulum = profile.Get(WeaponTechniqueInput.Skill2);
-        WeaponTechnique worldbreaker = profile.Get(
-            WeaponTechniqueInput.Ultimate);
-        Require(crush.StageCount == 3 && crush.RequiresRepeatedInput &&
-            crush.AdditionalStageStaminaCost == 7f &&
-            crush.GetStage(2).PoiseDamage > crush.GetStage(1).PoiseDamage,
-            "Iron Crush must be a paid three-hit escalating Poise chain.");
-        Require(pendulum.StageCount == 1 &&
-            pendulum.Effect == WeaponTechniqueEffect.BreakerPendulumSwing,
-            "Pendulum must release one bounded heavy sweep.");
-        Require(worldbreaker.RequiresFullStamina &&
-            worldbreaker.StageCount == 1 &&
-            worldbreaker.GetStage(0).StartupTime >= 1.5f &&
-            worldbreaker.GetStage(0).RecoveryTime >= 1f,
-            "Worldbreaker must remain one high-commitment main hit.");
-
-        var inertia = new WeaponResourceState();
-        inertia.SetFamily(WeaponFamily.SpikedMace);
-        inertia.AddBreakerInertia(75f);
-        inertia.Update(BreakerTuning.InertiaDecayDelaySeconds + .05f);
-        inertia.Update(1f);
-        Require(inertia.BreakerInertia < 75f &&
-            inertia.BreakerInertia > 0f,
-            "Breaker Inertia did not decay gradually after inactivity.");
-        inertia.OnOwnerDamaged();
-        Require(inertia.BreakerInertia <=
-                75f - BreakerTuning.InterruptedAttackLoss,
-            "Interrupted Breaker attacks did not lose meaningful Inertia.");
-
-        var pendulumCombat = new PlayerCombat();
-        pendulumCombat.ApplyLoadout(
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.CreateStartingArmor());
-        pendulumCombat.Update(
-            Frame(.016f),
-            new CombatInput(
-                false, true, false, false, false, false, 0f,
-                skill2Held: true),
-            true,
-            FacingDirection.Right);
-        AdvanceHeldSkill2(pendulumCombat, 7);
-        Require(pendulumCombat.IsPendulumCharging &&
-            pendulumCombat.BreakerPendulumStage ==
-                BreakerPendulumStage.StageOne,
-            "Pendulum failed to enter its first held stage.");
-        AdvanceHeldSkill2(pendulumCombat, 8);
-        Require(pendulumCombat.BreakerPendulumStage ==
-                BreakerPendulumStage.StageTwo,
-            "Pendulum failed to enter its second held stage.");
-        AdvanceHeldSkill2(pendulumCombat, 10);
-        Require(pendulumCombat.BreakerPendulumStage ==
-                BreakerPendulumStage.StageThree,
-            "Pendulum failed to enter its third held stage.");
-        AdvanceHeldSkill2(pendulumCombat, 13);
-        Require(!pendulumCombat.IsPendulumCharging &&
-            pendulumCombat.CurrentTechnique?.Id == "pendulum-swing",
-            "Pendulum exceeded its maximum hold instead of auto-releasing.");
-
-        var earthbreaker = new PlayerCombat();
-        earthbreaker.ApplyLoadout(
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.CreateStartingArmor());
-        earthbreaker.Resources.AddBreakerInertia(100f);
-        StartInput(
-            earthbreaker,
-            EquipmentCatalog.BreakerSpikedMace,
-            WeaponTechniqueInput.Skill3);
-        Require(earthbreaker.CurrentTechnique?.Id == "earthbreaker" &&
-            earthbreaker.BreakerInertiaSnapshot == 100f &&
-            earthbreaker.Resources.BreakerInertia ==
-                100f - BreakerTuning.EarthbreakerConsumption,
-            "Earthbreaker did not snapshot and consume bounded Inertia.");
-
-        var cataclysm = new PlayerCombat();
-        cataclysm.ApplyLoadout(
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.CreateStartingArmor());
-        cataclysm.Resources.AddBreakerInertia(100f);
-        StartInput(
-            cataclysm,
-            EquipmentCatalog.BreakerSpikedMace,
-            WeaponTechniqueInput.Skill2Skill3);
-        Require(cataclysm.CurrentTechnique?.Id == "cataclysm-wheel" &&
-            MathF.Abs(cataclysm.Resources.BreakerInertia - 28f) < .01f,
-            "Cataclysm Wheel did not consume 72% of current Inertia.");
-
-        var ultimate = new PlayerCombat();
-        ultimate.ApplyLoadout(
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.CreateStartingArmor());
-        ultimate.Resources.AddBreakerInertia(100f);
-        StartInput(
-            ultimate,
-            EquipmentCatalog.BreakerSpikedMace,
-            WeaponTechniqueInput.Ultimate);
-        Require(ultimate.CurrentTechnique?.Id == "worldbreaker" &&
-            ultimate.EffectiveTechniqueStageCount == 1 &&
-            ultimate.BreakerInertiaSnapshot == 100f &&
-            ultimate.Resources.BreakerInertia == 0f &&
-            ultimate.Stamina.Current == 0f,
-            "Worldbreaker must snapshot Inertia and consume all setup/stamina.");
-    }
-
-    private static void AdvanceHeldSkill2(PlayerCombat combat, int frames)
-    {
-        for (int index = 0; index < frames; index++)
-        {
-            combat.Update(
-                Frame(.05f),
-                new CombatInput(
-                    false, false, false, false, false, false, 0f,
-                    skill2Held: true),
-                true,
-                FacingDirection.Right);
-        }
-    }
-
-    private static void ValidateRaiderCombat()
-    {
-        WeaponCombatProfile profile = EquipmentCatalog.RaiderWarAxe
-            .CombatProfile;
-        Require(profile.DashInput == WeaponTechniqueInput.Skill1,
-            "Raider dash technique must be Shift+J.");
-        Require(profile.Get(WeaponTechniqueInput.Skill1).Id ==
-                "savage-cleave" &&
-            profile.Get(WeaponTechniqueInput.Skill2).Id == "hooking-axe" &&
-            profile.Get(WeaponTechniqueInput.Skill3).Id == "buckler-ram" &&
-            profile.Get(WeaponTechniqueInput.DashSkill).Id ==
-                "ravagers-rush" &&
-            profile.Get(WeaponTechniqueInput.Skill1Skill2).Id ==
-                "executioners-grip" &&
-            profile.Get(WeaponTechniqueInput.Skill1Skill3).Id ==
-                "skullbreaker" &&
-            profile.Get(WeaponTechniqueInput.Skill2Skill3).Id ==
-                "crowd-crusher" &&
-            profile.Get(WeaponTechniqueInput.Ultimate).Id ==
-                "warbringers-dominion",
-            "Raider J/K/L chord mapping is incomplete.");
-
-        WeaponTechnique savage = profile.Get(WeaponTechniqueInput.Skill1);
-        WeaponTechnique executioner = profile.Get(
-            WeaponTechniqueInput.Skill1Skill2);
-        WeaponTechnique skullbreaker = profile.Get(
-            WeaponTechniqueInput.Skill1Skill3);
-        WeaponTechnique crowdCrusher = profile.Get(
-            WeaponTechniqueInput.Skill2Skill3);
-        WeaponTechnique dominion = profile.Get(
-            WeaponTechniqueInput.Ultimate);
-        Require(savage.StageCount == 3 && savage.RequiresRepeatedInput &&
-            savage.AdditionalStageStaminaCost == 6f &&
-            savage.GetStage(2).PoiseDamage > savage.GetStage(1).PoiseDamage,
-            "Savage Cleave must be a paid three-input chain with a high-Poise finisher.");
-        Require(executioner.StageCount == 3 &&
-            executioner.Effect ==
-                WeaponTechniqueEffect.RaiderExecutionersGrip,
-            "Executioner's Grip must remain one authored strike-hook-reverse sequence.");
-        Require(skullbreaker.StageCount == 2 &&
-            skullbreaker.GetStage(0).HitboxShape == AttackHitboxShape.Thrust &&
-            skullbreaker.GetStage(1).HitboxShape == AttackHitboxShape.Chop,
-            "Skullbreaker must open with buckler impact before its axe finisher.");
-        Require(crowdCrusher.StageCount == 3 &&
-            crowdCrusher.Effect == WeaponTechniqueEffect.RaiderCrowdCrusher,
-            "Crowd Crusher must keep its hook-turn-throw sequence.");
-        Require(dominion.RequiresFullStamina && dominion.StageCount == 4 &&
-            dominion.GetStage(0).HitboxShape == AttackHitboxShape.Circular &&
-            dominion.GetStage(3).HitboxShape == AttackHitboxShape.FrontalFan,
-            "Warbringer's Dominion must contain war cry, gather, push, and sundering phases.");
-
-        Require(RaiderTuning.ClassifyWeight(30f, false) ==
-                EnemyWeightClass.Light &&
-            RaiderTuning.ClassifyWeight(70f, false) ==
-                EnemyWeightClass.Normal &&
-            RaiderTuning.ClassifyWeight(130f, false) ==
-                EnemyWeightClass.Heavy &&
-            RaiderTuning.GetDisplacementMultiplier(
-                EnemyWeightClass.Boss) == 0f,
-            "Raider weight classification or boss displacement immunity failed.");
-
-        var room = new DungeonRoom(
-            1,
-            new Rectangle(0, 0, 400, 240),
-            RoomType.Start);
-        var dungeon = new DungeonMap(
-            new[] { room },
-            Array.Empty<Rectangle>(),
-            room.Bounds);
-        var normalTarget = new Goblin(
-            new Vector2(100f, 100f),
-            roomId: room.Id);
-        var heavyTarget = new CorruptedTreant(
-            new Vector2(100f, 100f),
-            1,
-            false,
-            room.Id,
-            1);
-        EnemyDisplacementResult normalMove = normalTarget.DisplaceHorizontally(
-            1f,
-            80f,
-            dungeon);
-        EnemyDisplacementResult heavyMove = heavyTarget.DisplaceHorizontally(
-            1f,
-            80f,
-            dungeon);
-        Require(normalMove.DistanceMoved > heavyMove.DistanceMoved * 2f,
-            "Heavy targets must resist Raider displacement without becoming immovable.");
-
-        var lightTarget = new BloodBat(
-            new Vector2(250f, 100f),
-            1,
-            false,
-            room.Id,
-            1);
-        lightTarget.PullTowardSafe(
-            new Vector2(100f, 100f),
-            140f,
-            RaiderTuning.HookSafeDistance,
-            dungeon);
-        Require(MathF.Abs(lightTarget.Position.X - 100f) + .01f >=
-                RaiderTuning.HookSafeDistance,
-            "Light-target pull scaling crossed the Raider safe-contact distance.");
-
-        var wallTarget = new Goblin(
-            new Vector2(370f, 100f),
-            roomId: room.Id);
-        EnemyDisplacementResult wallMove = wallTarget.DisplaceHorizontally(
-            1f,
-            RaiderTuning.BucklerRamPushDistance,
-            dungeon);
-        float poiseBeforeWall = wallTarget.CurrentPoise;
-        bool firstWallImpact = wallTarget.ApplyDisplacementImpact(
-            RaiderTuning.WallCollisionPoise,
-            RaiderTuning.WallCollisionDamage);
-        bool repeatedWallImpact = wallTarget.ApplyDisplacementImpact(
-            RaiderTuning.WallCollisionPoise,
-            RaiderTuning.WallCollisionDamage);
-        Require(wallMove.HitWall &&
-            wallTarget.Bounds.Right <= dungeon.WorldBounds.Right &&
-            firstWallImpact && !repeatedWallImpact &&
-            wallTarget.CurrentPoise < poiseBeforeWall,
-            "Wall displacement must clamp safely and rate-limit collision Stagger.");
-
-        var savageCombat = new PlayerCombat();
-        savageCombat.ApplyLoadout(
-            EquipmentCatalog.RaiderWarAxe,
-            EquipmentCatalog.CreateStartingArmor());
-        StartInput(
-            savageCombat,
-            EquipmentCatalog.RaiderWarAxe,
-            WeaponTechniqueInput.Skill1);
-        savageCombat.Update(
-            Frame(.05f),
-            EmptyInput(),
-            true,
-            FacingDirection.Right);
-        savageCombat.Update(
-            Frame(.05f),
-            EmptyInput(),
-            true,
-            FacingDirection.Right);
-        savageCombat.Update(
-            Frame(.016f),
-            Skill1Input(),
-            true,
-            FacingDirection.Right);
-        AdvanceUntilStage(savageCombat, 1);
-        savageCombat.Update(
-            Frame(.05f),
-            EmptyInput(),
-            true,
-            FacingDirection.Right);
-        savageCombat.Update(
-            Frame(.05f),
-            EmptyInput(),
-            true,
-            FacingDirection.Right);
-        savageCombat.Update(
-            Frame(.016f),
-            Skill1Input(),
-            true,
-            FacingDirection.Right);
-        AdvanceUntilStage(savageCombat, 2);
-        Require(savageCombat.Stamina.Current == 82f,
-            "Savage Cleave must spend 6 stamina per committed stage.");
-
-        var leftThrow = new PlayerCombat();
-        leftThrow.ApplyLoadout(
-            EquipmentCatalog.RaiderWarAxe,
-            EquipmentCatalog.CreateStartingArmor());
-        leftThrow.Update(
-            Frame(.016f),
-            new CombatInput(
-                false, true, true, false, false, false, -1f),
-            true,
-            FacingDirection.Right);
-        for (int frame = 0; frame < 7 &&
-            leftThrow.CurrentTechnique == null; frame++)
-        {
-            leftThrow.Update(
-                Frame(.05f),
-                new CombatInput(
-                    false, false, false, false, false, false, -1f),
-                true,
-                FacingDirection.Right);
-        }
-        Require(leftThrow.CurrentTechnique?.Id == "crowd-crusher" &&
-            leftThrow.RaiderControlDirection < 0f,
-            "Crowd Crusher did not capture A as its throw direction.");
-
-        var ultimate = new PlayerCombat();
-        ultimate.ApplyLoadout(
-            EquipmentCatalog.RaiderWarAxe,
-            EquipmentCatalog.CreateStartingArmor());
-        StartInput(
-            ultimate,
-            EquipmentCatalog.RaiderWarAxe,
-            WeaponTechniqueInput.Ultimate);
-        Require(ultimate.CurrentTechnique?.Id ==
-                "warbringers-dominion" &&
-            ultimate.EffectiveTechniqueStageCount == 4 &&
-            ultimate.Stamina.Current == 0f,
-            "Warbringer's Dominion must consume full stamina and begin four phases.");
     }
 
     private static void ValidateRangerCombat()
@@ -868,19 +359,24 @@ public static class EquipmentRebuildValidation
             .CombatProfile;
         Require(profile.DashInput == WeaponTechniqueInput.Skill1,
             "Duelist dash technique must be Shift+J.");
-        Require(profile.Get(WeaponTechniqueInput.Skill1).Id == "twin-fang" &&
-            profile.Get(WeaponTechniqueInput.Skill2).Id == "phantom-step" &&
-            profile.Get(WeaponTechniqueInput.Skill3).Id == "blade-tempest" &&
+        Require(profile.Get(WeaponTechniqueInput.Skill1).Id ==
+                "starburst-sword-art" &&
+            profile.Get(WeaponTechniqueInput.Skill2).Id == "phantom-parry" &&
+            profile.Get(WeaponTechniqueInput.Skill3).Id == "blade-overdrive" &&
             profile.Get(WeaponTechniqueInput.Skill1Skill2).Id ==
-                "afterimage-execution" &&
+                "cross-requiem" &&
             profile.Get(WeaponTechniqueInput.Skill1Skill3).Id ==
-                "hundred-fangs" &&
+                "heaven-splitter" &&
             profile.Get(WeaponTechniqueInput.Skill2Skill3).Id ==
-                "mirage-cyclone" &&
-            profile.Get(WeaponTechniqueInput.Ultimate).Id == "final-waltz",
-            "Duelist J/K/L chord mapping is incomplete.");
-        Require(profile.Get(WeaponTechniqueInput.Skill1).StageCount == 5,
-            "Twin Fang must contain five authored hits.");
+                "thousand-edge-waltz" &&
+            profile.Get(WeaponTechniqueInput.Ultimate).Id ==
+                "infinite-starburst-ascension",
+            "Astral Twinblades J/K/L chord mapping is incomplete.");
+        Require(profile.Get(WeaponTechniqueInput.Skill1).StageCount == 8,
+            "Starburst Sword Art must contain eight authored attacks.");
+        Require(profile.Get(WeaponTechniqueInput.Ultimate).StageCount ==
+                DuelistTuning.UltimateStrikeCount + 1,
+            "Infinite Starburst must contain exactly 32 strikes and Final X.");
 
         var decay = new WeaponResourceState();
         decay.SetFamily(WeaponFamily.DualSwords);
@@ -895,87 +391,23 @@ public static class EquipmentRebuildValidation
         Require(decay.DuelistMomentum == DuelistTuning.MomentumMaximum,
             "Duelist Momentum exceeded its 100 point cap.");
 
-        Require(GetDuelistStageCount(
-                WeaponTechniqueInput.Skill3, 0f) == 4 &&
-            GetDuelistStageCount(
-                WeaponTechniqueInput.Skill3, 50f) == 5 &&
-            GetDuelistStageCount(
-                WeaponTechniqueInput.Skill3, 100f) == 6,
-            "Blade Tempest must scale to 4/5/6 hits by Momentum tier.");
-        Require(GetDuelistStageCount(
-                WeaponTechniqueInput.Skill1Skill3, 0f) == 6 &&
-            GetDuelistStageCount(
-                WeaponTechniqueInput.Skill1Skill3, 50f) == 7 &&
-            GetDuelistStageCount(
-                WeaponTechniqueInput.Skill1Skill3, 100f) == 8,
-            "Hundred Fangs must preserve its bounded 6/7/8 hit scaling.");
-
-        ValidateFinalWaltzTier(0f, 6);
-        ValidateFinalWaltzTier(50f, 8);
-        ValidateFinalWaltzTier(100f, 10);
-
-        var phantom = CreateDuelistCombat(20f);
-        StartInput(
-            phantom,
-            EquipmentCatalog.DuelistDualSwords,
-            WeaponTechniqueInput.Skill2);
-        float beforePerfect = phantom.Resources.DuelistMomentum;
-        Require(phantom.IsPhantomStepEvading,
-            "Phantom Step did not expose its forgiving evade window.");
-        phantom.RegisterPerfectPhantomStep();
-        Require(phantom.Resources.DuelistMomentum > beforePerfect &&
-            phantom.IsPerfectPhantomFeedbackActive,
-            "Perfect Phantom Step did not award Momentum and feedback.");
-
-        var reactivePhantom = CreateDuelistCombat(0f);
-        reactivePhantom.Update(
-            Frame(.016f),
-            new CombatInput(
-                false, true, false, false, false, false, 0f,
-                perfectEvadeOpportunity: true),
-            true,
-            FacingDirection.Right);
-        Require(reactivePhantom.CurrentTechnique?.Id == "phantom-step",
-            "A threatened Duelist must begin Phantom Step without chord latency.");
-
         var priority = CreateDuelistCombat(0f);
         priority.Update(
             Frame(.016f),
             new CombatInput(
-                true, true, false, false, false, false, 0f,
-                perfectEvadeOpportunity: true),
+                true, true, false, false, false, false, 0f),
             true,
             FacingDirection.Right);
         Advance(priority, 7);
-        Require(priority.CurrentTechnique?.Id == "afterimage-execution",
-            "Perfect-evade acceleration must not steal J+K priority.");
-    }
+        Require(priority.CurrentTechnique?.Id == "cross-requiem",
+            "J+K must resolve atomically as Cross Requiem.");
 
-    private static int GetDuelistStageCount(
-        WeaponTechniqueInput input,
-        float momentum)
-    {
-        PlayerCombat combat = CreateDuelistCombat(momentum);
-        StartInput(combat, EquipmentCatalog.DuelistDualSwords, input);
-        return combat.EffectiveTechniqueStageCount;
-    }
-
-    private static void ValidateFinalWaltzTier(
-        float momentum,
-        int expectedHits)
-    {
-        PlayerCombat combat = CreateDuelistCombat(momentum);
-        StartInput(
-            combat,
-            EquipmentCatalog.DuelistDualSwords,
-            WeaponTechniqueInput.Ultimate);
-        Require(combat.CurrentTechnique?.Id == "final-waltz" &&
-            combat.EffectiveTechniqueStageCount == expectedHits,
-            $"Final Waltz at {momentum:0} Momentum must use {expectedHits} hits.");
-        Require(combat.Stamina.Current == 0f &&
-            combat.Resources.DuelistMomentum == 0f &&
-            MathF.Abs(combat.UltimateMomentumSnapshot - momentum) < .01f,
-            "Final Waltz must consume full Stamina and all snapshotted Momentum.");
+        float totalUltimateDamage = 0f;
+        WeaponTechnique ultimate = profile.Get(WeaponTechniqueInput.Ultimate);
+        for (int index = 0; index < ultimate.StageCount; index++)
+            totalUltimateDamage += ultimate.GetStage(index).DamageMultiplier;
+        Require(MathF.Abs(totalUltimateDamage - 6.80f) < .001f,
+            "Infinite Starburst aggregate damage must total 680%.");
     }
 
     private static PlayerCombat CreateDuelistCombat(float momentum)
@@ -1185,36 +617,74 @@ public static class EquipmentRebuildValidation
     private static void ValidateKnightCombat()
     {
         EquipmentItem armor = EquipmentCatalog.CreateStartingArmor();
+        WeaponCombatProfile profile =
+            EquipmentCatalog.KnightLongSword.CombatProfile;
+		Require(ReferenceEquals(
+				profile,
+				WeaponTechniqueCatalog.KnightSwordAndShield) &&
+			profile.Id == "knight-sword-and-shield" &&
+			ReferenceEquals(
+				EquipmentCatalog.KnightLongSword.MoveSet,
+				WeaponMoveSets.KnightSwordAndShield) &&
+			profile.DashInput == WeaponTechniqueInput.Skill1 &&
+            profile.Get(WeaponTechniqueInput.Skill1)?.Id == "knights-combo" &&
+            profile.Get(WeaponTechniqueInput.Skill2)?.Id == "shield-guard" &&
+            profile.Get(WeaponTechniqueInput.Skill3)?.Id == "shield-bash" &&
+            profile.Get(WeaponTechniqueInput.Skill1Skill2)?.Id ==
+                "guard-counter" &&
+            profile.Get(WeaponTechniqueInput.Skill2Skill3)?.Id ==
+                "shield-wall" &&
+            profile.Get(WeaponTechniqueInput.Skill1Skill3)?.Id ==
+                "blade-breaker" &&
+            profile.Get(WeaponTechniqueInput.DashSkill)?.Id ==
+                "vanguard-slash" &&
+            profile.Get(WeaponTechniqueInput.Ultimate)?.Id ==
+                "knights-final-oath",
+            "Knight V4.1 J/K/L, Shift+J, and JKL mapping is incomplete.");
+        Require(WeaponTechniqueCatalog.KnightGuardRiposte.Id ==
+                "guard-riposte" &&
+            WeaponTechniqueCatalog.KnightFallingShield.Id ==
+                "falling-shield",
+            "Knight V4.1 contextual Guard Riposte or Air+K mapping is stale.");
+
+        RequireStageDamage(profile.Get(WeaponTechniqueInput.Skill1),
+            1f, 1.05f, 1.15f, 1.45f);
+        RequireStageDamage(profile.Get(WeaponTechniqueInput.Skill1Skill2),
+            .35f, .75f, .95f);
+        RequireStageDamage(profile.Get(WeaponTechniqueInput.Skill2Skill3),
+            0f, .55f, .45f);
+        RequireStageDamage(profile.Get(WeaponTechniqueInput.Skill1Skill3),
+            .85f, .50f, 1.25f);
 
         var chain = new PlayerCombat();
         chain.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
         StartInput(chain, EquipmentCatalog.KnightLongSword,
             WeaponTechniqueInput.Skill1);
-        chain.Update(Frame(.04f), EmptyInput(), true, FacingDirection.Right);
-        chain.Update(Frame(.04f), Skill1Input(), true, FacingDirection.Right);
-        AdvanceUntilStage(chain, 1);
-        chain.Update(Frame(.04f), EmptyInput(), true, FacingDirection.Right);
-        chain.Update(Frame(.04f), Skill1Input(), true, FacingDirection.Right);
-        AdvanceUntilStage(chain, 2);
-        Require(chain.TechniqueStageIndex == 2 &&
-            MathF.Abs(chain.Stamina.Current - 79f) < .01f,
-            "Knight's Edge must require three J presses and spend 7 stamina per hit.");
+        for (int stage = 1; stage < 4; stage++)
+        {
+            chain.Update(Frame(.04f), EmptyInput(), true,
+                FacingDirection.Right);
+            chain.Update(Frame(.04f), Skill1Input(), true,
+                FacingDirection.Right);
+            AdvanceUntilStage(chain, stage);
+        }
+        Require(chain.TechniqueStageIndex == 3 &&
+            chain.CurrentTechnique?.Id == "knights-combo",
+            "Knight's Combo must expose four manually linked J attacks.");
 
-        var bastion = new PlayerCombat();
-        bastion.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
-        StartInput(bastion, EquipmentCatalog.KnightLongSword,
+        var guard = new PlayerCombat();
+        guard.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+        StartInput(guard, EquipmentCatalog.KnightLongSword,
             WeaponTechniqueInput.Skill2);
-        AttackResolution perfect = bastion.ResolveIncomingAttack(
+        AttackResolution perfect = guard.ResolveIncomingAttack(
             FrontContact(20), Vector2.Zero, FacingDirection.Right);
         Require(perfect == AttackResolution.PerfectGuard &&
-            bastion.IsPerfectGuardFeedbackActive,
-            "Iron Bastion failed its Perfect Guard window.");
-        Advance(bastion, 2);
-        bastion.Update(Frame(.05f), Skill1Input(), true, FacingDirection.Right);
-        Advance(bastion, 6);
-        Require(bastion.CurrentTechnique?.Id == "knights-edge" &&
-            bastion.AttackPowerMultiplier >= 1.15f,
-            "Iron Bastion Perfect Guard did not transition cleanly into its rewarded follow-up.");
+            guard.IsPerfectGuardFeedbackActive,
+            "Shield Guard failed its Perfect Guard window.");
+        guard.Update(Frame(.05f), Skill1Input(), true, FacingDirection.Right);
+        Advance(guard, 5);
+        Require(guard.CurrentTechnique?.Id == "guard-riposte",
+            "Perfect Guard did not transition into Guard Riposte.");
 
         var normalGuard = new PlayerCombat();
         normalGuard.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
@@ -1224,44 +694,110 @@ public static class EquipmentRebuildValidation
         Require(normalGuard.ResolveIncomingAttack(
                 FrontContact(20), Vector2.Zero, FacingDirection.Right) ==
                 AttackResolution.Blocked,
-            "Iron Bastion must become a normal stamina block after Perfect Guard.");
+            "Shield Guard must become a normal stamina block after its timing window.");
         Require(normalGuard.ResolveIncomingAttack(
                 RearContact(20), Vector2.Zero, FacingDirection.Right) ==
                 AttackResolution.Damaged,
-            "Iron Bastion incorrectly protected the rear.");
+            "Shield Guard incorrectly protected the rear.");
 
-        var reversal = new PlayerCombat();
-        reversal.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
-        StartInput(reversal, EquipmentCatalog.KnightLongSword,
+        var counter = new PlayerCombat();
+        counter.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+        StartInput(counter, EquipmentCatalog.KnightLongSword,
             WeaponTechniqueInput.Skill1Skill2);
-        Require(reversal.ResolveIncomingAttack(
-                FrontContact(24), Vector2.Zero, FacingDirection.Right) ==
-                AttackResolution.PerfectGuard &&
-            reversal.AttackPowerMultiplier >= 1.45f,
-            "Guardian's Reversal did not reward a timed interception.");
+        Require(counter.CurrentTechnique?.Id == "guard-counter" &&
+            counter.CurrentTechnique.StageCount == 3,
+            "Guard Counter must run its shield-check and two-slash sequence.");
+
+        var vanguard = new PlayerCombat();
+        vanguard.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+        StartInput(vanguard, EquipmentCatalog.KnightLongSword,
+            WeaponTechniqueInput.DashSkill);
+        Require(vanguard.CurrentTechnique?.Id == "vanguard-slash" &&
+            vanguard.CurrentTechnique.Effect ==
+                WeaponTechniqueEffect.KnightVanguardSlash,
+            "Shift+J must start Vanguard Slash through the shared dash input path.");
+
+        var sixtyFpsVanguard = new PlayerCombat();
+        sixtyFpsVanguard.ApplyLoadout(
+            EquipmentCatalog.KnightLongSword,
+            armor);
+        for (int frame = 0;
+             frame < 20 && sixtyFpsVanguard.CurrentTechnique == null;
+             frame++)
+        {
+            sixtyFpsVanguard.Update(
+                Frame(1f / 60f),
+                new CombatInput(
+                    skill1Pressed: frame == 0,
+                    skill2Pressed: false,
+                    skill3Pressed: false,
+                    dodgePressed: frame == 0,
+                    dashHeld: true,
+                    blockHeld: false,
+                    horizontalDirection: 1f,
+                    skill1Held: true),
+                isGrounded: true,
+                FacingDirection.Right);
+        }
+        Require(sixtyFpsVanguard.CurrentTechnique?.Id == "vanguard-slash" &&
+                sixtyFpsVanguard.State != CombatState.Dodging,
+            "At 60 FPS the shared Shift input dodged before Vanguard Slash resolved.");
+
+        var falling = new PlayerCombat();
+        falling.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+        falling.Update(Frame(.016f),
+            new CombatInput(false, true, false, false, false, false, 0f),
+            isGrounded: false, FacingDirection.Right);
+        for (int frame = 0;
+             frame < 7 && falling.CurrentTechnique == null;
+             frame++)
+        {
+            falling.Update(Frame(.05f), EmptyInput(),
+                isGrounded: false, FacingDirection.Right);
+        }
+        Require(falling.CurrentTechnique?.Id == "falling-shield" &&
+            falling.CurrentTechnique.Effect ==
+                WeaponTechniqueEffect.KnightFallingShield,
+            "Air+K must start Falling Shield.");
+
+        var landingEdge = new PlayerCombat();
+        landingEdge.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+        landingEdge.Update(Frame(1f / 60f),
+            new CombatInput(false, true, false, false, false, false, 0f),
+            isGrounded: false, FacingDirection.Right);
+        for (int frame = 0;
+             frame < 20 && landingEdge.CurrentTechnique == null;
+             frame++)
+        {
+            landingEdge.Update(Frame(1f / 60f), EmptyInput(),
+                isGrounded: true, FacingDirection.Right);
+        }
+        Require(landingEdge.CurrentTechnique?.Id == "falling-shield",
+            "Air+K lost its aerial context before the Knight chord resolved.");
+
+		var switchReset = new PlayerCombat();
+		switchReset.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+		StartInput(switchReset, EquipmentCatalog.KnightLongSword,
+			WeaponTechniqueInput.Skill2);
+		Require(switchReset.ResolveIncomingAttack(
+				FrontContact(20), Vector2.Zero, FacingDirection.Right) ==
+			AttackResolution.PerfectGuard,
+			"Knight switch-reset fixture did not earn Guard Riposte.");
+		switchReset.ApplyLoadout(EquipmentCatalog.DuelistDualSwords, armor);
+		switchReset.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+		StartInput(switchReset, EquipmentCatalog.KnightLongSword,
+			WeaponTechniqueInput.Skill1);
+		Require(switchReset.CurrentTechnique?.Id == "knights-combo",
+			"Knight -> Twin Blades -> Knight leaked stale Guard Riposte state.");
 
         var oath = new PlayerCombat();
         oath.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
+        oath.SetKnightUltimateTargetAvailable(true);
         StartInput(oath, EquipmentCatalog.KnightLongSword,
             WeaponTechniqueInput.Ultimate);
-        oath.ResolveIncomingAttack(
-            FrontContact(50), Vector2.Zero, FacingDirection.Right);
-        oath.ResolveIncomingAttack(
-            FrontContact(200), Vector2.Zero, FacingDirection.Right);
-        Require(oath.OathPreventedDamage == PlayerCombat.OathPreventedDamageCap &&
-            oath.OathStoredForce == PlayerCombat.OathStoredForceCap,
-            "Oath prevented damage or stored force exceeded its cap.");
-        AdvanceUntilStage(oath, 2, 45);
-        Require(oath.CalculateDamage(25) == 115,
-            "Oath final damage must be base 55 plus capped 60 stored force.");
-
-        var emptyOath = new PlayerCombat();
-        emptyOath.ApplyLoadout(EquipmentCatalog.KnightLongSword, armor);
-        StartInput(emptyOath, EquipmentCatalog.KnightLongSword,
-            WeaponTechniqueInput.Ultimate);
-        AdvanceUntilStage(emptyOath, 2, 45);
-        Require(emptyOath.CalculateDamage(25) == 55,
-            "Oath without prevented damage must retain only its base final damage.");
+        Require(oath.IsKnightFinalOathActive && oath.Stamina.Current == 0f &&
+            oath.IsUltimateControlImmune,
+            "Knight's Final Oath must validate its target, spend full stamina, and enter shared immunity.");
     }
 
     private static CombatInput Skill1Input() => new(
@@ -1270,19 +806,20 @@ public static class EquipmentRebuildValidation
     private static CombatInput EmptyInput() => new(
         false, false, false, false, false, false, 0f);
 
-    private static CombatInput ReckonerOrbitInput(
-        bool pressed = false,
-        bool held = false,
-        bool released = false) => new(
-            skill1Pressed: false,
-            skill2Pressed: pressed,
-            skill3Pressed: false,
-            dodgePressed: false,
-            dashHeld: false,
-            blockHeld: false,
-            horizontalDirection: 0f,
-            skill2Held: held,
-            skill2Released: released);
+    private static void RequireStageDamage(
+        WeaponTechnique technique,
+        params float[] expected)
+    {
+        Require(technique != null && technique.StageCount == expected.Length,
+            $"Knight technique stage count mismatch for {technique?.Id ?? "<null>"}.");
+        for (int stage = 0; stage < expected.Length; stage++)
+        {
+            Require(MathF.Abs(
+                    technique.GetStage(stage).DamageMultiplier - expected[stage]) <
+                    .0001f,
+                $"Knight technique {technique.Id} stage {stage + 1} damage mismatch.");
+        }
+    }
 
     private static AttackContact FrontContact(int damage) => new(
         damage,
@@ -1322,46 +859,24 @@ public static class EquipmentRebuildValidation
 
     private static void ValidateEveryTechniqueStarts()
     {
-        WeaponDefinition[] weapons =
-        {
-            EquipmentCatalog.KnightLongSword,
-            EquipmentCatalog.DuelistDualSwords,
-            EquipmentCatalog.IronVanguardGreatsword,
-            EquipmentCatalog.RaiderWarAxe,
-            EquipmentCatalog.ArcaneWarStaff,
-            EquipmentCatalog.BreakerSpikedMace,
-            EquipmentCatalog.ReckonerChainFlail,
-            EquipmentCatalog.ForbiddenSovereignAbyssRing
-        };
-
-        foreach (WeaponDefinition weapon in weapons)
+        foreach (WeaponDefinition weapon in
+                 EquipmentCatalog.AllImplementedWeapons)
         {
             foreach (WeaponTechniqueInput input in Enum.GetValues<WeaponTechniqueInput>())
             {
-                if (weapon.CombatProfile.Get(input) == null)
+				WeaponTechnique expected = weapon.CombatProfile.Get(input);
+				if (expected == null)
                     continue;
                 var combat = new PlayerCombat();
                 combat.ApplyLoadout(weapon, EquipmentCatalog.CreateStartingArmor());
                 if (weapon.Family == WeaponFamily.ArcaneWarStaff)
                     combat.SetSpellbladeRuneCount(2);
-                if (weapon.Family == WeaponFamily.GreatSword &&
-                    input == WeaponTechniqueInput.Ultimate)
-                {
-                    combat.SetGreatswordUltimateTargetAvailable(true);
-                }
-                if (weapon.Family == WeaponFamily.AbyssRing &&
-                    input == WeaponTechniqueInput.Ultimate)
-                {
-                    combat.SetSovereignUltimateTargetAvailable(true);
-                }
-                if (weapon.Family == WeaponFamily.ArcaneWarStaff &&
-                    input == WeaponTechniqueInput.Ultimate)
-                {
-                    combat.SetAncientStaffUltimateTargetAvailable(true);
-                }
+                if (input == WeaponTechniqueInput.Ultimate)
+                    PrepareUltimateActivation(combat, weapon);
                 StartInput(combat, weapon, input);
-                Require(combat.CurrentTechnique?.Input == input,
-                    $"{weapon.Name} failed to start {input}.");
+				Require(ReferenceEquals(combat.CurrentTechnique, expected),
+					$"{weapon.Name} failed to start current technique " +
+					$"'{expected.Name}' ({expected.Id}).");
 
                 if (input == WeaponTechniqueInput.Ultimate)
                     Require(combat.Stamina.Current == 0f,
@@ -1370,17 +885,121 @@ public static class EquipmentRebuildValidation
 
             var insufficient = new PlayerCombat();
             insufficient.ApplyLoadout(weapon, EquipmentCatalog.CreateStartingArmor());
-            if (weapon.Family == WeaponFamily.GreatSword)
-                insufficient.SetGreatswordUltimateTargetAvailable(true);
-            if (weapon.Family == WeaponFamily.AbyssRing)
-                insufficient.SetSovereignUltimateTargetAvailable(true);
-            if (weapon.Family == WeaponFamily.ArcaneWarStaff)
-                insufficient.SetAncientStaffUltimateTargetAvailable(true);
+            PrepareUltimateActivation(insufficient, weapon);
             insufficient.Stamina.SpendUpTo(1f);
             StartInput(insufficient, weapon, WeaponTechniqueInput.Ultimate);
             Require(insufficient.CurrentTechnique == null &&
                 insufficient.Stamina.Current == insufficient.Stamina.Maximum - 1f,
                 $"{weapon.Name} ultimate activated without full stamina.");
+        }
+    }
+
+    private static void ValidateUltimateControlImmunity()
+    {
+        foreach (WeaponDefinition weapon in
+                 EquipmentCatalog.AllImplementedWeapons)
+        {
+            var combat = new PlayerCombat();
+            combat.ApplyLoadout(
+                weapon,
+                EquipmentCatalog.CreateStartingArmor());
+            PrepareUltimateActivation(combat, weapon);
+            StartInput(combat, weapon, WeaponTechniqueInput.Ultimate);
+            Require(combat.IsUltimateControlImmune,
+                $"{weapon.Name} ultimate did not enter shared control immunity.");
+
+            WeaponTechnique technique = combat.CurrentTechnique;
+            CombatState state = combat.State;
+            AttackDefinition attack = combat.CurrentAttack;
+            combat.OnDamaged(isAlive: true, damage: 30, hardInterrupt: true);
+            combat.HardInterrupt();
+            Require(combat.IsUltimateControlImmune &&
+                ReferenceEquals(combat.CurrentTechnique, technique) &&
+                ReferenceEquals(combat.CurrentAttack, attack) &&
+                combat.State == state,
+                $"{weapon.Name} ultimate was interrupted by enemy control.");
+
+            AttackResolution resolution = combat.ResolveIncomingAttack(
+                new AttackContact(
+                    30,
+                    new Vector2(100f, 0f),
+                    blockable: true,
+                    unblockable: true,
+                    new Rectangle(-20, -40, 40, 80)),
+                Vector2.Zero,
+                FacingDirection.Right);
+            Require(resolution == AttackResolution.Damaged &&
+                combat.IsUltimateControlImmune,
+                $"{weapon.Name} ultimate did not preserve damage contact.");
+
+            combat.CancelActions();
+            Require(!combat.IsUltimateControlImmune &&
+                combat.CurrentTechnique == null,
+                $"{weapon.Name} ultimate immunity survived lifecycle reset.");
+
+            var death = new PlayerCombat();
+            death.ApplyLoadout(
+                weapon,
+                EquipmentCatalog.CreateStartingArmor());
+            PrepareUltimateActivation(death, weapon);
+            StartInput(death, weapon, WeaponTechniqueInput.Ultimate);
+            death.OnDamaged(isAlive: false, damage: int.MaxValue,
+                hardInterrupt: true);
+            Require(death.State == CombatState.Dead &&
+                !death.IsUltimateControlImmune &&
+                death.CurrentTechnique == null,
+                $"{weapon.Name} ultimate overrode player death.");
+        }
+
+        var player = new DungeonAscendant.Player.Player(Vector2.Zero)
+        {
+            DebugGodMode = false
+        };
+        player.EquipDebugItem(new EquipmentItem(
+            EquipmentCatalog.KnightLongSword,
+            ItemRarity.Legendary));
+        player.Combat.SetKnightUltimateTargetAvailable(true);
+        StartInput(
+            player.Combat,
+            EquipmentCatalog.KnightLongSword,
+            WeaponTechniqueInput.Ultimate);
+        int healthBeforeHit = player.CurrentHealth;
+        Require(player.ReceiveDamage(10) &&
+            player.CurrentHealth < healthBeforeHit &&
+            player.Combat.IsUltimateControlImmune,
+            "Ultimate immunity blocked damage or lost the active action.");
+        player.ApplySlow(.2f, 3f);
+        Require(!player.IsSlowed,
+            "Ultimate-controlled movement was reduced by enemy slow.");
+    }
+
+    private static void PrepareUltimateActivation(
+        PlayerCombat combat,
+        WeaponDefinition weapon)
+    {
+        switch (weapon.Family)
+        {
+            case WeaponFamily.DualSwords:
+                combat.SetDuelistUltimateTargetAvailable(true);
+                break;
+            case WeaponFamily.HunterBow:
+                combat.SetRangerUltimateTargetAvailable(true);
+                break;
+            case WeaponFamily.GreatSword:
+                combat.SetGreatswordUltimateTargetAvailable(true);
+                break;
+            case WeaponFamily.LongSword:
+                combat.SetKnightUltimateTargetAvailable(true);
+                break;
+            case WeaponFamily.ArcaneWarStaff:
+                combat.SetAncientStaffUltimateTargetAvailable(true);
+                break;
+            case WeaponFamily.Scythe:
+                combat.SetScytheUltimateTargetAvailable(true);
+                break;
+            case WeaponFamily.AbyssRing:
+                combat.SetSovereignUltimateTargetAvailable(true);
+                break;
         }
     }
 
@@ -1441,7 +1060,7 @@ public static class EquipmentRebuildValidation
         {
             combat.Update(
                 Frame(.05f),
-                new CombatInput(false, false, false, false, false, false, 0f),
+                new CombatInput(false, false, false, false, dash, false, 0f),
                 isGrounded: grounded,
                 FacingDirection.Right);
         }

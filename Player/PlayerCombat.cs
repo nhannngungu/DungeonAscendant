@@ -26,13 +26,16 @@ public sealed class PlayerCombat
 
     private const float FeedbackSeconds = 0.18f;
     public const float PerfectGuardWindowSeconds = .22f;
-    public const float OathDefensiveDurationSeconds = .85f;
-    public const float OathPreventedDamageCap = 120f;
-    public const float OathStoredForceCoefficient = .50f;
-    public const float OathStoredForceCap = 60f;
     public const float PerfectGuardHitstopSeconds = .055f;
 
     private readonly CombatInputBuffer _inputBuffer = new();
+    private readonly CombatInputBuffer _knightInputBuffer =
+        new(KnightTuning.ChordWindowSeconds);
+    private bool _knightDashSkill1Pending;
+    private bool _knightAirSkill2Pending;
+    private bool _knightForceFallingShield;
+    private readonly CombatInputBuffer _duelistInputBuffer =
+        new(DuelistTuning.ChordWindowSeconds);
     private float _stateElapsed;
     private float _blockFeedbackRemaining;
     private float _attackPowerMultiplier = 1f;
@@ -46,10 +49,20 @@ public sealed class PlayerCombat
     private int _techniqueSequenceIndex;
     private int _effectiveTechniqueStageCount;
     private bool _duelistTechniqueGainAwarded;
-    private bool _perfectPhantomStepAwarded;
     private int _duelistRepositionAttackId = -1;
-    private float _ultimateMomentumSnapshot;
     private float _perfectPhantomFeedbackRemaining;
+    private WeaponTechniqueInput? _duelistResolvedInput;
+    private bool _duelistDashSkill1Pending;
+    private bool _duelistAirSkill2Pending;
+    private bool _duelistSkill1Held;
+    private bool _duelistSkill3Held;
+    private float _duelistHeavenSplitterHoldSeconds;
+    private int _duelistHeavenSplitterLevel = 1;
+    private float _duelistRiposteWindowRemaining;
+    private float _duelistOverdriveRemaining;
+    private float _duelistOverdriveCooldownRemaining;
+    private bool _duelistUltimateTargetAvailable;
+    private int _duelistUltimateProcessedHits;
     private float _rangerSkill1HoldSeconds;
     private float _rangerSkill3HoldSeconds;
     private bool _rangerSkill1CurrentlyHeld;
@@ -75,7 +88,6 @@ public sealed class PlayerCombat
     private int _currentTechniqueUseId;
     private float _poisePowerMultiplier = 1f;
     private FacingDirection _currentFacing = FacingDirection.Right;
-    private float _raiderControlDirection = 1f;
     private float _currentHorizontalDirection;
     private float _spellbladeSkill2HoldSeconds;
     private bool _spellbladeSkill2CurrentlyHeld;
@@ -92,25 +104,8 @@ public sealed class PlayerCombat
     private RunePlacementDistance _runePlacementDistance =
         RunePlacementDistance.Medium;
     private int _availableGroundRuneCount;
-    private float _breakerSkill2HoldSeconds;
-    private bool _breakerSkill2CurrentlyHeld;
-    private BreakerPendulumStage _breakerPendulumStage =
-        BreakerPendulumStage.StageOne;
-    private float _breakerInertiaSnapshot;
-    private float _breakerPoiseMultiplier = 1f;
-    private bool _breakerRhythmPreserved;
-    private int _breakerMaceSide = 1;
-    private bool _breakerIronCrushFollowupBuffered;
-    private bool _reckonerSkill2CurrentlyHeld;
-    private bool _reckonerHarpoonWasHeldAfterStart;
-    private float _reckonerOrbitHoldSeconds;
-    private float _reckonerOrbitHitClock;
-    private float _reckonerMomentumSnapshot;
-    private int _reckonerCurveSide = 1;
-    private int _reckonerHarpoonOutboundHits;
     private float _perfectGuardFeedbackRemaining;
     private float _perfectGuardRewardRemaining;
-    private float _oathPreventedDamage;
     private float _hitstopRemaining;
     private int _greatswordInputMask;
     private float _greatswordChordRemaining;
@@ -132,6 +127,12 @@ public sealed class PlayerCombat
     private bool _greatswordTitanBraced;
     private bool _greatswordBraceProtectedHit;
     private bool _greatswordUltimateTargetAvailable;
+    private bool _knightUltimateTargetAvailable;
+    private bool _knightFallingWasAirborne;
+    private float _knightLandingPulseRemaining;
+    private int _knightLandingImpactId;
+    private bool _knightFinalLandingWasAirborne;
+    private bool _knightRiposteBuffered;
     private int _sovereignInputMask;
     private float _sovereignChordRemaining;
     private float _sovereignStepCooldownRemaining;
@@ -171,7 +172,27 @@ public sealed class PlayerCombat
     public int AttackId { get; private set; }
     public int TechniqueStageIndex => _techniqueStageIndex;
     public int EffectiveTechniqueStageCount => _effectiveTechniqueStageCount;
-    public float UltimateMomentumSnapshot => _ultimateMomentumSnapshot;
+    public bool IsDuelistOverdriveActive =>
+        _weapon.Family == WeaponFamily.DualSwords &&
+        _duelistOverdriveRemaining > 0f;
+    public float DuelistOverdriveRemaining => _duelistOverdriveRemaining;
+    public float DuelistOverdriveCooldownRemaining =>
+        _duelistOverdriveCooldownRemaining;
+    public int DuelistHeavenSplitterLevel => _duelistHeavenSplitterLevel;
+    public bool IsDuelistUltimateReady =>
+        _weapon.Family == WeaponFamily.DualSwords && Stamina.IsFull &&
+        _duelistUltimateTargetAvailable;
+    public bool IsDuelistUltimateActive =>
+        CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.DuelistInfiniteStarburst;
+    public int DuelistUltimateHitNumber => _duelistUltimateProcessedHits;
+    public bool IsDuelistCelestialX => IsDuelistUltimateActive &&
+        _techniqueSequenceIndex >= DuelistTuning.UltimateStrikeCount;
+    public float DuelistUltimateCinematicRatio =>
+        IsDuelistUltimateActive && State == CombatState.ChargingHeavy
+            ? Math.Clamp(_stateElapsed / DuelistTuning.UltimateIntroSeconds,
+                0f, 1f)
+            : 0f;
     public float RangerChargeRatio => _rangerChargeRatio;
     public RangerDrawState RangerDrawState => _rangerDrawState;
     public SkyfallDistance RangerSkyfallDistance => _skyfallDistance;
@@ -196,7 +217,6 @@ public sealed class PlayerCombat
             ? RangerTuning.PhantomHuntWorldSlowScale
             : 1f;
     public int CurrentTechniqueUseId => _currentTechniqueUseId;
-    public float RaiderControlDirection => _raiderControlDirection;
     public RunePlacementDistance RunePlacementDistance =>
         _runePlacementDistance;
     public int AvailableGroundRuneCount => _availableGroundRuneCount;
@@ -243,22 +263,6 @@ public sealed class PlayerCombat
         AncientStaffUltimateCinematicRatio > 0f
             ? AncientStaffTuning.UltimateWorldSlowScale
             : 1f;
-    public BreakerPendulumStage BreakerPendulumStage =>
-        _breakerPendulumStage;
-    public float BreakerInertiaSnapshot => _breakerInertiaSnapshot;
-    public float BreakerInertiaSnapshotRatio =>
-        BreakerTuning.InertiaRatio(_breakerInertiaSnapshot);
-    public bool BreakerRhythmPreserved => _breakerRhythmPreserved;
-    public int BreakerMaceSide => _breakerMaceSide;
-    public float ReckonerOrbitHoldSeconds => _reckonerOrbitHoldSeconds;
-    public int ReckonerOrbitStage =>
-        ReckonerTuning.GetOrbitStage(_reckonerOrbitHoldSeconds);
-    public float ReckonerMomentumSnapshot => _reckonerMomentumSnapshot;
-    public float ReckonerMomentumSnapshotRatio =>
-        ReckonerTuning.MomentumRatio(_reckonerMomentumSnapshot);
-    public int ReckonerCurveSide => _reckonerCurveSide;
-    public bool ReckonerHarpoonCanPierce =>
-        _reckonerMomentumSnapshot >= ReckonerTuning.HarpoonPierceThreshold;
     public float RangerWindrunnerDirection
     {
         get
@@ -291,10 +295,6 @@ public sealed class PlayerCombat
     public bool IsRuneBrandCharging =>
         CurrentTechnique?.Effect == WeaponTechniqueEffect.SpellbladeRuneBrand &&
         State == CombatState.ChargingHeavy;
-    public bool IsPendulumCharging =>
-        CurrentTechnique?.Effect ==
-            WeaponTechniqueEffect.BreakerPendulumSwing &&
-        State == CombatState.ChargingHeavy;
     public bool IsRangerTrajectoryAiming =>
         _weapon.Family == WeaponFamily.HunterBow &&
         CurrentTechnique != null &&
@@ -311,6 +311,8 @@ public sealed class PlayerCombat
     public float StateElapsed => _stateElapsed;
     public float DodgeDirection { get; private set; } = 1f;
     public WeaponTechnique CurrentTechnique { get; private set; }
+    public bool IsUltimateControlImmune =>
+        CurrentTechnique?.Input == WeaponTechniqueInput.Ultimate;
     public string TechniqueFeedback { get; private set; } = string.Empty;
     public bool IsTechniqueFeedbackVisible => _techniqueFeedbackRemaining > 0f;
     public bool IsBlocking => State == CombatState.Blocking ||
@@ -320,13 +322,32 @@ public sealed class PlayerCombat
     public bool IsGuardBroken => State == CombatState.Staggered;
     public bool CanBlock => _weapon.Family.ToOfficialFamily() is
         WeaponFamily.LongSword or WeaponFamily.GreatSword or
-        WeaponFamily.ArcaneWarStaff;
+        WeaponFamily.ArcaneWarStaff or WeaponFamily.DualSwords;
     public WeaponMoveSet MoveSet => _weapon.MoveSet;
     public float DodgeSpeedMultiplier => _armorItem?.MoveSpeedModifier ??
         _armor.MoveSpeedModifier;
     public bool IsBlockFeedbackActive => _blockFeedbackRemaining > 0f;
     public bool IsPerfectGuardFeedbackActive =>
         _perfectGuardFeedbackRemaining > 0f;
+	private bool IsKnightSwordAndShield => string.Equals(
+		_weapon.WeaponId,
+		EquipmentCatalog.KnightLongSword.WeaponId,
+		StringComparison.Ordinal);
+    public bool IsKnightFinalOathReady =>
+		IsKnightSwordAndShield && Stamina.IsFull &&
+        _knightUltimateTargetAvailable;
+    public bool IsKnightFinalOathActive =>
+        CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightFinalOath;
+    public float KnightUltimateCinematicRatio =>
+        IsKnightFinalOathActive && State == CombatState.ChargingHeavy
+            ? Math.Clamp(_stateElapsed / KnightTuning.UltimateIntroSeconds, 0f, 1f)
+            : 0f;
+    public float KnightUltimateWorldTimeScale =>
+        KnightUltimateCinematicRatio > 0f
+            ? KnightTuning.UltimateWorldSlowScale
+            : 1f;
+    public float KnightLandingPulse => _knightLandingPulseRemaining;
+    public int KnightLandingImpactId => _knightLandingImpactId;
     public bool IsPerfectPhantomFeedbackActive =>
         _perfectPhantomFeedbackRemaining > 0f;
     public bool IsBladeMomentumFlowing => _greatswordFlowingMomentum;
@@ -399,10 +420,9 @@ public sealed class PlayerCombat
         CurrentTechnique?.Effect ==
             WeaponTechniqueEffect.GreatswordFallingBastion &&
         !_isGrounded;
-    public float OathPreventedDamage => _oathPreventedDamage;
-    public float OathStoredForce => MathF.Min(
-        OathStoredForceCap,
-        _oathPreventedDamage * OathStoredForceCoefficient);
+    public bool IsKnightFallingShield => IsKnightSwordAndShield &&
+        CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightFallingShield &&
+        !_isGrounded;
     public bool IsHitstopActive => _hitstopRemaining > 0f;
     public bool IsDodgeInvulnerable => State == CombatState.Dodging &&
         _stateElapsed >= DodgeStartupSeconds &&
@@ -434,16 +454,16 @@ public sealed class PlayerCombat
     public Vector2 ScythePerfectDodgeSource => _scythePerfectDodgeSource;
     public bool ScytheShadowSeverEnabled => _scytheShadowSeverEnabled;
     public bool IsScytheEnhancedAttack => _scytheEnhancedThisTechnique;
-    public bool IsPhantomStepEvading =>
-        CurrentTechnique?.Effect == WeaponTechniqueEffect.DuelistPhantomStep &&
-        _techniqueSequenceIndex == 0 &&
-        _stateElapsed <= .20f;
     public bool IsAttackActive => CurrentAttack != null &&
         (State == CombatState.LightAttack || State == CombatState.HeavyAttack ||
             State == CombatState.UmbralAttached) &&
         !(CurrentTechnique?.Effect ==
                 WeaponTechniqueEffect.GreatswordFallingBastion &&
             _greatswordFallingWasAirborne) &&
+        !(CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightFallingShield &&
+            _knightFallingWasAirborne) &&
+        !(CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightFinalOath &&
+            _techniqueStageIndex == 7 && !_isGrounded) &&
         _stateElapsed >= CurrentAttack.StartupTime &&
         _stateElapsed < CurrentAttack.StartupTime + CurrentAttack.ActiveTime;
     public bool IsAttackWindingUp => CurrentAttack != null &&
@@ -462,13 +482,7 @@ public sealed class PlayerCombat
                 0f,
                 1f)
             : _rangerChargeRatio
-        : _weapon.Family == WeaponFamily.SpikedMace && IsPendulumCharging
-            ? Math.Clamp(
-                _breakerSkill2HoldSeconds /
-                    BreakerTuning.PendulumMaximumSeconds,
-                0f,
-                1f)
-            : 0f;
+        : 0f;
     public float AttackPowerMultiplier => _attackPowerMultiplier;
     public float ProjectileSpeedMultiplier => _projectileSpeedMultiplier;
     public float AttackAdvanceSpeed => CurrentAttack != null &&
@@ -486,8 +500,8 @@ public sealed class PlayerCombat
                 State == CombatState.HeavyAttack) &&
             _stateElapsed < CurrentAttack.StartupTime +
                 CurrentAttack.ActiveTime &&
-            (CurrentTechnique.Effect != WeaponTechniqueEffect.OathStance ||
-                _techniqueStageIndex == 0) &&
+            (CurrentTechnique.Effect != WeaponTechniqueEffect.KnightFinalOath ||
+                _techniqueStageIndex is 0 or 8) &&
             (CurrentTechnique.Effect !=
                     WeaponTechniqueEffect.GreatswordIronDominion ||
                 _techniqueStageIndex == 0));
@@ -508,9 +522,6 @@ public sealed class PlayerCombat
                     _weapon.Family == WeaponFamily.ArcaneWarStaff)
                     return .25f;
                 if (State == CombatState.ChargingHeavy &&
-                    _weapon.Family == WeaponFamily.SpikedMace)
-                    return .20f;
-                if (State == CombatState.ChargingHeavy &&
                     _weapon.Family == WeaponFamily.GreatSword)
                     return CurrentTechnique?.Effect ==
                             WeaponTechniqueEffect.GreatswordFinalVerdict
@@ -521,12 +532,6 @@ public sealed class PlayerCombat
 
             return CurrentTechnique?.Effect switch
             {
-                WeaponTechniqueEffect.DuelistBladeTempest => .28f,
-                WeaponTechniqueEffect.DuelistHundredFangs => .22f,
-                WeaponTechniqueEffect.DuelistFinalWaltz => 0f,
-                WeaponTechniqueEffect.DuelistMirageCyclone => 0f,
-                WeaponTechniqueEffect.DuelistPhantomStep => 0f,
-                WeaponTechniqueEffect.DuelistAfterimageExecution => 0f,
                 WeaponTechniqueEffect.RangerHuntersDraw => .45f,
                 WeaponTechniqueEffect.RangerMobileShot =>
                     _techniqueStageIndex >= 3 ? .72f : 1f,
@@ -555,22 +560,6 @@ public sealed class PlayerCombat
                 WeaponTechniqueEffect.AncientStaffAstralDescent => .08f,
                 WeaponTechniqueEffect.AncientStaffBlinkCast => .18f,
                 WeaponTechniqueEffect.AncientStaffHeavenfallThunderGate => 0f,
-                WeaponTechniqueEffect.RaiderCrowdCrusher => .05f,
-                WeaponTechniqueEffect.RaiderWarbringersDominion => 0f,
-                WeaponTechniqueEffect.RaiderHookingAxe => .12f,
-                WeaponTechniqueEffect.RaiderExecutionersGrip => .10f,
-                WeaponTechniqueEffect.RaiderSkullbreaker => .08f,
-                WeaponTechniqueEffect.BreakerIronCrush => .12f,
-                WeaponTechniqueEffect.BreakerPendulumSwing => .18f,
-                WeaponTechniqueEffect.BreakerEarthbreaker => .05f,
-                WeaponTechniqueEffect.BreakerBatteringRush => .08f,
-                WeaponTechniqueEffect.BreakerTitansBackhand => .04f,
-                WeaponTechniqueEffect.BreakerAnvilFall => .03f,
-                WeaponTechniqueEffect.BreakerCataclysmWheel => .02f,
-                WeaponTechniqueEffect.BreakerWorldbreaker => 0f,
-                WeaponTechniqueEffect.ReckonerOrbitingMaelstrom => .38f,
-                WeaponTechniqueEffect.ReckonerVortexSnare => .20f,
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment => .04f,
                 WeaponTechniqueEffect.GreatswordIronResolve => .24f,
                 WeaponTechniqueEffect.GreatswordTitanReckoning => .08f,
                 WeaponTechniqueEffect.GreatswordIronDominion => .10f,
@@ -589,7 +578,13 @@ public sealed class PlayerCombat
 
     public void ApplyLoadout(WeaponDefinition weapon, EquipmentItem armorItem)
     {
-        WeaponDefinition nextWeapon = weapon ?? EquipmentCatalog.KnightLongSword;
+		WeaponDefinition requestedWeapon =
+			weapon ?? EquipmentCatalog.KnightLongSword;
+		WeaponDefinition nextWeapon = EquipmentCatalog.TryResolveSavedWeaponId(
+				requestedWeapon.WeaponId,
+				out WeaponDefinition canonicalWeapon)
+			? canonicalWeapon
+			: requestedWeapon;
         bool weaponChanged = !string.Equals(
                 _weapon.WeaponId,
                 nextWeapon.WeaponId,
@@ -610,10 +605,10 @@ public sealed class PlayerCombat
             Resources.Reset();
             _resourceGainAttackId = -1;
             _duelistTechniqueGainAwarded = false;
-            _perfectPhantomStepAwarded = false;
             _duelistRepositionAttackId = -1;
-            _ultimateMomentumSnapshot = 0f;
             _perfectPhantomFeedbackRemaining = 0f;
+            ResetDuelistTemporaryState();
+			ResetKnightTemporaryState();
             _windrunnerPerfectRewardRemaining = 0f;
             _rangerFocusHitAttackId = -1;
             _rangerEvadeCooldownRemaining = 0f;
@@ -649,6 +644,7 @@ public sealed class PlayerCombat
         UpdateSovereignInputState(elapsedSeconds, input);
         UpdateAncientStaffInputState(elapsedSeconds, input);
         UpdateScytheInputState(elapsedSeconds, input);
+        UpdateDuelistInputState(elapsedSeconds, input);
         _sovereignStepCooldownRemaining = MathF.Max(
             0f, _sovereignStepCooldownRemaining - elapsedSeconds);
         _sovereignThroneTimeRemaining = MathF.Max(
@@ -730,6 +726,33 @@ public sealed class PlayerCombat
             StartAttack(CurrentAttack, CombatState.HeavyAttack);
         }
 
+		if (IsKnightSwordAndShield &&
+            CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightFallingShield &&
+            _knightFallingWasAirborne && isGrounded)
+        {
+            _knightFallingWasAirborne = false;
+            _knightLandingPulseRemaining = .30f;
+            _knightLandingImpactId++;
+            _hitstopRemaining = MathF.Max(_hitstopRemaining, .045f);
+            StartAttack(CurrentAttack, CombatState.HeavyAttack);
+        }
+
+        if (IsKnightFinalOathActive && _techniqueStageIndex == 7)
+        {
+            if (!isGrounded)
+            {
+                _knightFinalLandingWasAirborne = true;
+            }
+            else if (_knightFinalLandingWasAirborne)
+            {
+                _knightFinalLandingWasAirborne = false;
+                _knightLandingPulseRemaining = .34f;
+                _knightLandingImpactId++;
+                _hitstopRemaining = MathF.Max(_hitstopRemaining, .05f);
+                StartAttack(CurrentAttack, CombatState.LightAttack);
+            }
+        }
+
         if (input.MovementCancelPressed &&
             MathF.Abs(input.HorizontalDirection) > .1f &&
             HasCommittedAction &&
@@ -749,16 +772,7 @@ public sealed class PlayerCombat
             return;
         }
 
-        if (_weapon.Family == WeaponFamily.WarAxe &&
-            CurrentTechnique?.Effect == WeaponTechniqueEffect.RaiderCrowdCrusher &&
-            MathF.Abs(input.HorizontalDirection) > .1f)
-        {
-            _raiderControlDirection = MathF.Sign(input.HorizontalDirection);
-        }
-
         UpdateSpellbladeInputState(elapsedSeconds, input);
-        UpdateBreakerInputState(elapsedSeconds, input);
-        UpdateReckonerInputState(elapsedSeconds, input);
 
         if (CurrentTechnique?.Effect ==
                 WeaponTechniqueEffect.AncientStaffAegisWard &&
@@ -814,9 +828,37 @@ public sealed class PlayerCombat
             return;
         }
 
+		if (IsKnightSwordAndShield &&
+            State == CombatState.ChargingHeavy && IsKnightFinalOathActive)
+        {
+            _stateElapsed += elapsedSeconds;
+            if (_stateElapsed >= KnightTuning.UltimateIntroSeconds)
+            {
+                SetFeedback("I WILL NOT FALL.");
+                StartTechniqueStage();
+            }
+            Stamina.Update(elapsedSeconds, regenerationAllowed: false,
+                _armorItem.StaminaRegenModifier);
+            return;
+        }
+
         if (_hitstopRemaining > 0f)
         {
+			if (IsKnightSwordAndShield &&
+                _perfectGuardRewardRemaining > 0f && input.Skill1Pressed)
+                _knightRiposteBuffered = true;
             _hitstopRemaining = MathF.Max(0f, _hitstopRemaining - elapsedSeconds);
+            if (_hitstopRemaining <= 0f && _knightRiposteBuffered)
+            {
+                _knightRiposteBuffered = false;
+                CurrentAttack = null;
+                CurrentTechnique = null;
+                _techniqueStageIndex = 0;
+                _effectiveTechniqueStageCount = 0;
+                _techniqueSequenceIndex = 0;
+                StartTimedState(CombatState.Idle);
+                TryStartTechnique(WeaponTechniqueInput.Skill1);
+            }
             return;
         }
 
@@ -856,12 +898,20 @@ public sealed class PlayerCombat
         _greatswordLandingPulseRemaining = MathF.Max(
             0f,
             _greatswordLandingPulseRemaining - elapsedSeconds);
+        _knightLandingPulseRemaining = MathF.Max(
+            0f, _knightLandingPulseRemaining - elapsedSeconds);
         _scytheWraithCutWindowRemaining = MathF.Max(
             0f, _scytheWraithCutWindowRemaining - elapsedSeconds);
         _scythePerfectDodgeVisualRemaining = MathF.Max(
             0f, _scythePerfectDodgeVisualRemaining - elapsedSeconds);
         _scytheDodgeWeaveRewardRemaining = MathF.Max(
             0f, _scytheDodgeWeaveRewardRemaining - elapsedSeconds);
+        _duelistRiposteWindowRemaining = MathF.Max(
+            0f, _duelistRiposteWindowRemaining - elapsedSeconds);
+        _duelistOverdriveRemaining = MathF.Max(
+            0f, _duelistOverdriveRemaining - elapsedSeconds);
+        _duelistOverdriveCooldownRemaining = MathF.Max(
+            0f, _duelistOverdriveCooldownRemaining - elapsedSeconds);
         if (_scytheDodgeWeaveRewardRemaining <= 0f)
             _scytheEnhancedAttackPending = false;
         Resources.Update(elapsedSeconds);
@@ -899,16 +949,6 @@ public sealed class PlayerCombat
             return;
         }
         if (State == CombatState.ChargingHeavy &&
-            _weapon.Family == WeaponFamily.SpikedMace)
-        {
-            UpdateBreakerChargeState(elapsedSeconds, input);
-            Stamina.Update(
-                elapsedSeconds,
-                regenerationAllowed: false,
-                _armorItem.StaminaRegenModifier);
-            return;
-        }
-        if (State == CombatState.ChargingHeavy &&
             _weapon.Family == WeaponFamily.AbyssRing)
         {
             UpdateSovereignChargeState();
@@ -934,6 +974,35 @@ public sealed class PlayerCombat
                 _armorItem.StaminaRegenModifier);
             return;
         }
+        if (State == CombatState.ChargingHeavy &&
+            _weapon.Family == WeaponFamily.DualSwords)
+        {
+            if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.DuelistInfiniteStarburst)
+            {
+                if (_stateElapsed >= DuelistTuning.UltimateIntroSeconds)
+                {
+                    SetFeedback("INFINITE STARBURST ASCENSION");
+                    StartTechniqueStage();
+                }
+            }
+            else if (CurrentTechnique?.Effect ==
+                WeaponTechniqueEffect.DuelistHeavenSplitter)
+            {
+                _duelistHeavenSplitterHoldSeconds = MathF.Min(
+                    DuelistTuning.HeavenSplitterLevelThreeSeconds,
+                    _duelistHeavenSplitterHoldSeconds + elapsedSeconds);
+                if ((!_duelistSkill1Held && !_duelistSkill3Held) ||
+                    _duelistHeavenSplitterHoldSeconds >=
+                        DuelistTuning.HeavenSplitterLevelThreeSeconds)
+                {
+                    ReleaseDuelistHeavenSplitter();
+                }
+            }
+            Stamina.Update(elapsedSeconds, regenerationAllowed: false,
+                _armorItem.StaminaRegenModifier);
+            return;
+        }
 
         if (CurrentTechnique?.RequiresRepeatedInput == true &&
             input.Skill1Pressed &&
@@ -954,27 +1023,9 @@ public sealed class PlayerCombat
                     _stateElapsed >= flowStart &&
                     _stateElapsed <= flowEnd;
             }
-            if (CurrentTechnique.Effect ==
-                WeaponTechniqueEffect.BreakerIronCrush)
-            {
-                float rhythmStart = CurrentAttack.StartupTime +
-                    CurrentAttack.ActiveTime * .35f;
-                float rhythmEnd = CurrentAttack.StartupTime +
-                    CurrentAttack.ActiveTime + .20f;
-                _breakerRhythmPreserved = _stateElapsed >= rhythmStart &&
-                    _stateElapsed <= rhythmEnd;
-            }
-        }
-        if (CurrentTechnique?.Effect ==
-                WeaponTechniqueEffect.BreakerBatteringRush &&
-            CurrentAttack != null && input.Skill1Pressed &&
-            _stateElapsed >= CurrentAttack.StartupTime * .7f)
-        {
-            _breakerIronCrushFollowupBuffered = true;
-            SetFeedback("IRON CRUSH READY");
         }
 
-        if (CurrentTechnique?.Effect == WeaponTechniqueEffect.IronBastion &&
+        if (CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightShieldGuard &&
             _perfectGuardRewardRemaining > 0f &&
             (input.Skill1Pressed || input.Skill2Pressed || input.Skill3Pressed))
         {
@@ -991,6 +1042,14 @@ public sealed class PlayerCombat
             float heldWardTime = CurrentAttack.StartupTime +
                 CurrentAttack.ActiveTime - .001f;
             _stateElapsed = MathF.Min(_stateElapsed, heldWardTime);
+        }
+
+        if (CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightShieldGuard &&
+            CurrentAttack != null && input.Skill2Held)
+        {
+            float heldGuardTime = CurrentAttack.StartupTime +
+                CurrentAttack.ActiveTime - .001f;
+            _stateElapsed = MathF.Min(_stateElapsed, heldGuardTime);
         }
 
         CompleteExpiredAction(isGrounded);
@@ -1012,7 +1071,49 @@ public sealed class PlayerCombat
             input.Skill2Pressed && !input.Skill1Pressed &&
             !input.Skill3Pressed;
 
-        if (immediatePhantomStep)
+        if (canStartAction && _weapon.Family == WeaponFamily.DualSwords)
+        {
+            _inputBuffer.Clear();
+            _dodgeBuffered = false;
+            techniqueStarted = ResolveDuelistActionInput();
+        }
+		else if (canStartAction && IsKnightSwordAndShield)
+        {
+            _inputBuffer.Clear();
+            if (input.Skill1Pressed && input.DashHeld)
+                _knightDashSkill1Pending = true;
+            if (input.Skill2Pressed && !isGrounded)
+                _knightAirSkill2Pending = true;
+
+            WeaponTechniqueInput? knightInput = _knightInputBuffer.Update(
+                elapsedSeconds,
+                input.Skill1Pressed,
+                input.Skill2Pressed,
+                input.Skill3Pressed);
+            if (_knightDashSkill1Pending &&
+                _knightInputBuffer.HasPendingInput)
+            {
+                // Shift is both the shared dash modifier and the dodge key.
+                // Let the Knight chord resolve before the generic dodge buffer.
+                _dodgeBuffered = false;
+            }
+            if (knightInput.HasValue)
+            {
+                WeaponTechniqueInput resolved = knightInput.Value;
+                bool dashSkill1 = _knightDashSkill1Pending;
+                bool airSkill2 = _knightAirSkill2Pending;
+                _knightDashSkill1Pending = false;
+                _knightAirSkill2Pending = false;
+                if (resolved == WeaponTechniqueInput.Skill1 && dashSkill1 &&
+                    isGrounded)
+                    resolved = WeaponTechniqueInput.DashSkill;
+                _knightForceFallingShield =
+                    resolved == WeaponTechniqueInput.Skill2 && airSkill2;
+                techniqueStarted = TryStartTechnique(resolved);
+                _knightForceFallingShield = false;
+            }
+        }
+        else if (immediatePhantomStep)
         {
             _inputBuffer.Clear();
             _dodgeBuffered = false;
@@ -1231,10 +1332,31 @@ public sealed class PlayerCombat
             _weapon.Family == WeaponFamily.GreatSword && available;
     }
 
+    public void SetKnightUltimateTargetAvailable(bool available)
+    {
+        _knightUltimateTargetAvailable =
+			IsKnightSwordAndShield && available;
+    }
+
     public void SetScytheUltimateTargetAvailable(bool available)
     {
         _scytheUltimateTargetAvailable =
             _weapon.Family == WeaponFamily.Scythe && available;
+    }
+
+    public void SetDuelistUltimateTargetAvailable(bool available)
+    {
+        _duelistUltimateTargetAvailable =
+            _weapon.Family == WeaponFamily.DualSwords && available;
+    }
+
+    public void CancelDuelistUltimateForLostTarget()
+    {
+        if (!IsDuelistUltimateActive)
+            return;
+        ClearActionState();
+        StartTimedState(_isGrounded ? CombatState.Idle : CombatState.Jumping);
+        SetFeedback("ASTRAL TARGET LOST");
     }
 
     public void RequestScytheSafeReturn()
@@ -1269,6 +1391,16 @@ public sealed class PlayerCombat
         SetFeedback("SAFE LANDING");
     }
 
+    public void RequestKnightUltimateLanding()
+    {
+        if (!IsKnightFinalOathActive)
+            return;
+        _techniqueSequenceIndex = Math.Max(0, _effectiveTechniqueStageCount - 1);
+        _hitstopRemaining = 0f;
+        StartTechniqueStage();
+        SetFeedback("DEFENSIVE LANDING");
+    }
+
     public AttackResolution ResolveIncomingAttack(
         AttackContact contact,
         Vector2 playerPosition,
@@ -1298,7 +1430,7 @@ public sealed class PlayerCombat
                     ScytheTuning.WraithCutWindowSeconds;
                 _scythePerfectDodgeVisualRemaining = .18f;
                 _scythePerfectDodgeSource = contact.SourcePosition;
-                SetFeedback("PERFECT DODGE — WRAITH CUT READY");
+                SetFeedback("PERFECT DODGE â€” WRAITH CUT READY");
             }
             else
             {
@@ -1327,7 +1459,7 @@ public sealed class PlayerCombat
             return AttackResolution.Ignored;
         }
 
-        if (IsDodgeInvulnerable || IsPhantomStepEvading)
+        if (IsDodgeInvulnerable)
             return AttackResolution.Ignored;
 
         float horizontalOffset = contact.SourcePosition.X - playerPosition.X;
@@ -1349,6 +1481,46 @@ public sealed class PlayerCombat
             WeaponTechniqueEffect effect = CurrentTechnique?.Effect ??
                 WeaponTechniqueEffect.None;
 
+            if (_weapon.Family == WeaponFamily.DualSwords &&
+                effect is (WeaponTechniqueEffect.DuelistPhantomParry or
+                    WeaponTechniqueEffect.DuelistCrossRequiem) &&
+                IsTechniqueGuardActive)
+            {
+                float guardCost = MathF.Max(3f,
+                    contact.Damage * .32f) * _armorItem.GuardCostModifier;
+                bool perfectParry = effect ==
+                        WeaponTechniqueEffect.DuelistPhantomParry &&
+                    _stateElapsed <=
+                        DuelistTuning.PerfectParryWindowSeconds;
+                if (Stamina.Current + .001f < guardCost)
+                {
+                    if (IsUltimateControlImmune)
+                        return AttackResolution.Damaged;
+                    Stamina.SpendUpTo(Stamina.Current);
+                    CurrentAttack = null;
+                    CurrentTechnique = null;
+                    StartTimedState(CombatState.Staggered);
+                    return AttackResolution.GuardBroken;
+                }
+
+                Stamina.SpendUpTo(perfectParry
+                    ? MathF.Max(2f, guardCost * .35f)
+                    : guardCost);
+                _blockFeedbackRemaining = FeedbackSeconds;
+                if (perfectParry)
+                {
+                    Resources.AddDuelistMomentum(
+                        DuelistTuning.PerfectParryGain);
+                    _duelistRiposteWindowRemaining =
+                        DuelistTuning.RiposteWindowSeconds;
+                    _perfectPhantomFeedbackRemaining = .45f;
+                    _hitstopRemaining = PerfectGuardHitstopSeconds;
+                    SetFeedback("PHANTOM PARRY â€” RIPOSTE READY");
+                    return AttackResolution.PerfectGuard;
+                }
+                return AttackResolution.BladeGuarded;
+            }
+
             if (_weapon.Family == WeaponFamily.ArcaneWarStaff &&
                 effect is WeaponTechniqueEffect.AncientStaffAegisWard or
                     WeaponTechniqueEffect.AncientStaffSpiritBastion &&
@@ -1369,6 +1541,8 @@ public sealed class PlayerCombat
                         AncientStaffTuning.AegisDeflectWindowSeconds;
                 if (Stamina.Current + .001f < guardCost)
                 {
+                    if (IsUltimateControlImmune)
+                        return AttackResolution.Damaged;
                     Stamina.SpendUpTo(Stamina.Current);
                     CurrentAttack = null;
                     CurrentTechnique = null;
@@ -1412,6 +1586,8 @@ public sealed class PlayerCombat
 
                 if (Stamina.Current + .001f < guardCost)
                 {
+                    if (IsUltimateControlImmune)
+                        return AttackResolution.Damaged;
                     Stamina.SpendUpTo(Stamina.Current);
                     CurrentAttack = null;
                     CurrentTechnique = null;
@@ -1445,32 +1621,26 @@ public sealed class PlayerCombat
                 return AttackResolution.BladeGuarded;
             }
 
-            if (effect == WeaponTechniqueEffect.OathStance &&
-                IsTechniqueGuardActive && _techniqueStageIndex == 0)
-            {
-                _oathPreventedDamage = MathF.Min(
-                    OathPreventedDamageCap,
-                    _oathPreventedDamage + contact.Damage);
-                _blockFeedbackRemaining = FeedbackSeconds;
-                return AttackResolution.Blocked;
-            }
-
             if (IsTechniqueGuardActive)
             {
                 float normalCost = MathF.Max(
                     BlockMinimumStaminaCost,
                     contact.Damage * BlockStaminaPerDamage) *
                     _armorItem.GuardCostModifier;
-                bool canPerfectGuard = effect is WeaponTechniqueEffect.IronBastion or
-                    WeaponTechniqueEffect.GuardianReversal;
+                if (effect == WeaponTechniqueEffect.KnightShieldWall)
+                    normalCost *= KnightTuning.ShieldWallGuardPressureMultiplier;
+                bool canPerfectGuard = effect ==
+                    WeaponTechniqueEffect.KnightShieldGuard;
                 bool perfectGuard = canPerfectGuard &&
-                    _stateElapsed <= PerfectGuardWindowSeconds;
+                    _stateElapsed <= KnightTuning.PerfectGuardWindowSeconds;
                 float techniqueGuardCost = perfectGuard
                     ? MathF.Max(2f, normalCost * .25f)
                     : normalCost;
 
                 if (Stamina.Current + .001f < techniqueGuardCost)
                 {
+                    if (IsUltimateControlImmune)
+                        return AttackResolution.Damaged;
                     Stamina.SpendUpTo(Stamina.Current);
                     CurrentAttack = null;
                     CurrentTechnique = null;
@@ -1484,20 +1654,10 @@ public sealed class PlayerCombat
                 if (perfectGuard)
                 {
                     _perfectGuardFeedbackRemaining = .32f;
-                    _perfectGuardRewardRemaining = 1.2f;
+                    _perfectGuardRewardRemaining = KnightTuning.RiposteWindowSeconds;
                     _hitstopRemaining = PerfectGuardHitstopSeconds;
 
-                    if (effect == WeaponTechniqueEffect.GuardianReversal)
-                    {
-                        _attackPowerMultiplier = MathF.Max(
-                            _attackPowerMultiplier,
-                            1.45f);
-                        _stateElapsed = MathF.Max(
-                            _stateElapsed,
-                            CurrentAttack.StartupTime);
-                    }
-
-                    SetFeedback("PERFECT GUARD");
+                    SetFeedback("PERFECT GUARD — RIPOSTE READY");
                     return AttackResolution.PerfectGuard;
                 }
 
@@ -1516,6 +1676,8 @@ public sealed class PlayerCombat
                 return AttackResolution.Blocked;
             }
 
+            if (IsUltimateControlImmune)
+                return AttackResolution.Damaged;
             Stamina.SpendUpTo(Stamina.Current);
             StartTimedState(CombatState.Staggered);
             return AttackResolution.GuardBroken;
@@ -1534,6 +1696,9 @@ public sealed class PlayerCombat
     {
         Resources.OnOwnerDamaged(damage >= 20);
 
+        if (isAlive && IsUltimateControlImmune)
+            return;
+
         bool interruptibleGreatswordCharge =
             _weapon.Family == WeaponFamily.GreatSword &&
             State == CombatState.ChargingHeavy &&
@@ -1549,6 +1714,8 @@ public sealed class PlayerCombat
         ClearActionState();
         if (!isAlive)
         {
+            ResetDuelistTemporaryState();
+			ResetKnightTemporaryState();
             _sovereignThroneTimeRemaining = 0f;
             _fourthVeilTimeRemaining = 0f;
             _fourthVeilExitVisualRemaining = 0f;
@@ -1563,7 +1730,8 @@ public sealed class PlayerCombat
 
     public void HardInterrupt()
     {
-        if (State is CombatState.Dead or CombatState.Staggered or
+        if (IsUltimateControlImmune ||
+            State is CombatState.Dead or CombatState.Staggered or
             CombatState.Hurt)
         {
             return;
@@ -1578,6 +1746,8 @@ public sealed class PlayerCombat
     public void CancelActions(bool restoreStamina = false)
     {
         ClearActionState();
+        ResetDuelistTemporaryState();
+		ResetKnightTemporaryState();
         _sovereignThroneTimeRemaining = 0f;
         _sovereignPerfectRiftCounterPending = false;
         _fourthVeilTimeRemaining = 0f;
@@ -1609,7 +1779,7 @@ public sealed class PlayerCombat
         _rangerPerfectDodgeActive = true;
         _rangerCounterWindowRemaining = RangerTuning.CounterWindowSeconds;
         Resources.AddHunterFocus(RangerTuning.PerfectEvadeBonus);
-        SetFeedback("PERFECT DODGE — COUNTER READY");
+        SetFeedback("PERFECT DODGE â€” COUNTER READY");
     }
 
     public void DebugResetRanger()
@@ -1632,16 +1802,19 @@ public sealed class PlayerCombat
         _techniqueSequenceIndex = 0;
         _techniqueStageBuffered = false;
         _inputBuffer.Clear();
+        _knightInputBuffer.Clear();
+        ClearDuelistPendingInput();
+        _duelistHeavenSplitterHoldSeconds = 0f;
+        _duelistHeavenSplitterLevel = 1;
         _dodgeBuffered = false;
         ResetRangerActionState(preserveRangerWindows);
-        ResetRaiderActionState();
         ResetSpellbladeActionState();
         ClearAncientStaffPendingInput();
-        ResetBreakerActionState();
-        ResetReckonerActionState();
         ResetGreatswordActionState();
         ResetSovereignActionState();
         ResetScytheActionState();
+        _knightFinalLandingWasAirborne = false;
+        _knightRiposteBuffered = false;
         IsBlockInputHeld = false;
         _hitstopRemaining = 0f;
     }
@@ -1660,8 +1833,12 @@ public sealed class PlayerCombat
             {
                 return;
             }
-
-            RegisterBreakerSwingCompletion();
+            if (CurrentTechnique?.Effect ==
+                    WeaponTechniqueEffect.KnightFallingShield && !isGrounded)
+                return;
+            if (CurrentTechnique?.Effect == WeaponTechniqueEffect.KnightFinalOath &&
+                _techniqueStageIndex == 7 && !isGrounded)
+                return;
 
             if (CurrentTechnique?.Effect ==
                     WeaponTechniqueEffect.RangerMobileShot &&
@@ -1669,31 +1846,6 @@ public sealed class PlayerCombat
             {
                 _techniqueSequenceIndex++;
                 StartTechniqueStage();
-                return;
-            }
-
-            if (CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainLash &&
-                _techniqueSequenceIndex + 1 < _effectiveTechniqueStageCount &&
-                !_techniqueStageBuffered)
-            {
-                Resources.LoseChainMomentum(
-                    ReckonerTuning.PoorRhythmMomentumLoss);
-            }
-
-            if (CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.BreakerBatteringRush &&
-                _breakerIronCrushFollowupBuffered)
-            {
-                CurrentAttack = null;
-                CurrentTechnique = null;
-                _techniqueStageIndex = 0;
-                _effectiveTechniqueStageCount = 0;
-                _techniqueSequenceIndex = 0;
-                _techniqueStageBuffered = false;
-                _breakerIronCrushFollowupBuffered = false;
-                StartTimedState(CombatState.Idle);
-                TryStartTechnique(WeaponTechniqueInput.Skill1);
                 return;
             }
 
@@ -1723,35 +1875,7 @@ public sealed class PlayerCombat
                     return;
                 }
 
-                if (CurrentTechnique.Effect ==
-                        WeaponTechniqueEffect.ReckonerVortexSnare &&
-                    _techniqueStageIndex is >= 1 and <= 5)
-                {
-                    float consumed = Resources.ConsumeChainMomentum(
-                        ReckonerTuning.VortexMomentumDrainPerPass);
-                    if (consumed + .001f <
-                        ReckonerTuning.VortexMomentumDrainPerPass)
-                    {
-                        _techniqueSequenceIndex =
-                            _effectiveTechniqueStageCount - 1;
-                        StartTechniqueStage();
-                        return;
-                    }
-                }
-
-                if (CurrentTechnique.Effect ==
-                        WeaponTechniqueEffect.BreakerIronCrush &&
-                    !_breakerRhythmPreserved)
-                {
-                    Resources.LoseBreakerInertia(
-                        BreakerTuning.PoorRhythmLoss);
-                }
                 _techniqueSequenceIndex++;
-                if (CurrentTechnique.Effect ==
-                    WeaponTechniqueEffect.BreakerIronCrush)
-                {
-                    _breakerMaceSide = _techniqueSequenceIndex == 1 ? -1 : 0;
-                }
                 StartTechniqueStage();
                 if (CurrentTechnique?.Effect ==
                         WeaponTechniqueEffect.GreatswordCombo &&
@@ -1764,17 +1888,10 @@ public sealed class PlayerCombat
                 return;
             }
 
-            if (CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainLash &&
-                _techniqueSequenceIndex == _effectiveTechniqueStageCount - 1)
-            {
-                Resources.AddChainMomentum(
-                    ReckonerTuning.LashCompletionBonus);
-            }
-
             bool cinematicLanding = CurrentTechnique?.Effect is
                 WeaponTechniqueEffect.RangerPhantomHunt or
                 WeaponTechniqueEffect.GreatswordFinalVerdict or
+                WeaponTechniqueEffect.KnightFinalOath or
                 WeaponTechniqueEffect.SovereignGoldenCataclysm or
                 WeaponTechniqueEffect.ScytheUmbraDevourer;
             CurrentAttack = null;
@@ -1786,8 +1903,6 @@ public sealed class PlayerCombat
             _poisePowerMultiplier = 1f;
             if (_weapon.Family == WeaponFamily.HunterBow)
                 _rangerChargeRatio = 0f;
-            if (_weapon.Family == WeaponFamily.SpikedMace)
-                _breakerRhythmPreserved = false;
             _greatswordFlowingMomentum = false;
             _greatswordWhirlStopping = false;
             _greatswordRecoveryBonusSeconds = 0f;
@@ -1832,7 +1947,29 @@ public sealed class PlayerCombat
     private bool TryStartTechnique(WeaponTechniqueInput techniqueInput)
     {
         WeaponTechnique technique;
-        if (_weapon.Family == WeaponFamily.GreatSword)
+		if (IsKnightSwordAndShield)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill1 &&
+                _perfectGuardRewardRemaining > 0f)
+                technique = WeaponTechniqueCatalog.KnightGuardRiposte;
+            else if (techniqueInput == WeaponTechniqueInput.Skill2 &&
+                (!_isGrounded || _knightForceFallingShield))
+                technique = WeaponTechniqueCatalog.KnightFallingShield;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
+        else if (_weapon.Family == WeaponFamily.DualSwords)
+        {
+            if (techniqueInput == WeaponTechniqueInput.Skill1 &&
+                _duelistRiposteWindowRemaining > 0f)
+                technique = WeaponTechniqueCatalog.DuelistPhantomRiposte;
+            else if (techniqueInput == WeaponTechniqueInput.Skill2 &&
+                !_isGrounded)
+                technique = WeaponTechniqueCatalog.DuelistFallingStar;
+            else
+                technique = _weapon.CombatProfile.Get(techniqueInput);
+        }
+        else if (_weapon.Family == WeaponFamily.GreatSword)
         {
             if (techniqueInput == WeaponTechniqueInput.Skill2 && !_isGrounded)
                 technique = WeaponTechniqueCatalog.IronSovereignFallingBastion;
@@ -1913,6 +2050,14 @@ public sealed class PlayerCombat
             return false;
         }
 
+		bool knightUltimate = IsKnightSwordAndShield &&
+            technique.Effect == WeaponTechniqueEffect.KnightFinalOath;
+        if (knightUltimate && !_knightUltimateTargetAvailable)
+        {
+            SetFeedback("NO SAFE TARGET IN RANGE");
+            return false;
+        }
+
         bool sovereignUltimate =
             _weapon.Family == WeaponFamily.AbyssRing &&
             technique.Effect ==
@@ -1936,6 +2081,22 @@ public sealed class PlayerCombat
         if (scytheUltimate && !_scytheUltimateTargetAvailable)
         {
             SetFeedback("NO SAFE TARGET IN RANGE");
+            return false;
+        }
+        bool duelistUltimate = _weapon.Family == WeaponFamily.DualSwords &&
+            technique.Effect ==
+                WeaponTechniqueEffect.DuelistInfiniteStarburst;
+        if (duelistUltimate && !_duelistUltimateTargetAvailable)
+        {
+            SetFeedback("NO VALID TARGET IN RANGE");
+            return false;
+        }
+        if (technique.Effect ==
+                WeaponTechniqueEffect.DuelistBladeOverdrive &&
+            (_duelistOverdriveCooldownRemaining > 0f ||
+                _duelistOverdriveRemaining > 0f))
+        {
+            SetFeedback("BLADE OVERDRIVE RECOVERING");
             return false;
         }
         if (_weapon.Family == WeaponFamily.AbyssRing &&
@@ -1975,25 +2136,16 @@ public sealed class PlayerCombat
         CurrentTechnique = technique;
         _techniqueStageIndex = 0;
         _techniqueSequenceIndex = 0;
-        _reckonerMomentumSnapshot = _weapon.Family == WeaponFamily.ChainFlail
-            ? Resources.ChainMomentum
-            : 0f;
         _effectiveTechniqueStageCount = GetEffectiveStageCount(technique);
         _attackPowerMultiplier = 1f;
         _projectileSpeedMultiplier = 1f;
         _techniqueStageBuffered = false;
         _duelistTechniqueGainAwarded = false;
-        _perfectPhantomStepAwarded = false;
         _duelistRepositionAttackId = -1;
-        _ultimateMomentumSnapshot = 0f;
         _rangerChargeRatio = 0f;
         _rangerWindrunnerDirection = 0f;
         _rangerDrawState = RangerDrawState.Quick;
         _poisePowerMultiplier = 1f;
-        _breakerInertiaSnapshot = 0f;
-        _breakerPoiseMultiplier = 1f;
-        _breakerRhythmPreserved = false;
-        _breakerIronCrushFollowupBuffered = false;
         _currentTechniqueUseId = ++_techniqueUseCounter;
         _rangerFlowGainThisTechnique = 0f;
         _sovereignChargeRatio = 0f;
@@ -2001,6 +2153,26 @@ public sealed class PlayerCombat
         _scytheEnhancedThisTechnique = _scytheEnhancedAttackPending;
         if (_scytheEnhancedThisTechnique)
             _attackPowerMultiplier *= 1f + ScytheTuning.DodgeWeaveDamageBonus;
+
+		if (IsKnightSwordAndShield)
+        {
+            if (technique.Effect == WeaponTechniqueEffect.KnightGuardRiposte)
+            {
+                _perfectGuardRewardRemaining = 0f;
+                SetFeedback("GUARD RIPOSTE");
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.KnightFallingShield)
+            {
+                _knightFallingWasAirborne = !_isGrounded;
+            }
+            else if (technique.Effect == WeaponTechniqueEffect.KnightFinalOath)
+            {
+                _knightFinalLandingWasAirborne = false;
+                SetFeedback("KNIGHT'S FINAL OATH");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+        }
 
         if (_weapon.Family == WeaponFamily.GreatSword)
         {
@@ -2050,46 +2222,38 @@ public sealed class PlayerCombat
             }
         }
 
-        if (_weapon.Family == WeaponFamily.WarAxe)
-        {
-            _raiderControlDirection = _currentFacing == FacingDirection.Left
-                ? -1f
-                : 1f;
-            if (technique.Effect == WeaponTechniqueEffect.RaiderCrowdCrusher)
-            {
-                if (MathF.Abs(_currentHorizontalDirection) > .1f)
-                {
-                    _raiderControlDirection =
-                        MathF.Sign(_currentHorizontalDirection);
-                }
-                SetFeedback("A / D: THROW DIRECTION");
-            }
-        }
-
-        if (_weapon.Family == WeaponFamily.LongSword &&
-            _perfectGuardRewardRemaining > 0f &&
-            technique.Effect != WeaponTechniqueEffect.IronBastion)
-        {
-            _attackPowerMultiplier = 1.15f;
-            _perfectGuardRewardRemaining = 0f;
-        }
-
-        if (technique.Effect == WeaponTechniqueEffect.OathStance)
-            _oathPreventedDamage = 0f;
-
         if (_weapon.Family == WeaponFamily.DualSwords)
         {
             Resources.MarkCombatActivity();
-
-            if (technique.Effect == WeaponTechniqueEffect.DuelistFinalWaltz)
+            if (technique.Effect ==
+                WeaponTechniqueEffect.DuelistPhantomRiposte)
             {
-                _ultimateMomentumSnapshot =
-                    Resources.SpendAllDuelistMomentum();
-                float ratio = DuelistTuning.GetRatio(
-                    _ultimateMomentumSnapshot);
-                _attackPowerMultiplier =
-                    DuelistTuning.MinimumUltimateDamageMultiplier +
-                    ratio * DuelistTuning.MaximumUltimateDamageBonus;
+                _duelistRiposteWindowRemaining = 0f;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.DuelistBladeOverdrive)
+            {
+                _duelistOverdriveRemaining =
+                    DuelistTuning.OverdriveDurationSeconds;
+                _duelistOverdriveCooldownRemaining =
+                    DuelistTuning.OverdriveCooldownSeconds;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.DuelistHeavenSplitter)
+            {
+                _duelistHeavenSplitterHoldSeconds = 0f;
+                _duelistHeavenSplitterLevel = 1;
+                SetFeedback("HEAVEN SPLITTER");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
+            }
+            else if (technique.Effect ==
+                WeaponTechniqueEffect.DuelistInfiniteStarburst)
+            {
+                _duelistUltimateProcessedHits = 0;
+                SetFeedback("INFINITE STARBURST ASCENSION");
+                StartTimedState(CombatState.ChargingHeavy);
+                return true;
             }
         }
 
@@ -2243,22 +2407,6 @@ public sealed class PlayerCombat
                 }
             }
         }
-        else if (_weapon.Family == WeaponFamily.SpikedMace)
-        {
-            ConfigureBreakerTechnique(technique);
-            if (technique.Effect ==
-                    WeaponTechniqueEffect.BreakerPendulumSwing &&
-                _breakerSkill2CurrentlyHeld)
-            {
-                SetFeedback("PENDULUM STAGE 1");
-                StartTimedState(CombatState.ChargingHeavy);
-                return true;
-            }
-        }
-        else if (_weapon.Family == WeaponFamily.ChainFlail)
-        {
-            ConfigureReckonerTechnique(technique);
-        }
         else if (_weapon.Family == WeaponFamily.AbyssRing)
         {
             if (technique.Effect is
@@ -2376,38 +2524,48 @@ public sealed class PlayerCombat
         if (_weapon.Family == WeaponFamily.GreatSword)
             return;
 
-        if (_weapon.Family == WeaponFamily.SpikedMace)
-        {
-            RegisterBreakerHit();
-            return;
-        }
-
-        if (_weapon.Family == WeaponFamily.ChainFlail)
-        {
-            RegisterReckonerHit();
-            return;
-        }
-
         if (_weapon.Family != WeaponFamily.DualSwords)
         {
             Resources.RegisterHit(CurrentTechnique.ResourceGainOnHit);
             return;
         }
 
-        if (CurrentTechnique.Effect == WeaponTechniqueEffect.DuelistFinalWaltz)
-            return;
-
-        float gain = CurrentTechnique.ResourceGainOnHit;
-        if (CurrentTechnique.Id == "twin-fang" &&
-            _techniqueStageIndex == CurrentTechnique.StageCount - 1)
+        if (CurrentTechnique.Effect ==
+            WeaponTechniqueEffect.DuelistInfiniteStarburst)
         {
-            gain += DuelistTuning.TwinFangFinisherBonus;
+            if (_techniqueStageIndex < DuelistTuning.UltimateStrikeCount)
+                _duelistUltimateProcessedHits = Math.Min(
+                    DuelistTuning.UltimateStrikeCount,
+                    _duelistUltimateProcessedHits + 1);
+            return;
         }
 
+        float gain = CurrentTechnique.Effect switch
+        {
+            WeaponTechniqueEffect.DuelistStarburstSwordArt =>
+                DuelistTuning.BasicHitGain +
+                (_techniqueStageIndex == CurrentTechnique.StageCount - 1
+                    ? DuelistTuning.StarburstCompletionBonus : 0f),
+            WeaponTechniqueEffect.DuelistCrossRequiem
+                when _techniqueStageIndex == CurrentTechnique.StageCount - 1 =>
+                    DuelistTuning.CrossRequiemGain,
+            WeaponTechniqueEffect.DuelistThousandEdgeWaltz
+                when _techniqueStageIndex == CurrentTechnique.StageCount - 1 =>
+                    DuelistTuning.ThousandEdgeWaltzGain,
+            WeaponTechniqueEffect.DuelistPhantomRiposte or
+            WeaponTechniqueEffect.DuelistFallingStar or
+            WeaponTechniqueEffect.DuelistFlashBlade
+                when _techniqueStageIndex == CurrentTechnique.StageCount - 1 =>
+                    DuelistTuning.DodgeCounterGain,
+            _ => 0f
+        };
+
         bool oncePerSequence = CurrentTechnique.Effect is
-            WeaponTechniqueEffect.DuelistAfterimageExecution or
-            WeaponTechniqueEffect.DuelistHundredFangs or
-            WeaponTechniqueEffect.DuelistMirageCyclone;
+            WeaponTechniqueEffect.DuelistCrossRequiem or
+            WeaponTechniqueEffect.DuelistThousandEdgeWaltz or
+            WeaponTechniqueEffect.DuelistPhantomRiposte or
+            WeaponTechniqueEffect.DuelistFallingStar or
+            WeaponTechniqueEffect.DuelistFlashBlade;
         if (oncePerSequence && _duelistTechniqueGainAwarded)
             gain = 0f;
 
@@ -2547,24 +2705,6 @@ public sealed class PlayerCombat
         _hitstopRemaining = MathF.Max(_hitstopRemaining, duration);
     }
 
-    public void RegisterRaiderImpactFeedback(bool heavyImpact)
-    {
-        if (_weapon.Family != WeaponFamily.WarAxe)
-            return;
-
-        float duration = heavyImpact ? .052f : .026f;
-        _hitstopRemaining = MathF.Max(_hitstopRemaining, duration);
-    }
-
-    public void RegisterBreakerImpactFeedback(bool worldbreaker = false)
-    {
-        if (_weapon.Family != WeaponFamily.SpikedMace)
-            return;
-
-        float duration = worldbreaker ? .11f : .058f;
-        _hitstopRemaining = MathF.Max(_hitstopRemaining, duration);
-    }
-
     public void RegisterGreatswordImpactFeedback(bool ultimate)
     {
         if (_weapon.Family != WeaponFamily.GreatSword)
@@ -2578,38 +2718,19 @@ public sealed class PlayerCombat
     {
         if (_weapon.Family == WeaponFamily.DualSwords)
         {
-            return 1f + Resources.DuelistMomentumRatio *
-                DuelistTuning.MaximumAttackSpeedBonus;
-        }
-        if (_weapon.Family == WeaponFamily.ChainFlail)
-        {
-            float ratio = CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainsOfJudgment
-                ? ReckonerMomentumSnapshotRatio
-                : Resources.ChainMomentumRatio;
-            return 1f + ratio * ReckonerTuning.MaximumHeadSpeedBonus;
+            float multiplier = DuelistTuning.GetTierSpeedMultiplier(
+                Resources.DuelistMomentum);
+            if (IsDuelistOverdriveActive)
+                multiplier += DuelistTuning.OverdriveSpeedBonus;
+            return MathF.Min(1.25f, multiplier);
         }
         return 1f;
-    }
-
-    public void RegisterPerfectPhantomStep()
-    {
-        if (!IsPhantomStepEvading || _perfectPhantomStepAwarded)
-            return;
-
-        _perfectPhantomStepAwarded = true;
-        Resources.AddDuelistMomentum(
-            DuelistTuning.PerfectPhantomStepGain);
-        _perfectPhantomFeedbackRemaining = .45f;
-        SetFeedback("PERFECT PHANTOM STEP");
     }
 
     public void RegisterAggressiveReposition()
     {
         if (_weapon.Family != WeaponFamily.DualSwords ||
             CurrentTechnique == null ||
-            CurrentTechnique.Effect ==
-                WeaponTechniqueEffect.DuelistFinalWaltz ||
             _duelistRepositionAttackId == AttackId)
             return;
 
@@ -2623,34 +2744,7 @@ public sealed class PlayerCombat
         if (technique == null)
             return 0;
 
-        if (_weapon.Family == WeaponFamily.ChainFlail)
-        {
-            return technique.Effect switch
-            {
-                WeaponTechniqueEffect.ReckonerVortexSnare =>
-                    ReckonerTuning.GetVortexPassCount(
-                        _reckonerMomentumSnapshot) + 2,
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment =>
-                    ReckonerTuning.GetUltimateCirclePassCount(
-                        _reckonerMomentumSnapshot) + 3,
-                _ => technique.StageCount
-            };
-        }
-
-        if (_weapon.Family != WeaponFamily.DualSwords)
-            return technique.StageCount;
-
-        float momentum = Resources.DuelistMomentum;
-        return technique.Effect switch
-        {
-            WeaponTechniqueEffect.DuelistBladeTempest =>
-                DuelistTuning.GetBladeTempestHitCount(momentum),
-            WeaponTechniqueEffect.DuelistHundredFangs =>
-                DuelistTuning.GetHundredFangsHitCount(momentum),
-            WeaponTechniqueEffect.DuelistFinalWaltz =>
-                DuelistTuning.GetFinalWaltzHitCount(momentum),
-            _ => technique.StageCount
-        };
+        return technique.StageCount;
     }
 
     private static int GetPhysicalStageIndex(
@@ -2660,30 +2754,6 @@ public sealed class PlayerCombat
     {
         if (technique == null)
             return 0;
-
-        if (technique.Effect == WeaponTechniqueEffect.ReckonerVortexSnare &&
-            sequenceIndex == effectiveCount - 1)
-        {
-            return technique.StageCount - 1;
-        }
-        if (technique.Effect ==
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment)
-        {
-            if (sequenceIndex == effectiveCount - 2)
-                return technique.StageCount - 2;
-            if (sequenceIndex == effectiveCount - 1)
-                return technique.StageCount - 1;
-        }
-
-        bool preserveFinisher = technique.Effect is
-            WeaponTechniqueEffect.DuelistHundredFangs or
-            WeaponTechniqueEffect.DuelistFinalWaltz;
-        if (preserveFinisher &&
-            effectiveCount < technique.StageCount &&
-            sequenceIndex == effectiveCount - 1)
-        {
-            return technique.StageCount - 1;
-        }
 
         return Math.Clamp(sequenceIndex, 0, technique.StageCount - 1);
     }
@@ -3262,380 +3332,6 @@ public sealed class PlayerCombat
         }
     }
 
-    private void ResetRaiderActionState()
-    {
-        _raiderControlDirection = _currentFacing == FacingDirection.Left
-            ? -1f
-            : 1f;
-    }
-
-    private void ConfigureBreakerTechnique(WeaponTechnique technique)
-    {
-        _breakerInertiaSnapshot = Resources.BreakerInertia;
-        float ratio = BreakerTuning.InertiaRatio(_breakerInertiaSnapshot);
-        Resources.MarkCombatActivity();
-
-        switch (technique.Effect)
-        {
-            case WeaponTechniqueEffect.BreakerIronCrush:
-                _breakerPoiseMultiplier = 1f + ratio * .18f;
-                _breakerMaceSide = 1;
-                break;
-            case WeaponTechniqueEffect.BreakerPendulumSwing:
-                _breakerPendulumStage = BreakerTuning.GetPendulumStage(
-                    _breakerSkill2HoldSeconds);
-                ApplyPendulumScaling();
-                break;
-            case WeaponTechniqueEffect.BreakerEarthbreaker:
-                Resources.ConsumeBreakerInertia(
-                    BreakerTuning.EarthbreakerConsumption);
-                _attackPowerMultiplier = 1f + ratio *
-                    BreakerTuning.EarthbreakerMaximumDamageBonus;
-                _breakerPoiseMultiplier = 1f + ratio *
-                    BreakerTuning.EarthbreakerMaximumPoiseBonus;
-                _breakerMaceSide = 0;
-                break;
-            case WeaponTechniqueEffect.BreakerBatteringRush:
-                _breakerPoiseMultiplier = 1f + ratio * .22f;
-                _breakerMaceSide = -1;
-                break;
-            case WeaponTechniqueEffect.BreakerTitansBackhand:
-                Resources.ConsumeBreakerInertia(
-                    BreakerTuning.TitanBackhandConsumption);
-                _attackPowerMultiplier = 1f + ratio *
-                    BreakerTuning.TitanBackhandMaximumDamageBonus;
-                _breakerPoiseMultiplier = 1f + ratio *
-                    BreakerTuning.TitanBackhandMaximumPoiseBonus;
-                _breakerMaceSide = -_breakerMaceSide;
-                break;
-            case WeaponTechniqueEffect.BreakerAnvilFall:
-                Resources.ConsumeBreakerInertia(
-                    BreakerTuning.AnvilFallConsumption);
-                _attackPowerMultiplier = 1f + ratio *
-                    BreakerTuning.AnvilFallMaximumDamageBonus;
-                _breakerPoiseMultiplier = 1f + ratio *
-                    BreakerTuning.AnvilFallMaximumPoiseBonus;
-                _breakerMaceSide = 0;
-                break;
-            case WeaponTechniqueEffect.BreakerCataclysmWheel:
-                Resources.ConsumeBreakerInertiaRatio(
-                    BreakerTuning.CataclysmConsumptionRatio);
-                _attackPowerMultiplier = 1f + ratio * .12f;
-                _breakerPoiseMultiplier = 1f + ratio * .30f;
-                _breakerMaceSide = 0;
-                break;
-            case WeaponTechniqueEffect.BreakerWorldbreaker:
-                Resources.SpendAllBreakerInertia();
-                _attackPowerMultiplier = 1f + ratio *
-                    BreakerTuning.WorldbreakerMaximumDamageBonus;
-                _breakerPoiseMultiplier = 1f + ratio *
-                    BreakerTuning.WorldbreakerMaximumPoiseBonus;
-                _breakerMaceSide = 0;
-                break;
-        }
-    }
-
-    private void UpdateBreakerInputState(
-        float elapsedSeconds,
-        CombatInput input)
-    {
-        if (_weapon.Family != WeaponFamily.SpikedMace)
-            return;
-
-        if (input.Skill2Pressed)
-            _breakerSkill2HoldSeconds = 0f;
-        _breakerSkill2CurrentlyHeld = input.Skill2Held;
-        if (input.Skill2Held)
-            _breakerSkill2HoldSeconds = MathF.Min(
-                BreakerTuning.PendulumMaximumSeconds,
-                _breakerSkill2HoldSeconds + elapsedSeconds);
-
-        if (!IsPendulumCharging)
-            return;
-
-        BreakerPendulumStage stage = BreakerTuning.GetPendulumStage(
-            _breakerSkill2HoldSeconds);
-        if (stage != _breakerPendulumStage)
-        {
-            _breakerPendulumStage = stage;
-            SetFeedback($"PENDULUM STAGE {(int)stage}");
-        }
-    }
-
-    private void UpdateBreakerChargeState(
-        float elapsedSeconds,
-        CombatInput input)
-    {
-        Resources.AddBreakerInertia(
-            BreakerTuning.PendulumInertiaGainPerSecond * elapsedSeconds);
-        Stamina.SpendUpTo(
-            BreakerTuning.PendulumStaminaDrainPerSecond * elapsedSeconds *
-            _weapon.StaminaCostModifier);
-
-        bool maximumReached = _breakerSkill2HoldSeconds >=
-            BreakerTuning.PendulumMaximumSeconds;
-        if (!maximumReached && Stamina.Current > 0f &&
-            !input.Skill2Released && input.Skill2Held)
-            return;
-
-        _breakerPendulumStage = BreakerTuning.GetPendulumStage(
-            _breakerSkill2HoldSeconds);
-        ApplyPendulumScaling();
-        SetFeedback($"PENDULUM RELEASE {(int)_breakerPendulumStage}");
-        StartTechniqueStage();
-    }
-
-    private void ApplyPendulumScaling()
-    {
-        float inertiaRatio = Resources.BreakerInertiaRatio;
-        float stageDamage = _breakerPendulumStage switch
-        {
-            BreakerPendulumStage.StageTwo => 1.16f,
-            BreakerPendulumStage.StageThree => 1.38f,
-            _ => 1f
-        };
-        float stagePoise = _breakerPendulumStage switch
-        {
-            BreakerPendulumStage.StageTwo => 1.28f,
-            BreakerPendulumStage.StageThree => 1.62f,
-            _ => 1f
-        };
-        _attackPowerMultiplier = stageDamage;
-        _breakerPoiseMultiplier = stagePoise * (1f + inertiaRatio * .18f);
-    }
-
-    private void RegisterBreakerHit()
-    {
-        float gain = CurrentTechnique.Effect switch
-        {
-            WeaponTechniqueEffect.BreakerIronCrush =>
-                _techniqueStageIndex switch
-                {
-                    0 => BreakerTuning.IronCrushHitOneGain,
-                    1 => BreakerTuning.IronCrushHitTwoGain,
-                    _ => BreakerTuning.IronCrushHitThreeGain
-                } * (_techniqueStageIndex == 0
-                    ? 1f
-                    : _breakerRhythmPreserved
-                        ? BreakerTuning.RhythmGainMultiplier
-                        : BreakerTuning.PoorRhythmGainMultiplier),
-            WeaponTechniqueEffect.BreakerPendulumSwing =>
-                _breakerPendulumStage switch
-                {
-                    BreakerPendulumStage.StageTwo =>
-                        BreakerTuning.PendulumStageTwoHitGain,
-                    BreakerPendulumStage.StageThree =>
-                        BreakerTuning.PendulumStageThreeHitGain,
-                    _ => BreakerTuning.PendulumStageOneHitGain
-                },
-            WeaponTechniqueEffect.BreakerBatteringRush =>
-                BreakerTuning.BatteringRushHitGain,
-            _ => 0f
-        };
-
-        if (gain > 0f)
-            Resources.AddBreakerInertia(gain);
-        else
-            Resources.MarkCombatActivity();
-    }
-
-    private void RegisterBreakerSwingCompletion()
-    {
-        if (_weapon.Family != WeaponFamily.SpikedMace ||
-            CurrentTechnique == null || CurrentAttack == null)
-            return;
-
-        if (CurrentTechnique.Effect is
-            WeaponTechniqueEffect.BreakerIronCrush or
-            WeaponTechniqueEffect.BreakerPendulumSwing or
-            WeaponTechniqueEffect.BreakerBatteringRush)
-        {
-            Resources.AddBreakerInertia(BreakerTuning.SwingCompletionGain);
-        }
-    }
-
-    private void ResetBreakerActionState()
-    {
-        _breakerSkill2HoldSeconds = 0f;
-        _breakerSkill2CurrentlyHeld = false;
-        _breakerPendulumStage = BreakerPendulumStage.StageOne;
-        _breakerInertiaSnapshot = 0f;
-        _breakerPoiseMultiplier = 1f;
-        _breakerRhythmPreserved = false;
-        _breakerIronCrushFollowupBuffered = false;
-    }
-
-    private void ConfigureReckonerTechnique(WeaponTechnique technique)
-    {
-        _reckonerOrbitHoldSeconds = 0f;
-        _reckonerOrbitHitClock = 0f;
-        _reckonerHarpoonOutboundHits = 0;
-        _reckonerHarpoonWasHeldAfterStart = false;
-        float facingSign = _currentFacing == FacingDirection.Left ? -1f : 1f;
-        _reckonerCurveSide = MathF.Abs(_currentHorizontalDirection) > .1f
-            ? (int)MathF.Sign(_currentHorizontalDirection * facingSign)
-            : 1;
-        Resources.MarkCombatActivity();
-
-        if (technique.Effect ==
-            WeaponTechniqueEffect.ReckonerChainsOfJudgment)
-        {
-            Resources.SpendAllChainMomentum();
-        }
-    }
-
-    private void UpdateReckonerInputState(
-        float elapsedSeconds,
-        CombatInput input)
-    {
-        if (_weapon.Family != WeaponFamily.ChainFlail)
-            return;
-
-        _reckonerSkill2CurrentlyHeld = input.Skill2Held;
-        if (CurrentTechnique?.Effect ==
-                WeaponTechniqueEffect.ReckonerChainHarpoon &&
-            _techniqueStageIndex == 0)
-        {
-            if (input.Skill3Held)
-                _reckonerHarpoonWasHeldAfterStart = true;
-            if (_reckonerHarpoonWasHeldAfterStart &&
-                (input.Skill3Released || !input.Skill3Held))
-            {
-                RequestReckonerHarpoonReturn();
-                return;
-            }
-        }
-        if (CurrentTechnique?.Effect !=
-                WeaponTechniqueEffect.ReckonerOrbitingMaelstrom ||
-            _techniqueStageIndex != 0 || CurrentAttack == null)
-        {
-            return;
-        }
-
-        bool canMaintain = _reckonerSkill2CurrentlyHeld &&
-            _reckonerOrbitHoldSeconds < ReckonerTuning.OrbitMaximumSeconds &&
-            Stamina.Current > .001f;
-        if (!canMaintain)
-        {
-            BeginReckonerOrbitRelease();
-            return;
-        }
-
-        float drain = ReckonerTuning.OrbitStaminaDrainPerSecond *
-            MathF.Max(0f, elapsedSeconds);
-        float spent = Stamina.SpendUpTo(drain);
-        if (spent + .001f < drain)
-        {
-            BeginReckonerOrbitRelease();
-            return;
-        }
-
-        _reckonerOrbitHoldSeconds = MathF.Min(
-            ReckonerTuning.OrbitMaximumSeconds,
-            _reckonerOrbitHoldSeconds + elapsedSeconds);
-        float uninterruptedRatio = Math.Clamp(
-            _reckonerOrbitHoldSeconds / ReckonerTuning.OrbitMaximumSeconds,
-            0f,
-            1f);
-        Resources.AddChainMomentum(
-            (ReckonerTuning.OrbitBuildPerSecond +
-             ReckonerTuning.OrbitUninterruptedBonusPerSecond *
-                uninterruptedRatio) * elapsedSeconds);
-
-        _reckonerOrbitHitClock += elapsedSeconds;
-        float interval = ReckonerTuning.GetOrbitHitInterval(
-            ReckonerOrbitStage);
-        if (_reckonerOrbitHitClock >= interval)
-        {
-            _reckonerOrbitHitClock -= interval;
-            AttackId++;
-        }
-    }
-
-    private void BeginReckonerOrbitRelease()
-    {
-        if (CurrentTechnique?.Effect !=
-                WeaponTechniqueEffect.ReckonerOrbitingMaelstrom ||
-            _techniqueStageIndex != 0)
-        {
-            return;
-        }
-
-        _techniqueSequenceIndex = 1;
-        StartTechniqueStage();
-    }
-
-    private void RegisterReckonerHit()
-    {
-        if (CurrentTechnique == null)
-            return;
-
-        float gain = CurrentTechnique.Effect switch
-        {
-            WeaponTechniqueEffect.ReckonerChainLash =>
-                ReckonerTuning.LashHitGain,
-            WeaponTechniqueEffect.ReckonerOrbitingMaelstrom =>
-                ReckonerTuning.OrbitHitGain,
-            WeaponTechniqueEffect.ReckonerChainHarpoon => 6f,
-            WeaponTechniqueEffect.ReckonerReapersPassage =>
-                ReckonerTuning.ReapersPassageHitGain,
-            WeaponTechniqueEffect.ReckonerCrescentRequiem => 6f,
-            WeaponTechniqueEffect.ReckonerSerpentsFang => 8f,
-            WeaponTechniqueEffect.ReckonerVortexSnare => 0f,
-            WeaponTechniqueEffect.ReckonerChainsOfJudgment => 0f,
-            _ => CurrentTechnique.ResourceGainOnHit
-        };
-
-        if (gain > 0f)
-            Resources.AddChainMomentum(gain);
-        else
-            Resources.MarkCombatActivity();
-    }
-
-    public bool RegisterReckonerHarpoonOutboundTarget(bool heavyOrBoss)
-    {
-        if (_weapon.Family != WeaponFamily.ChainFlail ||
-            CurrentTechnique?.Effect !=
-                WeaponTechniqueEffect.ReckonerChainHarpoon ||
-            _techniqueStageIndex != 0)
-        {
-            return false;
-        }
-
-        _reckonerHarpoonOutboundHits++;
-        bool returnNow = heavyOrBoss || !ReckonerHarpoonCanPierce ||
-            _reckonerHarpoonOutboundHits >=
-                ReckonerTuning.HarpoonMaximumLightTargets;
-        if (returnNow)
-            RequestReckonerHarpoonReturn();
-        return returnNow;
-    }
-
-    public void RequestReckonerHarpoonReturn()
-    {
-        if (_weapon.Family != WeaponFamily.ChainFlail ||
-            CurrentTechnique?.Effect !=
-                WeaponTechniqueEffect.ReckonerChainHarpoon ||
-            _techniqueStageIndex != 0)
-        {
-            return;
-        }
-
-        _techniqueSequenceIndex = 1;
-        StartTechniqueStage();
-    }
-
-    private void ResetReckonerActionState()
-    {
-        _reckonerSkill2CurrentlyHeld = false;
-        _reckonerHarpoonWasHeldAfterStart = false;
-        _reckonerOrbitHoldSeconds = 0f;
-        _reckonerOrbitHitClock = 0f;
-        _reckonerMomentumSnapshot = 0f;
-        _reckonerCurveSide = 1;
-        _reckonerHarpoonOutboundHits = 0;
-    }
-
     private void UpdateScytheInputState(float elapsedSeconds, CombatInput input)
     {
         if (_weapon.Family != WeaponFamily.Scythe)
@@ -3664,6 +3360,106 @@ public sealed class PlayerCombat
         if (_scytheInputMask != 0)
             _scytheChordRemaining = MathF.Max(
                 0f, _scytheChordRemaining - elapsedSeconds);
+    }
+
+    private void UpdateDuelistInputState(float elapsedSeconds, CombatInput input)
+    {
+        if (_weapon.Family != WeaponFamily.DualSwords)
+        {
+            ClearDuelistPendingInput();
+            return;
+        }
+
+        _duelistSkill1Held = input.Skill1Held;
+        _duelistSkill3Held = input.Skill3Held;
+        if (HasCommittedAction)
+            return;
+
+        if (input.Skill1Pressed && input.DashHeld)
+            _duelistDashSkill1Pending = true;
+        if (input.Skill2Pressed && !_isGrounded)
+            _duelistAirSkill2Pending = true;
+
+        WeaponTechniqueInput? resolved = _duelistInputBuffer.Update(
+            elapsedSeconds, input.Skill1Pressed, input.Skill2Pressed,
+            input.Skill3Pressed);
+        if (resolved.HasValue)
+            _duelistResolvedInput = resolved;
+    }
+
+    private bool ResolveDuelistActionInput()
+    {
+        if (!_duelistResolvedInput.HasValue)
+            return false;
+
+        WeaponTechniqueInput input = _duelistResolvedInput.Value;
+        bool dashJ = _duelistDashSkill1Pending;
+        bool airK = _duelistAirSkill2Pending;
+        ClearDuelistPendingInput();
+
+        if (input == WeaponTechniqueInput.Ultimate)
+            return TryStartTechnique(input);
+        if (airK && input == WeaponTechniqueInput.Skill2)
+            return TryStartTechnique(WeaponTechniqueInput.Skill2);
+        if (input is WeaponTechniqueInput.Skill1Skill2 or
+            WeaponTechniqueInput.Skill2Skill3 or
+            WeaponTechniqueInput.Skill1Skill3)
+            return TryStartTechnique(input);
+        if (dashJ && input == WeaponTechniqueInput.Skill1)
+            return TryStartTechnique(WeaponTechniqueInput.DashSkill);
+        return TryStartTechnique(input);
+    }
+
+    private void ClearDuelistPendingInput()
+    {
+        _duelistInputBuffer.Clear();
+        _duelistResolvedInput = null;
+        _duelistDashSkill1Pending = false;
+        _duelistAirSkill2Pending = false;
+    }
+
+    private void ResetDuelistTemporaryState()
+    {
+        ClearDuelistPendingInput();
+        _duelistRiposteWindowRemaining = 0f;
+        _duelistOverdriveRemaining = 0f;
+        _duelistOverdriveCooldownRemaining = 0f;
+        _duelistHeavenSplitterHoldSeconds = 0f;
+        _duelistHeavenSplitterLevel = 1;
+        _duelistUltimateTargetAvailable = false;
+        _duelistUltimateProcessedHits = 0;
+    }
+
+	private void ResetKnightTemporaryState()
+	{
+		_knightInputBuffer.Clear();
+		_knightDashSkill1Pending = false;
+		_knightAirSkill2Pending = false;
+		_knightForceFallingShield = false;
+		_perfectGuardRewardRemaining = 0f;
+		_perfectGuardFeedbackRemaining = 0f;
+		_knightUltimateTargetAvailable = false;
+		_knightFallingWasAirborne = false;
+		_knightLandingPulseRemaining = 0f;
+		_knightFinalLandingWasAirborne = false;
+		_knightRiposteBuffered = false;
+	}
+
+    private void ReleaseDuelistHeavenSplitter()
+    {
+        _duelistHeavenSplitterLevel =
+            _duelistHeavenSplitterHoldSeconds >=
+                DuelistTuning.HeavenSplitterLevelThreeSeconds ? 3 :
+            _duelistHeavenSplitterHoldSeconds >=
+                DuelistTuning.HeavenSplitterLevelTwoSeconds ? 2 : 1;
+        _attackPowerMultiplier = _duelistHeavenSplitterLevel switch
+        {
+            3 => 4.10f / 2.20f,
+            2 => 3.10f / 2.20f,
+            _ => 1f
+        };
+        SetFeedback($"HEAVEN SPLITTER LV {_duelistHeavenSplitterLevel}");
+        StartTechniqueStage();
     }
 
     private bool ResolveScytheActionInput()
@@ -3867,38 +3663,18 @@ public sealed class PlayerCombat
         if (CurrentAttack == null)
             return 0;
 
+        float duelistBuff = IsDuelistOverdriveActive &&
+            CurrentTechnique?.Effect !=
+                WeaponTechniqueEffect.DuelistInfiniteStarburst
+            ? 1f + DuelistTuning.OverdriveDamageBonus
+            : 1f;
         int damage = Math.Max(0, (int)MathF.Round(
-            CurrentAttack.CalculateDamage(baseDamage) * _attackPowerMultiplier));
+            CurrentAttack.CalculateDamage(baseDamage) *
+                _attackPowerMultiplier * duelistBuff));
 
         if (IsSovereignThroneActive)
             damage = (int)MathF.Round(
                 damage * AbyssRingTuning.ThroneDamageMultiplier);
-
-        if (CurrentTechnique?.Effect == WeaponTechniqueEffect.OathStance &&
-            _techniqueStageIndex == CurrentTechnique.StageCount - 1)
-        {
-            damage += (int)MathF.Round(OathStoredForce);
-        }
-
-        if (_weapon.Family == WeaponFamily.ChainFlail)
-        {
-            float ratio = CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainsOfJudgment
-                ? ReckonerMomentumSnapshotRatio
-                : Resources.ChainMomentumRatio;
-            float bonus = CurrentTechnique?.Effect switch
-            {
-                WeaponTechniqueEffect.ReckonerChainHarpoon
-                    when _techniqueStageIndex == 1 => .12f * ratio,
-                WeaponTechniqueEffect.ReckonerSerpentsFang => .10f * ratio,
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment
-                    when _techniqueStageIndex == 7 =>
-                        ReckonerTuning.UltimateMaximumDamageBonus * ratio,
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment => .12f * ratio,
-                _ => 0f
-            };
-            damage = (int)MathF.Round(damage * (1f + bonus));
-        }
 
         return damage;
     }
@@ -3913,7 +3689,6 @@ public sealed class PlayerCombat
         float powerMultiplier = _weapon.Family switch
         {
             WeaponFamily.HunterBow => _poisePowerMultiplier,
-            WeaponFamily.SpikedMace => _breakerPoiseMultiplier,
             WeaponFamily.GreatSword => _poisePowerMultiplier,
             _ => _attackPowerMultiplier
         };
@@ -3928,12 +3703,6 @@ public sealed class PlayerCombat
         {
             poise *= 1.18f;
         }
-        if (CurrentTechnique?.Effect ==
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment &&
-            _techniqueStageIndex >= 6)
-        {
-            poise *= 1f + ReckonerMomentumSnapshotRatio * .30f;
-        }
         return poise;
     }
 
@@ -3945,24 +3714,7 @@ public sealed class PlayerCombat
 
     public float CalculateRange(AttackDefinition attack)
     {
-        float momentumRange = _weapon.Family == WeaponFamily.ChainFlail
-            ? 1f + (CurrentTechnique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainsOfJudgment
-                ? ReckonerMomentumSnapshotRatio
-                : Resources.ChainMomentumRatio) *
-                ReckonerTuning.MaximumRadiusBonus
-            : 1f;
-        if (_weapon.Family == WeaponFamily.SpikedMace &&
-            CurrentTechnique?.Effect ==
-                WeaponTechniqueEffect.BreakerPendulumSwing)
-        {
-            momentumRange *= _breakerPendulumStage switch
-            {
-                BreakerPendulumStage.StageTwo => 1.10f,
-                BreakerPendulumStage.StageThree => 1.20f,
-                _ => 1f
-            };
-        }
+        float momentumRange = 1f;
         if (IsSovereignThroneActive)
             momentumRange *= AbyssRingTuning.ThronePortalRangeMultiplier;
         return (attack?.Range ?? 1f) * _weapon.RangeModifier * momentumRange;

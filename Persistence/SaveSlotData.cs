@@ -27,7 +27,8 @@ public sealed class SaveSlotData
     public float CheckpointY { get; set; }
     public bool HasCheckpoint { get; set; }
     public string EquippedWeaponId { get; set; } = "knight-long-sword";
-    public string EquippedWeaponName { get; set; } = "Knight Long Sword + Shield";
+	public string EquippedWeaponName { get; set; } =
+		"Wayfarer Blade + Vanguard Guard";
     public WeaponFamily EquippedWeaponFamily { get; set; } = WeaponFamily.LongSword;
     public int EquippedWeaponTier { get; set; } = 2;
     public int EquippedWeaponDamageBonus { get; set; } = 8;
@@ -91,7 +92,7 @@ public sealed class SaveSlotData
             ? "knight-long-sword"
             : EquippedWeaponId;
         EquippedWeaponName = string.IsNullOrWhiteSpace(EquippedWeaponName)
-            ? "Knight Long Sword + Shield"
+			? "Wayfarer Blade + Vanguard Guard"
             : EquippedWeaponName;
         EquippedArmorId = string.IsNullOrWhiteSpace(EquippedArmorId)
             ? "knight-armor"

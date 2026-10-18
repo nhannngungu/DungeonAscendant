@@ -72,11 +72,8 @@ public static class AudioProfiles
         [WeaponFamily.LongSword]=Weapon("Knight","knight_light_01","knight_light_01","knight_shield_bash_01","knight_block_01","knight_heavy_01","knight_light_01","knight_shield_bash_01"),
         [WeaponFamily.DualSwords]=Weapon("Duelist","duelist_slash1_01","duelist_slash2_01","duelist_slash2_01","duelist_slash1_01","duelist_flurry_01","duelist_dash_01","duelist_flurry_01"),
         [WeaponFamily.HunterBow]=Weapon("Ranger","ranger_draw_01","ranger_release_01","ranger_impact_01","ranger_impact_01","ranger_draw_01","ranger_arrow_fly_01","ranger_arrow_fly_01"),
-        [WeaponFamily.WarAxe]=Weapon("Raider","raider_axe_swing_01","raider_axe_swing_01","raider_hook_01","raider_buckler_01","raider_axe_heavy_01","raider_hook_01","raider_hook_01"),
         [WeaponFamily.ArcaneWarStaff]=Weapon("Spellblade","spellblade_arcane_slash_01","spellblade_lunge_01","spellblade_detonate_01","spellblade_rune_01","spellblade_detonate_01","spellblade_lunge_01","spellblade_rune_01"),
-        [WeaponFamily.SpikedMace]=Weapon("Breaker","breaker_mace_swing_01","breaker_mace_swing_01","breaker_mace_impact_01","breaker_mace_impact_01","breaker_ground_slam_01","breaker_rush_01","breaker_ground_slam_01"),
-        [WeaponFamily.GreatSword]=Weapon("Breaker","breaker_mace_swing_01","breaker_mace_swing_01","breaker_mace_impact_01","breaker_mace_impact_01","breaker_ground_slam_01","breaker_rush_01","breaker_ground_slam_01"),
-        [WeaponFamily.ChainFlail]=Weapon("Reckoner","reckoner_chain_swing_01","reckoner_chain_lash_01","reckoner_chain_lash_01","reckoner_chain_retract_01","reckoner_vortex_01","reckoner_chain_retract_01","reckoner_vortex_01")
+        [WeaponFamily.GreatSword]=Weapon("Breaker","breaker_mace_swing_01","breaker_mace_swing_01","breaker_mace_impact_01","breaker_mace_impact_01","breaker_ground_slam_01","breaker_rush_01","breaker_ground_slam_01")
     };
 
     private static EnemySoundProfile E(string id, ImpactMaterial material, string folder, params string[] n) => new(id,material,new Dictionary<EnemySoundEvent,string[]>

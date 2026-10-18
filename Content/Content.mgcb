@@ -853,30 +853,6 @@
 /processorParam:Quality=Best
 /build:Audio/Weapons/Knight/knight_shield_bash_01.wav
 
-#begin Audio/Weapons/Raider/raider_axe_heavy_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Raider/raider_axe_heavy_01.wav
-
-#begin Audio/Weapons/Raider/raider_axe_swing_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Raider/raider_axe_swing_01.wav
-
-#begin Audio/Weapons/Raider/raider_buckler_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Raider/raider_buckler_01.wav
-
-#begin Audio/Weapons/Raider/raider_hook_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Raider/raider_hook_01.wav
-
 #begin Audio/Weapons/Ranger/ranger_arrow_fly_01.wav
 /importer:WavImporter
 /processor:SoundEffectProcessor
@@ -900,30 +876,6 @@
 /processor:SoundEffectProcessor
 /processorParam:Quality=Best
 /build:Audio/Weapons/Ranger/ranger_release_01.wav
-
-#begin Audio/Weapons/Reckoner/reckoner_chain_lash_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Reckoner/reckoner_chain_lash_01.wav
-
-#begin Audio/Weapons/Reckoner/reckoner_chain_retract_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Reckoner/reckoner_chain_retract_01.wav
-
-#begin Audio/Weapons/Reckoner/reckoner_chain_swing_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Reckoner/reckoner_chain_swing_01.wav
-
-#begin Audio/Weapons/Reckoner/reckoner_vortex_01.wav
-/importer:WavImporter
-/processor:SoundEffectProcessor
-/processorParam:Quality=Best
-/build:Audio/Weapons/Reckoner/reckoner_vortex_01.wav
 
 #begin Audio/Weapons/Spellblade/spellblade_arcane_slash_01.wav
 /importer:WavImporter

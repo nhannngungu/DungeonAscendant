@@ -19,7 +19,7 @@ public static class WeaponFamilyExtensions
     {
         return family.ToOfficialFamily() switch
         {
-            WeaponFamily.LongSword => "Long Sword + Shield",
+            WeaponFamily.LongSword => "Sword & Shield",
             WeaponFamily.DualSwords => "Dual Swords",
             WeaponFamily.HunterBow => "Hunter Bow",
             WeaponFamily.WarAxe => "War Axe + Buckler",

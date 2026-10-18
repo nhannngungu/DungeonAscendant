@@ -41,7 +41,7 @@ Armor now drops with an independent C1-C5 progression Grade, three identical une
 - Boss-only, explicitly assigned weapon reward architecture
 - Manual nearby loot pickup and a 12-slot normal run inventory
 - Equipment swapping with derived damage and maximum-health bonuses
-- Seven official weapon families: Long Sword + Shield, Dual Swords, Hunter Bow, War Axe + Buckler, Arcane War Staff, Spiked Mace, and Chain Flail
+- Seven official weapon families: Long Sword + Shield, Dual Swords, Greatsword, Hunter Bow, Scythe, Arcane War Staff, and Abyss Ring
 - Ranger arrows and Spellblade arcane bolts with dungeon-wall and enemy collision
 - Light, Medium, and Heavy armor classes with distinct defense, mobility, stamina, and silhouettes
 - Shield/block availability derived from the equipped weapon family
@@ -97,12 +97,12 @@ Inventory selection uses a four-column grid. WASD and the arrow keys move in mat
 The Inventory has `WEAPONS` and `EQUIPMENT` tabs. Press `Q` or `E` while Inventory is open to switch tabs. Each tab filters the same underlying inventory item references and remembers its own grid selection; Armor fusion is available only from `EQUIPMENT`.
 
 - Long Sword + Shield is the Knight: balanced sword pressure, shield poise attacks, frontal Guard Counter, and the defensive Last Bastion ultimate.
-- Dual Swords is the Duelist: asymmetric blades, multi-hit pressure, physical side-crossing movement, and continuous 0-100 Momentum. J is the five-hit Twin Fang chain, K is Phantom Step, L is Blade Tempest, Shift+J is Cross Fang Dash, and the J+K / J+L / K+L chords are Afterimage Execution / Hundred Fangs / Mirage Cyclone. J+K+L activates Thousand Blades: Final Waltz at full stamina and consumes all snapshotted Momentum.
+- Dual Swords is the Duelist's current Twin Blades V4.x implementation, with asymmetric blades, multi-hit pressure, physical side-crossing movement, and continuous Momentum.
 - Hunter Bow is the Ranger: a continuous 0-100 Precision meter, mouse or slight vertical directional aim, weak-point rewards, charged Hunter's Shot, deterministic ricochets, ballistic area shots, a capped five-arrow Serpent Rain split, and the three manually aimed shots of Heaven's Fury. J/K/L are Hunter's Shot / Ricochet Arrow / Skyfall Arrow; Shift+J is Windrunner Shot; J+K / J+L / K+L are Piercing Ricochet / Falling Comet / Serpent Rain. J+K+L spends full stamina to enter Heaven's Fury.
-- War Axe + Buckler is the Raider: three-hit weighted cleaves, hook pulls, offensive buckler impacts, terrain-safe throws, collision Stagger, and four-phase formation breaking.
-- Arcane War Staff is the Spellblade: mark enemies with up to three temporary Arcane Imprints, place up to three Ground Runes, connect them, then detonate the prepared battlefield.
-- Spiked Mace is the Breaker: high-commitment poise destruction, continuous 0-100 Inertia, staged Pendulum rotation, physical ground shockwaves, and a one-hit Worldbreaker ultimate.
-- Chain Flail is the Reckoner: deterministic linked-chain arcs, moving-head collision, hook control, and 0-3 Chain Momentum for reach and flow.
+- Greatsword is the Iron Vanguard's heavy blade.
+- Arcane War Staff is the Ancient Staff, including its current spell and aerial technique set.
+- Scythe is the Shadow Reaper's weapon.
+- Abyss Ring is the Forbidden Sovereign's secret weapon.
 - Scout Armor has the narrowest silhouette, fastest movement/dodge, and strongest stamina regeneration, but the least mitigation.
 - Knight Armor retains the established balanced hero silhouette and baseline mobility.
 - Fortress Armor adds broad plate and greaves, more health and mitigation, cheaper shield guarding, but slower movement/dodge and stamina regeneration.

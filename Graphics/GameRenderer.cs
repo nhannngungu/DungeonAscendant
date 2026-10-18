@@ -175,6 +175,14 @@ public sealed class GameRenderer : IDisposable
     private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
     private int _observedElderSigils;
     private float _elderSigilPulseRemaining;
+    private int _observedDuelistMomentumTier = -1;
+    private float _duelistMomentumTierPulseRemaining;
+    private int _duelistUltimateVisualUseId = -1;
+    private int _duelistUltimateObservedStage = -1;
+    private Vector2 _duelistUltimateLastPlayerPosition;
+    private Vector2 _duelistUltimateDeparturePosition;
+    private float _duelistUltimateDepartureFade;
+    private float _duelistUltimateDepartureDuration;
     private Vector2 _thunderSpiritVisualPosition;
     private bool _thunderSpiritVisualInitialized;
 
@@ -259,6 +267,60 @@ public sealed class GameRenderer : IDisposable
             _pixel);
     }
 
+    private void UpdateDuelistUltimateVisualMemory(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        PlayerCharacter player = gameSession.Player;
+        bool active = player?.Combat.IsDuelistUltimateActive == true &&
+            player.Combat.State != CombatState.ChargingHeavy;
+        if (!active)
+        {
+            _duelistUltimateVisualUseId = -1;
+            _duelistUltimateObservedStage = -1;
+            _duelistUltimateDepartureFade = 0f;
+            _duelistUltimateDepartureDuration = 0f;
+            return;
+        }
+
+        int useId = player.Combat.CurrentTechniqueUseId;
+        if (_duelistUltimateVisualUseId != useId)
+        {
+            _duelistUltimateVisualUseId = useId;
+            _duelistUltimateObservedStage = player.Combat.TechniqueStageIndex;
+            _duelistUltimateLastPlayerPosition = player.Position;
+            _duelistUltimateDeparturePosition = player.Position;
+            _duelistUltimateDepartureFade = 0f;
+        }
+
+        int stage = player.Combat.TechniqueStageIndex;
+        if (stage != _duelistUltimateObservedStage)
+        {
+            _duelistUltimateDeparturePosition =
+                _duelistUltimateLastPlayerPosition;
+            int group = Math.Clamp(stage / 8, 0, 3);
+            _duelistUltimateDepartureDuration = stage >=
+                    DuelistTuning.UltimateStrikeCount
+                ? .16f
+                : group switch
+                {
+                    0 => .13f,
+                    1 => .105f,
+                    2 => .082f,
+                    _ => .062f
+                };
+            _duelistUltimateDepartureFade =
+                _duelistUltimateDepartureDuration;
+            _duelistUltimateObservedStage = stage;
+        }
+        _duelistUltimateLastPlayerPosition = player.Position;
+        _duelistUltimateDepartureFade = MathF.Max(
+            0f,
+            _duelistUltimateDepartureFade - MathF.Min(
+                (float)gameTime.ElapsedGameTime.TotalSeconds,
+                .05f));
+    }
+
     public void Draw(
         GameSession gameSession,
         GameTime gameTime,
@@ -266,6 +328,7 @@ public sealed class GameRenderer : IDisposable
     {
         RegionTheme theme = RegionTheme.For(gameSession.CurrentRegion);
         _graphicsDevice.Clear(theme.Background);
+        UpdateDuelistUltimateVisualMemory(gameSession, gameTime);
         diagnosticLog?.Invoke("[DRAW] GraphicsDevice.Clear completed");
 
         if (gameSession.State == GameState.Start)
@@ -348,7 +411,6 @@ public sealed class GameRenderer : IDisposable
         DrawRangerTrajectoryGuide(gameSession);
         DrawSpellbladeWorld(gameSession);
         DrawAncientStaffWorld(gameSession, gameTime);
-        DrawBreakerWorld(gameSession);
         DrawSovereignUltimateWorld(gameSession, gameTime);
         DrawSovereignPortals(gameSession);
         DrawFourthVeilBackground(gameSession, gameTime);
@@ -409,16 +471,42 @@ public sealed class GameRenderer : IDisposable
                 gameSession.Player.Position,
                 arrival);
         }
+        if (gameSession.IsDuelistUltimateActive &&
+            gameSession.Player.Combat.State != CombatState.ChargingHeavy)
+        {
+            int duelistStage = gameSession.DuelistUltimateStage;
+            float duelistRatio = gameSession.DuelistUltimateStageRatio;
+            float verticalOffset = 0f;
+            if (duelistStage >= DuelistTuning.UltimateStrikeCount)
+            {
+                if (duelistRatio < .08f)
+                    verticalOffset = 0f;
+                else if (duelistRatio < .22f)
+                    verticalOffset = MathHelper.Lerp(0f, -158f,
+                        MathHelper.SmoothStep(0f, 1f,
+                            (duelistRatio - .08f) / .14f));
+                else if (duelistRatio < .38f)
+                    verticalOffset = -158f;
+                else if (duelistRatio < .53f)
+                    verticalOffset = MathHelper.Lerp(-158f, 0f,
+                        MathHelper.SmoothStep(0f, 1f,
+                            (duelistRatio - .38f) / .15f));
+                else if (duelistRatio < .76f)
+                    verticalOffset = -9f * MathF.Sin(
+                        (duelistRatio - .53f) / .23f * MathHelper.Pi);
+            }
+            playerVisualPosition = gameSession.Player.Position +
+                new Vector2(0f, verticalOffset);
+        }
         DrawScytheUltimateShadowField(gameSession, gameTime);
+        DrawDuelistUltimateBlinkDeparture(gameSession);
         if (!(gameSession.IsScytheUltimateActive &&
                 gameSession.Player.Combat.IsUmbralAttached))
         {
             _playerSpriteRenderer.Draw(
                 gameSession.Player,
                 gameTime,
-                gameSession.Player.WeaponFamily == WeaponFamily.ChainFlail
-                    ? gameSession.PlayerAttackArea.Center.ToVector2()
-                    : null,
+                null,
                 playerVisualPosition,
                 sovereignTravelDirection,
                 sovereignTransitionStrength);
@@ -473,6 +561,7 @@ public sealed class GameRenderer : IDisposable
         DrawGreatswordUltimateTargetLock(gameSession, gameTime);
         DrawSovereignUltimateTargetLock(gameSession, gameTime);
         DrawScytheUltimateTargetLock(gameSession, gameTime);
+        DrawDuelistUltimateTargetLock(gameSession, gameTime);
 
         foreach (Projectile projectile in gameSession.Projectiles.Projectiles)
         {
@@ -569,16 +658,20 @@ public sealed class GameRenderer : IDisposable
             gameTime);
         DrawRangerUltimateCinematic(gameSession);
         DrawGreatswordUltimateCinematic(gameSession);
+        DrawKnightUltimateCinematic(gameSession);
         DrawSovereignAssaultOverlay(gameSession);
         DrawSovereignUltimateCinematic(gameSession);
         DrawAncientStaffUltimateCinematic(gameSession, gameTime);
         DrawScytheUltimateCinematic(gameSession);
+        DrawDuelistUltimateCinematic(gameSession);
         DrawSovereignExecutionFrame(gameSession);
         bool hideSovereignHud =
             gameSession.Player.Combat.SovereignUltimateCinematicRatio > 0f ||
+            gameSession.Player.Combat.KnightUltimateCinematicRatio > 0f ||
             gameSession.IsSovereignExecutionActive ||
             gameSession.Player.Combat.AncientStaffUltimateCinematicRatio > 0f ||
-            gameSession.IsScytheUltimateActive;
+            gameSession.IsScytheUltimateActive ||
+            gameSession.IsDuelistUltimateActive;
         if (!hideSovereignHud)
         {
             DrawHudPanel();
@@ -3075,6 +3168,12 @@ public sealed class GameRenderer : IDisposable
 
         if (projectile.Type == ProjectileType.ArcaneBolt)
         {
+            if (projectile.TechniqueEffect ==
+                WeaponTechniqueEffect.DuelistHeavenSplitter)
+            {
+                DrawDuelistHeavenSplitterProjectile(projectile);
+                return;
+            }
             if (projectile.IsAncientStaffProjectile)
             {
                 DrawAncientStaffProjectile(projectile);
@@ -3216,6 +3315,58 @@ public sealed class GameRenderer : IDisposable
             new Vector2(6f, 2f),
             SpriteEffects.None,
             layerDepth: 0f);
+    }
+
+    private void DrawDuelistHeavenSplitterProjectile(Projectile projectile)
+    {
+        Vector2 direction = projectile.Velocity;
+        if (direction.LengthSquared() <= .01f)
+            direction = Vector2.UnitX;
+        else
+            direction.Normalize();
+        Vector2 normal = new(-direction.Y, direction.X);
+        Vector2 center = projectile.Position;
+        float halfLength = MathF.Max(27f, projectile.Size.X * .46f);
+        float halfSpread = MathF.Max(13f, projectile.Size.Y * .25f);
+        Vector2 cyanStart = center - direction * halfLength - normal * halfSpread;
+        Vector2 cyanEnd = center + direction * halfLength + normal * halfSpread;
+        Vector2 violetStart = center - direction * halfLength + normal * halfSpread;
+        Vector2 violetEnd = center + direction * halfLength - normal * halfSpread;
+
+        DrawWorldLine(cyanStart, cyanEnd, 6f,
+            new Color(80, 181, 207, 70));
+        DrawWorldLine(violetStart, violetEnd, 6f,
+            new Color(139, 96, 184, 66));
+        DrawWorldLine(cyanStart + direction * 4f,
+            cyanEnd - direction * 2f, 3f,
+            new Color(145, 226, 239, 225));
+        DrawWorldLine(violetStart + direction * 4f,
+            violetEnd - direction * 2f, 3f,
+            new Color(192, 166, 225, 220));
+        DrawWorldLine(cyanStart + direction * 10f,
+            cyanEnd - direction * 4f, 1f,
+            new Color(232, 253, 255, 245));
+        DrawWorldLine(violetStart + direction * 10f,
+            violetEnd - direction * 4f, 1f,
+            new Color(240, 230, 252, 240));
+
+        Vector2 wake = projectile.PreviousPosition - direction * 9f;
+        DrawWorldLine(wake - normal * 7f,
+            center - direction * 18f - normal * 4f, 1f,
+            new Color(121, 211, 230, 125));
+        DrawWorldLine(wake + normal * 7f,
+            center - direction * 18f + normal * 4f, 1f,
+            new Color(183, 151, 218, 118));
+        for (int fragment = -1; fragment <= 1; fragment++)
+        {
+            Vector2 point = center - direction * (22f + (fragment + 1) * 8f) +
+                normal * fragment * 7f;
+            Color color = fragment == 0
+                ? new Color(225, 248, 252, 180)
+                : new Color(205, 186, 232, 145);
+            DrawWorldLine(point - direction * 2f, point + direction * 2f,
+                1f, color);
+        }
     }
 
     private void DrawRunicSpearProjectile(Projectile projectile)
@@ -4953,84 +5104,6 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
-    private void DrawBreakerWorld(GameSession gameSession)
-    {
-        foreach (BreakerShockwave wave in gameSession.BreakerShockwaves)
-        {
-            Vector2 ground = wave.Position;
-            float direction = wave.Direction;
-            float fade = 1f - wave.Progress * .55f;
-            Color crack = new(
-                (int)(96f * fade),
-                (int)(82f * fade),
-                (int)(67f * fade),
-                220);
-            Color dust = new(122, 105, 82, (int)(145f * fade));
-            DrawWorldLine(
-                ground - new Vector2(direction * 25f, 2f),
-                ground + new Vector2(direction * 22f, -1f),
-                4f,
-                crack);
-            DrawWorldLine(
-                ground - new Vector2(direction * 4f, 1f),
-                ground + new Vector2(direction * 13f, -12f),
-                2f,
-                crack);
-            DrawWorldLine(
-                ground + new Vector2(direction * 5f, 0f),
-                ground + new Vector2(direction * 17f, -7f),
-                2f,
-                crack);
-            for (int debris = 0; debris < 3; debris++)
-            {
-                int size = 3 + debris;
-                Vector2 position = ground + new Vector2(
-                    -direction * (8f + debris * 8f),
-                    -9f - debris * 5f);
-                _spriteBatch.Draw(
-                    _pixel,
-                    new Rectangle((int)position.X, (int)position.Y, size, size),
-                    dust);
-            }
-        }
-
-        foreach (BreakerImpactVisual visual in gameSession.BreakerImpactVisuals)
-        {
-            float progress = visual.Progress;
-            float radius = visual.Radius * (.22f + progress * .78f);
-            float fade = 1f - progress;
-            Color crack = new(91, 76, 61, (int)(220f * fade));
-            Color dust = new(135, 112, 84, (int)(165f * fade));
-            Vector2 left = visual.Position - new Vector2(radius, 0f);
-            Vector2 right = visual.Position + new Vector2(radius, 0f);
-            DrawWorldLine(left, right, 3f + visual.Strength * 2f, crack);
-            for (int index = 0; index < 6; index++)
-            {
-                float side = index % 2 == 0 ? -1f : 1f;
-                float distance = radius * (.20f + index * .12f);
-                Vector2 root = visual.Position + new Vector2(
-                    side * distance,
-                    -1f);
-                Vector2 tip = root + new Vector2(
-                    side * (7f + index * 2f),
-                    -5f - index % 3 * 4f);
-                DrawWorldLine(root, tip, index < 2 ? 3f : 2f, crack);
-                int fragment = 3 + index % 3;
-                Vector2 fragmentPosition = tip - new Vector2(
-                    0f,
-                    (8f + index * 3f) * fade);
-                _spriteBatch.Draw(
-                    _pixel,
-                    new Rectangle(
-                        (int)fragmentPosition.X,
-                        (int)fragmentPosition.Y,
-                        fragment,
-                        fragment),
-                    dust);
-            }
-        }
-    }
-
     private void DrawGroundRune(GroundRune rune)
     {
         Vector2 center = rune.Position - new Vector2(0f, 6f);
@@ -6695,31 +6768,6 @@ public sealed class GameRenderer : IDisposable
             int top = bounds.Y + 3;
             int height = Math.Max(8, bounds.Height - 14);
 
-            if (item.WeaponDefinition.Family == WeaponFamily.BattleAxe)
-            {
-                _spriteBatch.Draw(
-                    _pixel,
-                    new Rectangle(centerX - 2, top + 4, 5, height + 4),
-                    new Color(105, 68, 45));
-                _spriteBatch.Draw(
-                    _pixel,
-                    new Rectangle(centerX - 10, top + 1, 21, 9),
-                    color);
-                _spriteBatch.Draw(
-                    _pixel,
-                    new Rectangle(centerX - 13, top + 4, 5, 10),
-                    color);
-                return;
-            }
-
-            if (item.WeaponDefinition.Family == WeaponFamily.Spear)
-            {
-                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 2, top, 4, height + 10), new Color(117, 78, 49));
-                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 5, top - 1, 10, 9), color);
-                _spriteBatch.Draw(_pixel, new Rectangle(centerX - 2, top - 5, 4, 8), color);
-                return;
-            }
-
             if (item.WeaponDefinition.Family == WeaponFamily.DualDaggers)
             {
                 _spriteBatch.Draw(_pixel, new Rectangle(centerX - 10, top + 2, 4, height - 2), color);
@@ -6744,34 +6792,6 @@ public sealed class GameRenderer : IDisposable
                 _spriteBatch.Draw(_pixel, new Rectangle(centerX - 2, top + 6, 5, height + 4), new Color(105, 68, 45));
                 _spriteBatch.Draw(_pixel, new Rectangle(centerX - 7, top, 15, 12), new Color(45, 35, 57));
                 _spriteBatch.Draw(_pixel, new Rectangle(centerX - 4, top + 3, 9, 6), color);
-                return;
-            }
-
-            if (item.WeaponDefinition.Family == WeaponFamily.ChainFlail)
-            {
-                _spriteBatch.Draw(_pixel,
-                    new Rectangle(centerX - 2, top + 14, 5, height - 3),
-                    new Color(105, 68, 45));
-                for (int link = 0; link < 4; link++)
-                {
-                    _spriteBatch.Draw(_pixel,
-                        new Rectangle(centerX + 3 + link * 4, top + 12 - link * 3, 4, 3),
-                        new Color(112, 119, 126));
-                }
-                _spriteBatch.Draw(_pixel,
-                    new Rectangle(centerX + 17, top - 4, 13, 13), color);
-                return;
-            }
-
-            if (item.WeaponDefinition.Family == WeaponFamily.SpikedMace)
-            {
-                _spriteBatch.Draw(_pixel,
-                    new Rectangle(centerX - 2, top + 10, 5, height + 3),
-                    new Color(105, 68, 45));
-                _spriteBatch.Draw(_pixel,
-                    new Rectangle(centerX - 9, top - 2, 19, 19), color);
-                _spriteBatch.Draw(_pixel,
-                    new Rectangle(centerX - 13, top + 5, 27, 5), color);
                 return;
             }
 
@@ -8520,25 +8540,13 @@ public sealed class GameRenderer : IDisposable
 
         if (player.WeaponFamily == WeaponFamily.DualSwords)
         {
-            DrawDuelistMomentum(player);
+            DrawDuelistMomentum(player, gameTime);
             return;
         }
 
         if (player.WeaponFamily == WeaponFamily.HunterBow)
         {
             DrawHunterFocus(player);
-            return;
-        }
-
-        if (player.WeaponFamily == WeaponFamily.SpikedMace)
-        {
-            DrawBreakerInertia(player);
-            return;
-        }
-
-        if (player.WeaponFamily == WeaponFamily.ChainFlail)
-        {
-            DrawChainMomentum(player);
             return;
         }
 
@@ -8553,7 +8561,6 @@ public sealed class GameRenderer : IDisposable
         {
             WeaponFamily.DualSwords => new Color(214, 113, 90),
             WeaponFamily.ArcaneWarStaff => new Color(151, 104, 214),
-            WeaponFamily.ChainFlail => new Color(190, 154, 86),
             _ => new Color(154, 158, 164)
         };
 
@@ -8620,117 +8627,47 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
-    private void DrawBreakerInertia(PlayerCharacter player)
-    {
-        const int barX = 42;
-        const int barY = 91;
-        const int barWidth = 198;
-        const int barHeight = 7;
-        float ratio = player.Combat.Resources.BreakerInertiaRatio;
-        Rectangle border = new(barX, barY, barWidth, barHeight);
-        Rectangle background = new(
-            barX + 1,
-            barY + 1,
-            barWidth - 2,
-            barHeight - 2);
-        _spriteBatch.Draw(_pixel, border, new Color(118, 109, 99));
-        _spriteBatch.Draw(_pixel, background, new Color(38, 31, 29));
-        int fillWidth = (int)MathF.Round(background.Width * ratio);
-        if (fillWidth > 0)
-        {
-            Color fill = Color.Lerp(
-                new Color(126, 84, 61),
-                new Color(174, 61, 45),
-                ratio);
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(
-                    background.X,
-                    background.Y,
-                    fillWidth,
-                    background.Height),
-                fill);
-        }
-        for (int segment = 1; segment < 10; segment++)
-        {
-            int x = background.X + background.Width * segment / 10;
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(x, background.Y, 1, background.Height),
-                new Color(28, 24, 23, 150));
-        }
-    }
-
-    private void DrawChainMomentum(PlayerCharacter player)
-    {
-        const int barX = 42;
-        const int barY = 78;
-        const int barWidth = 198;
-        const int barHeight = 8;
-        float ratio = player.Combat.Resources.ChainMomentumRatio;
-        Rectangle border = new(barX, barY, barWidth, barHeight);
-        Rectangle background = new(
-            barX + 1,
-            barY + 1,
-            barWidth - 2,
-            barHeight - 2);
-        _spriteBatch.Draw(_pixel, border, new Color(135, 126, 112));
-        _spriteBatch.Draw(_pixel, background, new Color(34, 31, 29));
-        int fillWidth = (int)MathF.Round(background.Width * ratio);
-        if (fillWidth > 0)
-        {
-            Color fill = Color.Lerp(
-                new Color(132, 116, 83),
-                new Color(203, 155, 78),
-                ratio);
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(
-                    background.X,
-                    background.Y,
-                    fillWidth,
-                    background.Height),
-                fill);
-        }
-
-        for (int marker = 1; marker < 4; marker++)
-        {
-            int x = background.X + background.Width * marker / 4;
-            _spriteBatch.Draw(
-                _pixel,
-                new Rectangle(x, background.Y, 1, background.Height),
-                new Color(218, 201, 168, 150));
-        }
-
-        int activeSegments = player.Combat.Resources.ActiveValue;
-        for (int segment = 0; segment < 10; segment++)
-        {
-            Rectangle pip = new(42 + segment * 15, 91, 11, 6);
-            _spriteBatch.Draw(
-                _pixel,
-                pip,
-                segment < activeSegments
-                    ? new Color(190, 154, 86)
-                    : new Color(54, 59, 64));
-            DrawRectangleOutline(pip, 1, new Color(164, 157, 143));
-        }
-    }
-
-    private void DrawDuelistMomentum(PlayerCharacter player)
+    private void DrawDuelistMomentum(
+        PlayerCharacter player,
+        GameTime gameTime)
     {
         const int barX = 42;
         const int barY = 78;
         const int barWidth = 198;
         const int barHeight = 8;
         float ratio = player.Combat.Resources.DuelistMomentumRatio;
-        Color momentum = Color.Lerp(
-            new Color(164, 77, 72),
-            new Color(245, 174, 104),
-            ratio);
+        int tier = player.Combat.Resources.DuelistMomentumTier;
+        if (_observedDuelistMomentumTier >= 0 &&
+            tier > _observedDuelistMomentumTier)
+        {
+            _duelistMomentumTierPulseRemaining = .34f;
+        }
+        _observedDuelistMomentumTier = tier;
+        _duelistMomentumTierPulseRemaining = MathF.Max(
+            0f,
+            _duelistMomentumTierPulseRemaining - MathF.Min(
+                (float)gameTime.ElapsedGameTime.TotalSeconds,
+                .05f));
+        float pulse = _duelistMomentumTierPulseRemaining / .34f;
+        Color momentum = tier switch
+        {
+            2 => Color.Lerp(new Color(111, 205, 222),
+                new Color(185, 151, 224),
+                .35f + .18f * MathF.Sin(
+                    (float)gameTime.TotalGameTime.TotalSeconds * 5f)),
+            1 => new Color(111, 205, 222),
+            _ => new Color(157, 167, 172)
+        };
         Rectangle border = new(barX, barY, barWidth, barHeight);
         Rectangle background = new(barX + 1, barY + 1, barWidth - 2, barHeight - 2);
-        _spriteBatch.Draw(_pixel, border, new Color(177, 187, 181));
-        _spriteBatch.Draw(_pixel, background, new Color(48, 29, 32));
+        Color borderColor = pulse > 0f
+            ? Color.Lerp(new Color(177, 187, 191),
+                new Color(230, 245, 250), pulse)
+            : tier == 2
+                ? new Color(179, 166, 207)
+                : new Color(177, 187, 191);
+        _spriteBatch.Draw(_pixel, border, borderColor);
+        _spriteBatch.Draw(_pixel, background, new Color(28, 34, 39));
 
         int fillWidth = (int)MathF.Round(background.Width * ratio);
         if (fillWidth > 0)
@@ -8739,18 +8676,39 @@ public sealed class GameRenderer : IDisposable
                 _pixel,
                 new Rectangle(background.X, background.Y, fillWidth, background.Height),
                 momentum);
+
+            if (tier >= 1 && fillWidth >= 5)
+            {
+                float travel = ((float)gameTime.TotalGameTime.TotalSeconds *
+                    (tier == 2 ? 70f : 52f)) % Math.Max(1, fillWidth);
+                int lightX = background.X + Math.Clamp(
+                    (int)MathF.Round(travel), 1, Math.Max(1, fillWidth - 3));
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(lightX, background.Y, 3, background.Height),
+                    tier == 2
+                        ? new Color(230, 218, 251, 165)
+                        : new Color(224, 251, 255, 145));
+            }
+
+            if (tier == 2)
+            {
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(background.X, background.Bottom - 1,
+                        fillWidth, 1),
+                    new Color(184, 145, 222, 185));
+            }
         }
 
-        for (int index = 1; index < 3; index++)
+        for (int index = 0; index < 2; index++)
         {
-            int markerX = background.X + background.Width * index / 3;
+            int markerX = background.X +
+                background.Width * (index == 0 ? 35 : 75) / 100;
             _spriteBatch.Draw(
                 _pixel,
                 new Rectangle(markerX, background.Y, 1, background.Height),
                 new Color(231, 219, 191, 175));
         }
 
-        int tier = player.Combat.Resources.DuelistMomentumTier;
         for (int index = 0; index < 3; index++)
         {
             Rectangle pip = new(42 + index * 15, 91, 11, 6);
@@ -8761,6 +8719,509 @@ public sealed class GameRenderer : IDisposable
                 active ? momentum : new Color(54, 59, 64));
             DrawRectangleOutline(pip, 1, new Color(190, 194, 191));
         }
+
+        string tierName = tier switch
+        {
+            2 => "OVERDRIVE",
+            1 => "FLOW",
+            _ => "NORMAL"
+        };
+        if (player.Combat.IsDuelistOverdriveActive)
+            tierName += $" + BLADE {player.Combat.DuelistOverdriveRemaining:0.0}";
+        DrawDebugText(tierName, 92, 90, momentum, 1);
+
+        if (player.Combat.IsDuelistUltimateActive)
+        {
+            string hit = player.Combat.IsDuelistCelestialX
+                ? "CELESTIAL X"
+                : $"HIT {player.Combat.DuelistUltimateHitNumber}/" +
+                    DuelistTuning.UltimateStrikeCount;
+            DrawDebugText(hit, 42, 102, new Color(205, 225, 255), 1);
+        }
+    }
+
+    private void DrawDuelistUltimateBlinkDeparture(GameSession gameSession)
+    {
+        if (!gameSession.IsDuelistUltimateActive ||
+            gameSession.Player.Combat.State == CombatState.ChargingHeavy ||
+            _duelistUltimateDepartureFade <= 0f ||
+            _duelistUltimateDepartureDuration <= 0f)
+        {
+            return;
+        }
+
+        Vector2 arrival = gameSession.Player.Position;
+        Vector2 departure = _duelistUltimateDeparturePosition;
+        Vector2 travel = arrival - departure;
+        if (travel.LengthSquared() < 16f)
+            return;
+        float alpha = Math.Clamp(_duelistUltimateDepartureFade /
+            _duelistUltimateDepartureDuration, 0f, 1f);
+        Vector2 direction = Vector2.Normalize(travel);
+        Vector2 normal = new(-direction.Y, direction.X);
+        int stage = gameSession.DuelistUltimateStage;
+        int group = Math.Clamp(stage / 8, 0, 3);
+        float width = 1f + group * .32f;
+        DrawWorldLine(departure - direction * 5f - normal * 3f,
+            arrival - direction * 8f - normal * 2f, width,
+            new Color(124, 214, 231) * (alpha * (.32f + group * .06f)));
+        DrawWorldLine(departure - direction * 5f + normal * 3f,
+            arrival - direction * 8f + normal * 2f, width,
+            new Color(184, 151, 218) * (alpha * (.30f + group * .06f)));
+        _playerSpriteRenderer.DrawDuelistUltimateEcho(
+            gameSession.Player,
+            departure,
+            alpha * (.26f + group * .08f));
+    }
+
+    private void DrawDuelistUltimateCinematic(GameSession gameSession)
+    {
+        if (!gameSession.IsDuelistUltimateActive)
+            return;
+
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+        float intro = gameSession.Player.Combat.DuelistUltimateCinematicRatio;
+        int stage = gameSession.DuelistUltimateStage;
+        float stageRatio = gameSession.DuelistUltimateStageRatio;
+        int group = stage < 0
+            ? 0
+            : Math.Clamp(stage / 8, 0, 3);
+        float assaultVeil = stage >= 0 &&
+                stage < DuelistTuning.UltimateStrikeCount
+            ? .08f + group * .035f
+            : 0f;
+        float veil = MathF.Max(intro * .56f, assaultVeil);
+        if (stage >= DuelistTuning.UltimateStrikeCount)
+            veil = MathF.Max(veil, .34f);
+        if (veil > .001f)
+        {
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                new Color(10, 14, 30) * veil);
+        }
+
+        if (intro > .001f)
+        {
+            DrawDuelistOpeningCutIn(intro, width, height);
+            return;
+        }
+
+        if (stage >= 0 && stage < DuelistTuning.UltimateStrikeCount)
+        {
+            DrawDuelistAssaultOverlay(gameSession, stage, stageRatio,
+                width, height);
+            return;
+        }
+
+        if (stage >= DuelistTuning.UltimateStrikeCount)
+            DrawDuelistFinalStarfall(gameSession, stageRatio, width, height);
+    }
+
+    private void DrawDuelistOpeningCutIn(
+        float intro,
+        int width,
+        int height)
+    {
+        float reveal = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp(intro / .44f, 0f, 1f));
+        float title = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((intro - .34f) / .34f, 0f, 1f));
+        float transition = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((intro - .78f) / .22f, 0f, 1f));
+        int centerX = width / 2;
+        int centerY = height / 2 - 20;
+        int letterbox = (int)MathF.Round(28f * reveal);
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, letterbox),
+            new Color(5, 8, 17, 235));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(0, height - letterbox, width, letterbox),
+            new Color(5, 8, 17, 235));
+
+        Color constellation = new Color(103, 154, 184) *
+            (reveal * (1f - transition) * .42f);
+        Vector2 starA = new(centerX - 145f, centerY - 66f);
+        Vector2 starB = new(centerX - 72f, centerY - 94f);
+        Vector2 starC = new(centerX + 82f, centerY - 78f);
+        Vector2 starD = new(centerX + 148f, centerY - 30f);
+        DrawWorldLine(starA, starB, 1f, constellation);
+        DrawWorldLine(starB, starC, 1f, constellation);
+        DrawWorldLine(starC, starD, 1f, constellation);
+        DrawScreenFourPointStar(starA, 3f, constellation);
+        DrawScreenFourPointStar(starC, 3f, constellation);
+        DrawScreenFourPointStar(starD, 2f, constellation);
+
+        float faceAlpha = reveal * (1f - transition);
+        Color silhouette = new Color(24, 29, 42) * faceAlpha;
+        Color skinLight = new Color(171, 143, 128) * faceAlpha;
+        Color hair = new Color(30, 31, 38) * faceAlpha;
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 58, centerY + 17, 116, 74),
+            silhouette);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 35, centerY - 55, 70, 82),
+            skinLight);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 39, centerY - 61, 78, 25), hair);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - 42, centerY - 45, 13, 50), hair);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX + 29, centerY - 45, 13, 50), hair);
+        float eyeSweep = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((intro - .42f) / .18f, 0f, 1f));
+        int eyeWidth = (int)MathF.Round(34f * eyeSweep);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX - eyeWidth - 4, centerY - 12,
+                eyeWidth, 2),
+            new Color(151, 225, 239) * faceAlpha);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(centerX + 4, centerY - 12, eyeWidth, 2),
+            new Color(199, 169, 228) * faceAlpha);
+
+        float bladeSplit = transition * width * .34f;
+        Vector2 crossing = new(centerX, centerY + 6f);
+        Vector2 cyanStart = new(centerX - 155f - bladeSplit,
+            centerY + 104f);
+        Vector2 cyanEnd = new(centerX + 130f - bladeSplit,
+            centerY - 116f);
+        Vector2 violetStart = new(centerX + 155f + bladeSplit,
+            centerY + 104f);
+        Vector2 violetEnd = new(centerX - 130f + bladeSplit,
+            centerY - 116f);
+        DrawWorldLine(cyanStart, cyanEnd, 9f,
+            new Color(42, 116, 137) * faceAlpha);
+        DrawWorldLine(cyanStart, cyanEnd, 3f,
+            new Color(198, 246, 252) * faceAlpha);
+        DrawWorldLine(violetStart, violetEnd, 9f,
+            new Color(91, 61, 127) * faceAlpha);
+        DrawWorldLine(violetStart, violetEnd, 3f,
+            new Color(220, 202, 245) * faceAlpha);
+        if (intro is >= .48f and <= .86f)
+        {
+            float star = MathF.Sin(
+                (intro - .48f) / .38f * MathHelper.Pi);
+            DrawScreenFourPointStar(crossing, 8f,
+                new Color(231, 249, 255) * star);
+        }
+
+        if (title > 0f && transition < .92f)
+        {
+            int bannerY = height - 112;
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(centerX - 226 - (int)bladeSplit, bannerY,
+                    218, 3),
+                new Color(116, 214, 231) * title);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(centerX + 8 + (int)bladeSplit, bannerY,
+                    218, 3),
+                new Color(178, 142, 216) * title);
+            DrawDebugText("INFINITE STARBURST: ASCENSION",
+                centerX - 207, bannerY + 12,
+                new Color(224, 235, 242) * title, 2);
+            DrawDebugText("CAN YOU FOLLOW THIS?",
+                centerX - 82, bannerY + 43,
+                new Color(176, 202, 219) * (title * .86f), 1);
+        }
+    }
+
+    private void DrawDuelistAssaultOverlay(
+        GameSession gameSession,
+        int stage,
+        float stageRatio,
+        int width,
+        int height)
+    {
+        Rectangle target = gameSession.DuelistUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+        Vector2 center = Vector2.Transform(
+            target.Center.ToVector2(), gameSession.Camera.Transform);
+        int group = Math.Clamp(stage / 8, 0, 3);
+        int variation = stage % 8;
+        bool front = stage % 2 == 0;
+        float contact = MathF.Sin(Math.Clamp(stageRatio, 0f, 1f) *
+            MathHelper.Pi);
+        float lift = Math.Clamp((stage + stageRatio) /
+            DuelistTuning.UltimateStrikeCount, 0f, 1f);
+        float reach = 26f + group * 7f +
+            (variation is 6 or 7 ? 6f : 0f);
+        float upward = .30f + lift * .48f;
+        Vector2 slash = Vector2.Normalize(new Vector2(1f,
+            front ? upward : -upward));
+        Color core = front
+            ? new Color(195, 244, 251) * (.38f + contact * .48f)
+            : new Color(219, 199, 243) * (.38f + contact * .48f);
+        Color edge = front
+            ? new Color(76, 177, 201) * (contact * .46f)
+            : new Color(135, 91, 181) * (contact * .46f);
+        Vector2 travelStart = center + new Vector2(
+            front ? -width * .22f : width * .22f,
+            18f - lift * 34f);
+        DrawWorldLine(travelStart, center - slash * (reach * .48f),
+            1f + group * .35f, edge);
+        DrawWorldLine(center - slash * reach, center + slash * reach,
+            group >= 2 ? 3f : 2f, core);
+        if (variation is 6 or 7)
+        {
+            Vector2 opposite = new(slash.X, -slash.Y);
+            DrawWorldLine(center - opposite * (reach * .88f),
+                center + opposite * (reach * .88f), 2f,
+                front
+                    ? new Color(203, 181, 231) * contact
+                    : new Color(160, 224, 237) * contact);
+            DrawScreenFourPointStar(center, 4f + group,
+                new Color(229, 246, 251) * contact);
+        }
+
+        int retainedStars = group == 0 ? 1 : group + 2;
+        for (int index = 0; index < retainedStars; index++)
+        {
+            float angle = -.75f + index * .58f + stage * .11f;
+            float radius = 48f + index * 13f + group * 5f;
+            Vector2 point = center + new Vector2(
+                MathF.Cos(angle) * radius,
+                MathF.Sin(angle) * radius - lift * 22f);
+            Vector2 next = center + new Vector2(
+                MathF.Cos(angle + .38f) * (radius + 9f),
+                MathF.Sin(angle + .38f) * (radius + 9f) - lift * 22f);
+            DrawWorldLine(point, next, 1f,
+                new Color(110, 159, 187) * (.10f + group * .045f));
+            DrawScreenFourPointStar(point, group >= 2 ? 3f : 2f,
+                (index % 2 == 0
+                    ? new Color(169, 227, 238)
+                    : new Color(190, 163, 218)) *
+                (.24f + group * .08f));
+        }
+
+        for (int force = -1; force <= 1; force++)
+        {
+            Vector2 forceStart = center + new Vector2(force * 19f,
+                36f + group * 4f);
+            Vector2 forceEnd = center + new Vector2(force * 13f,
+                13f - lift * (18f + group * 5f));
+            DrawWorldLine(forceStart, forceEnd, 1f,
+                new Color(161, 199, 218) * (.16f + group * .04f));
+        }
+
+        if (stage % 8 == 0 && stageRatio < .62f)
+        {
+            string phase = group switch
+            {
+                0 => "FIRST CONSTELLATION",
+                1 => "FALLING STARS",
+                2 => "ASTRAL STORM",
+                _ => "INFINITE STARBURST"
+            };
+            float phaseAlpha = 1f - stageRatio / .62f;
+            DrawDebugText(phase, width / 2 - phase.Length * 5,
+                height / 5, new Color(201, 221, 235) * phaseAlpha, 1);
+        }
+    }
+
+    private void DrawDuelistFinalStarfall(
+        GameSession gameSession,
+        float ratio,
+        int width,
+        int height)
+    {
+        Rectangle target = gameSession.DuelistUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+        Vector2 center = Vector2.Transform(
+            target.Center.ToVector2(), gameSession.Camera.Transform);
+        int letterbox = 32;
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, letterbox),
+            new Color(4, 7, 16, 235));
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(0, height - letterbox, width, letterbox),
+            new Color(4, 7, 16, 235));
+
+        if (ratio < .08f)
+        {
+            float stillness = 1f - ratio / .08f;
+            DrawScreenFourPointStar(center, 6f,
+                new Color(210, 230, 241) * (.34f + stillness * .22f));
+            DrawDuelistFinalConstellation(center, .42f);
+            return;
+        }
+
+        if (ratio < .22f)
+        {
+            float ascent = MathHelper.SmoothStep(0f, 1f,
+                (ratio - .08f) / .14f);
+            float x = width * .5f;
+            DrawWorldLine(new Vector2(x - 5f, height * .72f),
+                new Vector2(x - 3f, height * (.72f - ascent * .58f)),
+                3f, new Color(153, 229, 241) * .80f);
+            DrawWorldLine(new Vector2(x + 5f, height * .72f),
+                new Vector2(x + 3f, height * (.72f - ascent * .58f)),
+                3f, new Color(205, 180, 234) * .76f);
+            DrawDuelistFinalConstellation(center, .34f + ascent * .26f);
+            return;
+        }
+
+        if (ratio < .40f)
+        {
+            float judgment = MathF.Sin(
+                (ratio - .22f) / .18f * MathHelper.Pi);
+            Vector2 close = new(width * .5f, height * .38f);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)close.X - 46, (int)close.Y - 48, 92, 95),
+                new Color(24, 29, 43) * (.70f * judgment));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)close.X - 29, (int)close.Y - 51, 58, 61),
+                new Color(162, 139, 129) * (.78f * judgment));
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)close.X - 33, (int)close.Y - 55, 66, 18),
+                new Color(28, 30, 38) * judgment);
+            DrawWorldLine(close + new Vector2(-105f, 82f),
+                close + new Vector2(88f, -78f), 8f,
+                new Color(68, 151, 171) * judgment);
+            DrawWorldLine(close + new Vector2(-105f, 82f),
+                close + new Vector2(88f, -78f), 2f,
+                new Color(216, 250, 254) * judgment);
+            DrawWorldLine(close + new Vector2(105f, 82f),
+                close + new Vector2(-88f, -78f), 8f,
+                new Color(111, 76, 148) * judgment);
+            DrawWorldLine(close + new Vector2(105f, 82f),
+                close + new Vector2(-88f, -78f), 2f,
+                new Color(229, 213, 249) * judgment);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)close.X - 27, (int)close.Y - 15, 23, 2),
+                new Color(157, 229, 241) * judgment);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle((int)close.X + 4, (int)close.Y - 15, 23, 2),
+                new Color(200, 173, 228) * judgment);
+            DrawScreenFourPointStar(close, 8f,
+                new Color(235, 250, 255) * judgment);
+            DrawDebugText("FALL WITH THE STARS!", width / 2 - 83,
+                height - 88, new Color(214, 229, 240) * judgment, 1);
+            return;
+        }
+
+        float descent = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .40f) / .14f, 0f, 1f));
+        Vector2 high = new(center.X, -42f);
+        Vector2 cyanEntry = Vector2.Lerp(high + new Vector2(-86f, 0f),
+            center, descent);
+        Vector2 violetEntry = Vector2.Lerp(high + new Vector2(86f, 8f),
+            center, Math.Clamp((descent - .20f) / .80f, 0f, 1f));
+        DrawWorldLine(high + new Vector2(-86f, 0f), cyanEntry, 5f,
+            new Color(178, 237, 247) * .90f);
+        if (descent > .20f)
+        {
+            DrawWorldLine(high + new Vector2(86f, 8f), violetEntry, 5f,
+                new Color(211, 190, 239) * .88f);
+        }
+
+        float xLife = ratio < .68f
+            ? Math.Clamp((ratio - .475f) / .065f, 0f, 1f)
+            : 1f - Math.Clamp((ratio - .68f) / .30f, 0f, 1f);
+        if (xLife > 0f)
+        {
+            float extent = 118f;
+            Vector2 cyanA = center + new Vector2(-extent, -extent * .78f);
+            Vector2 cyanB = center + new Vector2(extent, extent * .78f);
+            Vector2 violetA = center + new Vector2(extent, -extent * .78f);
+            Vector2 violetB = center + new Vector2(-extent, extent * .78f);
+            DrawWorldLine(cyanA, cyanB, 13f,
+                new Color(56, 150, 177) * (xLife * .34f));
+            DrawWorldLine(violetA, violetB, 13f,
+                new Color(111, 72, 151) * (xLife * .32f));
+            DrawWorldLine(cyanA, cyanB, 5f,
+                new Color(169, 233, 244) * (xLife * .92f));
+            DrawWorldLine(violetA, violetB, 5f,
+                new Color(207, 183, 237) * (xLife * .90f));
+            DrawWorldLine(cyanA + new Vector2(8f, 6f),
+                cyanB - new Vector2(8f, 6f), 1f,
+                new Color(235, 253, 255) * xLife);
+            DrawWorldLine(violetA + new Vector2(-8f, 6f),
+                violetB + new Vector2(8f, -6f), 1f,
+                new Color(241, 231, 252) * xLife);
+            DrawScreenFourPointStar(center, 13f,
+                new Color(232, 249, 255) * xLife);
+        }
+
+        if (ratio is >= .475f and <= .54f)
+        {
+            float impact = MathF.Sin((ratio - .475f) / .065f *
+                MathHelper.Pi);
+            _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+                new Color(7, 11, 24) * (impact * .32f));
+            DrawDuelistFinalConstellation(center, .78f * impact);
+        }
+
+        if (ratio > .58f)
+        {
+            float aftermath = 1f - Math.Clamp((ratio - .58f) / .40f, 0f, 1f);
+            for (int fragment = -2; fragment <= 2; fragment++)
+            {
+                Vector2 start = center + new Vector2(fragment * 22f,
+                    -42f + MathF.Abs(fragment) * 6f);
+                Vector2 end = start + new Vector2(fragment * 3f,
+                    28f + (fragment + 2) * 5f);
+                DrawWorldLine(start, end, 1f,
+                    (fragment % 2 == 0
+                        ? new Color(172, 229, 239)
+                        : new Color(198, 171, 225)) * (aftermath * .62f));
+            }
+            DrawDuelistFinalConstellation(center, aftermath * .44f);
+        }
+    }
+
+    private void DrawDuelistFinalConstellation(Vector2 center, float alpha)
+    {
+        Vector2 a = center + new Vector2(-86f, -34f);
+        Vector2 b = center + new Vector2(-39f, -79f);
+        Vector2 c = center + new Vector2(34f, -86f);
+        Vector2 d = center + new Vector2(88f, -28f);
+        Vector2 e = center + new Vector2(54f, 57f);
+        Vector2 f = center + new Vector2(-58f, 61f);
+        Color line = new Color(113, 162, 190) * (alpha * .38f);
+        DrawWorldLine(a, b, 1f, line);
+        DrawWorldLine(b, c, 1f, line);
+        DrawWorldLine(c, d, 1f, line);
+        DrawWorldLine(d, e, 1f, line);
+        DrawWorldLine(e, f, 1f, line);
+        DrawWorldLine(f, a, 1f, line);
+        DrawScreenFourPointStar(a, 3f,
+            new Color(184, 232, 241) * alpha);
+        DrawScreenFourPointStar(c, 4f,
+            new Color(224, 244, 249) * alpha);
+        DrawScreenFourPointStar(d, 3f,
+            new Color(205, 180, 232) * alpha);
+        DrawScreenFourPointStar(f, 2f,
+            new Color(193, 165, 222) * alpha);
+    }
+
+    private void DrawScreenFourPointStar(
+        Vector2 center,
+        float radius,
+        Color color)
+    {
+        DrawWorldLine(center - new Vector2(radius, 0f),
+            center + new Vector2(radius, 0f), 1f, color);
+        DrawWorldLine(center - new Vector2(0f, radius),
+            center + new Vector2(0f, radius), 1f, color);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle((int)center.X - 1, (int)center.Y - 1, 3, 3),
+            color);
+    }
+
+    private void DrawDuelistUltimateTargetLock(
+        GameSession gameSession,
+        GameTime gameTime)
+    {
+        if (!gameSession.IsDuelistUltimateTargetLocked)
+            return;
+        Rectangle target = gameSession.DuelistUltimateTargetBounds;
+        if (target.IsEmpty)
+            return;
+        float pulse = .65f + .35f * MathF.Sin(
+            (float)gameTime.TotalGameTime.TotalSeconds * 10f);
+        Rectangle frame = new(target.X - 8, target.Y - 8,
+            target.Width + 16, target.Height + 16);
+        DrawRectangleOutline(frame, 2,
+            new Color(190, 218, 255) * pulse);
     }
 
     private void DrawHunterFocus(PlayerCharacter player)
@@ -10185,6 +10646,82 @@ public sealed class GameRenderer : IDisposable
         }
     }
 
+    private void DrawKnightUltimateCinematic(GameSession gameSession)
+    {
+        float ratio = gameSession.Player.Combat.KnightUltimateCinematicRatio;
+        if (ratio <= 0f)
+            return;
+
+        int width = _graphicsDevice.Viewport.Width;
+        int height = _graphicsDevice.Viewport.Height;
+		float fadeIn = MathHelper.SmoothStep(0f, 1f,
+			Math.Clamp(ratio / .13f, 0f, 1f));
+		float fadeOut = 1f - MathHelper.SmoothStep(0f, 1f,
+			Math.Clamp((ratio - .86f) / .14f, 0f, 1f));
+		float visibility = fadeIn * fadeOut;
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height),
+			new Color(7, 12, 18, Math.Clamp((int)(205f * visibility), 0, 205)));
+
+		float composition = MathHelper.SmoothStep(0f, 1f,
+			Math.Clamp((ratio - .07f) / .24f, 0f, 1f));
+		float slabWidth = width * .88f * composition;
+		Rectangle slab = new(
+			(int)(width * .50f - slabWidth * .50f),
+			(int)(height * .28f),
+			(int)slabWidth,
+			(int)(height * .45f));
+		_spriteBatch.Draw(_pixel, slab,
+			new Color(18, 28, 36, (int)(184f * visibility)));
+		_spriteBatch.Draw(_pixel,
+			new Rectangle(slab.X, slab.Y, slab.Width, Math.Max(2, height / 180)),
+			new Color(137, 161, 171, (int)(180f * visibility)));
+		_spriteBatch.Draw(_pixel,
+			new Rectangle(slab.X, slab.Bottom - Math.Max(2, height / 180),
+				slab.Width, Math.Max(2, height / 180)),
+			new Color(72, 107, 123, (int)(160f * visibility)));
+
+        float reveal = MathHelper.SmoothStep(0f, 1f,
+            Math.Clamp((ratio - .10f) / .28f, 0f, 1f));
+        if (reveal > 0f)
+        {
+			DrawWorldLine(new Vector2(width * .10f, height * .70f),
+				new Vector2(width * .92f, height * .34f), 4f,
+				new Color(116, 153, 169, (int)(210f * visibility)));
+			DrawWorldLine(new Vector2(width * .13f, height * .73f),
+				new Vector2(width * .88f, height * .40f), 1f,
+				new Color(209, 220, 222, (int)(135f * visibility)));
+			float shieldRadius = MathHelper.Lerp(16f, 27f, reveal);
+			Vector2 shieldCenter = new(width * .73f, height * .52f);
+			for (int side = -1; side <= 1; side += 2)
+			{
+				DrawWorldLine(shieldCenter + new Vector2(side * shieldRadius, -shieldRadius),
+					shieldCenter + new Vector2(side * shieldRadius, shieldRadius * .45f),
+					2f, new Color(156, 178, 186, (int)(140f * visibility)));
+				DrawWorldLine(shieldCenter + new Vector2(side * shieldRadius, shieldRadius * .45f),
+					shieldCenter + new Vector2(0f, shieldRadius), 2f,
+					new Color(91, 130, 148, (int)(140f * visibility)));
+			}
+			float scale = MathHelper.Lerp(3.0f, 3.48f, reveal);
+            _spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp,
+                transformMatrix: Matrix.CreateScale(scale) *
+                    Matrix.CreateTranslation(width * .28f, height * .87f, 0f));
+			_playerSpriteRenderer.DrawKnightCinematicCutIn(
+				gameSession.Player, Vector2.Zero, reveal);
+            _spriteBatch.End();
+            _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        }
+
+        if (ratio >= .42f)
+            DrawCenteredDebugText(Loc.Get("weapon.knight_final_oath.name"),
+                width / 2, height / 2 - 82,
+				new Color(220, 232, 235, (int)(255f * visibility)), 3);
+        if (ratio >= .70f)
+            DrawCenteredDebugText(Loc.Get("weapon.knight_final_oath.voice"),
+                width / 2, height / 2 - 40,
+				new Color(147, 181, 196, (int)(255f * visibility)), 2);
+    }
+
     private void DrawSovereignUltimateCinematic(GameSession gameSession)
     {
         float ratio = gameSession.Player.Combat.SovereignUltimateCinematicRatio;
@@ -10735,21 +11272,27 @@ public sealed class GameRenderer : IDisposable
         float pulse = .5f + .5f * MathF.Sin(
             (float)gameTime.TotalGameTime.TotalSeconds * 7f);
         Rectangle bounds = target;
-        bounds.Inflate(7 + (int)MathF.Round(pulse * 4f), 6);
-        Color gold = new(224, 181, 82, 215);
+		bool knight = gameSession.IsKnightUltimateTargetLocked;
+		bounds.Inflate(
+			knight ? 4 + (int)MathF.Round(pulse * 2f) :
+				7 + (int)MathF.Round(pulse * 4f),
+			knight ? 4 : 6);
+		Color gold = knight
+			? new Color(137, 175, 190, 195)
+			: new Color(224, 181, 82, 215);
         int corner = Math.Max(9, Math.Min(20, bounds.Width / 3));
         DrawWorldLine(new Vector2(bounds.Left, bounds.Top),
-            new Vector2(bounds.Left + corner, bounds.Top), 3f, gold);
+			new Vector2(bounds.Left + corner, bounds.Top), knight ? 2f : 3f, gold);
         DrawWorldLine(new Vector2(bounds.Left, bounds.Top),
-            new Vector2(bounds.Left, bounds.Top + corner), 3f, gold);
+			new Vector2(bounds.Left, bounds.Top + corner), knight ? 2f : 3f, gold);
         DrawWorldLine(new Vector2(bounds.Right, bounds.Top),
-            new Vector2(bounds.Right - corner, bounds.Top), 3f, gold);
+			new Vector2(bounds.Right - corner, bounds.Top), knight ? 2f : 3f, gold);
         DrawWorldLine(new Vector2(bounds.Right, bounds.Top),
-            new Vector2(bounds.Right, bounds.Top + corner), 3f, gold);
+			new Vector2(bounds.Right, bounds.Top + corner), knight ? 2f : 3f, gold);
         DrawWorldLine(new Vector2(bounds.Left, bounds.Bottom),
-            new Vector2(bounds.Left + corner, bounds.Bottom), 3f, gold);
+			new Vector2(bounds.Left + corner, bounds.Bottom), knight ? 2f : 3f, gold);
         DrawWorldLine(new Vector2(bounds.Right, bounds.Bottom),
-            new Vector2(bounds.Right - corner, bounds.Bottom), 3f, gold);
+			new Vector2(bounds.Right - corner, bounds.Bottom), knight ? 2f : 3f, gold);
     }
 
     private void DrawTechniqueFeedback(PlayerCharacter player)
@@ -10932,8 +11475,12 @@ public sealed class GameRenderer : IDisposable
             DrawCharacterSlotBase(panel, index, selected, session.SaveSlots[index].Occupied);
         }
 
+        SaveSlotData selectedSlot =
+            session.SaveSlots[session.CharacterSelect.SelectedSlotIndex];
         DrawCenteredText(
-            Loc.Get("character.select.controls"),
+            Loc.Get(selectedSlot.Occupied
+                ? "character.select.delete"
+                : "character.select.controls"),
             screen.Center.X,
             screen.Height - (viewport.Height >= 900 ? 34 : 24),
             new Color(166, 171, 169),
@@ -11179,31 +11726,46 @@ public sealed class GameRenderer : IDisposable
         Viewport viewport = _graphicsDevice.Viewport;
         var screen = new Rectangle(0, 0, viewport.Width, viewport.Height);
         var panel = new Rectangle(
-            viewport.Width / 2 - Math.Min(220, viewport.Width / 2 - 18),
-            viewport.Height / 2 - 82,
-            Math.Min(440, viewport.Width - 36),
-            164);
+            viewport.Width / 2 - Math.Min(250, viewport.Width / 2 - 18),
+            viewport.Height / 2 - 110,
+            Math.Min(500, viewport.Width - 36),
+            220);
         _spriteBatch.Draw(_pixel, screen, new Color(4, 5, 7, 185));
-        _spriteBatch.Draw(_pixel, panel, new Color(34, 20, 23, 252));
-        DrawRectangleOutline(panel, 4, new Color(169, 67, 65));
+        _spriteBatch.Draw(_pixel, panel, new Color(20, 20, 23, 252));
+        DrawRectangleOutline(panel, 4, new Color(205, 162, 70));
         DrawCenteredText(
             Loc.Get("character.delete.title"),
             panel.Center.X,
-            panel.Y + 27,
+            panel.Y + 24,
             new Color(229, 151, 134),
             2);
         DrawCenteredText(
             session.SaveSlots[session.CharacterSelect.SelectedSlotIndex].CharacterName,
             panel.Center.X,
-            panel.Y + 62,
+            panel.Y + 58,
             new Color(218, 192, 139),
+            1);
+        DrawCenteredText(
+            Loc.Get("character.delete.question"),
+            panel.Center.X,
+            panel.Y + 91,
+            new Color(170, 154, 147),
             1);
         DrawCenteredText(
             Loc.Get("character.delete.warning"),
             panel.Center.X,
-            panel.Y + 88,
-            new Color(170, 154, 147),
+            panel.Y + 116,
+            new Color(205, 105, 96),
             1);
+        if (session.CharacterSelect.DeleteFailed)
+        {
+            DrawCenteredText(
+                Loc.Get("character.delete.failed"),
+                panel.Center.X,
+                panel.Y + 146,
+                new Color(224, 91, 82),
+                1);
+        }
         DrawCenteredText(
             Loc.Get("character.delete.controls"),
             panel.Center.X,

@@ -26,15 +26,29 @@ public static class WeaponIdentityValidation
 
     private static void ValidateCatalogAndGrant()
     {
+        string[] expectedIds =
+        {
+            "knight-long-sword",
+            "duelist-dual-swords",
+            "iron-vanguard-greatsword",
+            "hunter-bow",
+            "shadow-reaper-scythe",
+            "arcane-war-staff",
+            "forbidden-sovereign-abyss-ring"
+        };
         Require(EquipmentCatalog.AllImplementedWeapons.Count ==
-            EquipmentCatalog.WeaponSampleCount,
+            EquipmentCatalog.WeaponSampleCount &&
+            EquipmentCatalog.WeaponSampleCount == expectedIds.Length,
             "catalog count does not match sample count");
 
         var ids = new HashSet<string>(StringComparer.Ordinal);
         var types = new HashSet<WeaponFamily>();
-        foreach (WeaponDefinition definition in
-                 EquipmentCatalog.AllImplementedWeapons)
+        for (int index = 0; index < expectedIds.Length; index++)
         {
+            WeaponDefinition definition =
+                EquipmentCatalog.AllImplementedWeapons[index];
+            Require(definition.WeaponId == expectedIds[index],
+                $"canonical roster mismatch at index {index}");
             Require(ids.Add(definition.WeaponId),
                 $"duplicate canonical WeaponId {definition.WeaponId}");
             Require(types.Add(definition.WeaponType),
@@ -62,6 +76,28 @@ public static class WeaponIdentityValidation
             player.GrantAllWeapons() == 0 &&
             player.Inventory.Count == before,
             "Grant All Weapons is not idempotent");
+        Require(EquipmentCatalog.ResolveSavedWeaponId("rusted-long-sword") ==
+            EquipmentCatalog.KnightLongSword,
+            "obsolete starting sword did not migrate to Knight");
+		WeaponDefinition knight = EquipmentCatalog.KnightLongSword;
+		Require(knight.WeaponId == "knight-long-sword" &&
+			knight.Family == WeaponFamily.LongSword &&
+			ReferenceEquals(
+				knight.CombatProfile,
+				WeaponTechniqueCatalog.KnightSwordAndShield) &&
+			ReferenceEquals(
+				knight.MoveSet,
+				WeaponMoveSets.KnightSwordAndShield),
+			"Knight identity is not bound to the current Sword & Shield profile");
+		var legacyKnightSlot = new SaveSlotData
+		{
+			EquippedWeaponId = "rusted-long-sword"
+		};
+		EquipmentItem migratedKnight =
+			CharacterSelectState.CreateWeapon(legacyKnightSlot);
+		Require(migratedKnight.WeaponId == knight.WeaponId &&
+			ReferenceEquals(migratedKnight.WeaponDefinition, knight),
+			"legacy Long Sword save did not resolve to the canonical Knight definition");
 
         EquipmentItem removed = FindInventoryWeapon(
             player,
@@ -78,14 +114,19 @@ public static class WeaponIdentityValidation
         legacyPlayer.RestoreSaveState(
             1,
             0,
-            EquipmentCatalog.CreateStartingWeapon(),
+            EquipmentCatalog.CreateDevelopmentWeapon(0),
             EquipmentCatalog.CreateStartingArmor());
         var legacyInventory = new List<EquipmentItem>();
         for (int index = 1;
              index < EquipmentCatalog.AllImplementedWeapons.Count;
              index++)
         {
-            legacyInventory.Add(EquipmentCatalog.CreateWeaponSample(index));
+            if (EquipmentCatalog.AllImplementedWeapons[index].WeaponId !=
+                EquipmentCatalog.ShadowReaperScythe.WeaponId)
+            {
+                legacyInventory.Add(
+                    EquipmentCatalog.CreateDevelopmentWeapon(index));
+            }
         }
         legacyPlayer.Inventory.Restore(legacyInventory);
         Require(legacyPlayer.NormalizeDevelopmentTestWeapons(),
@@ -166,12 +207,22 @@ public static class WeaponIdentityValidation
             EquipmentCatalog.CreateStartingArmor());
         combat.Resources.AddHunterFocus(80f);
 
-        WeaponDefinition alternateBow = EquipmentCatalog.CreateGeneratedWeapon(
+        WeaponDefinition alternateBow = new(
             "validation-bow",
             "Validation Bow",
             WeaponFamily.HunterBow,
             4,
-            12);
+            12,
+            EquipmentCatalog.HunterBow.AttackSpeedModifier,
+            EquipmentCatalog.HunterBow.StaminaCostModifier,
+            EquipmentCatalog.HunterBow.RangeModifier,
+            EquipmentCatalog.HunterBow.KnockbackModifier,
+            EquipmentCatalog.HunterBow.PoiseDamageModifier,
+            EquipmentCatalog.HunterBow.UsesShield,
+            EquipmentCatalog.HunterBow.AttackMovementMultiplier,
+            EquipmentCatalog.HunterBow.HeavyAttackProfile,
+            EquipmentCatalog.HunterBow.MoveSet,
+            EquipmentCatalog.HunterBow.CombatProfile);
         combat.ApplyLoadout(
             alternateBow,
             EquipmentCatalog.CreateStartingArmor());
@@ -192,19 +243,24 @@ public static class WeaponIdentityValidation
         try
         {
             var manager = new SaveSlotManager(path);
-            WeaponDefinition custom = EquipmentCatalog.CreateGeneratedWeapon(
-                "boss-ember-bow",
-                "Ember Oath",
-                WeaponFamily.HunterBow,
-                5,
-                21);
-            var customItem = new EquipmentItem(custom, ItemRarity.Legendary);
-            SavedEquipmentItemData customData =
-                SavedEquipmentItemData.FromItem(customItem);
+            var obsoleteInventoryItem = new SavedEquipmentItemData
+            {
+                DefinitionId = "hunter-spear",
+                Name = "Hunter Spear",
+                Slot = EquipmentSlot.Weapon,
+                Rarity = ItemRarity.Legendary,
+                WeaponFamily = WeaponFamily.Spear,
+                Tier = 3,
+                DamageBonus = 9
+            };
 
             SaveSlotData[] slots =
             {
-                CreateSlot(0, "BOW", EquipmentCatalog.HunterBow, customData),
+                CreateSlot(
+                    0,
+                    "BOW",
+                    EquipmentCatalog.HunterBow,
+                    obsoleteInventoryItem),
                 CreateSlot(1, "GREAT", EquipmentCatalog.IronVanguardGreatsword),
                 CreateSlot(2, "STAFF", EquipmentCatalog.ArcaneWarStaff)
             };
@@ -226,16 +282,51 @@ public static class WeaponIdentityValidation
                     $"slot {index} loaded another slot's weapon identity");
             }
 
-            SavedEquipmentItemData loadedCustom =
+            SavedEquipmentItemData loadedObsolete =
                 reloaded.GetSlot(0).InventoryItems[0];
-            EquipmentItem restoredCustom =
-                CharacterSelectState.CreateInventoryItem(loadedCustom);
-            Require(restoredCustom.WeaponId == custom.WeaponId &&
-                restoredCustom.Name == custom.Name &&
-                restoredCustom.WeaponType == custom.WeaponType &&
-                restoredCustom.Tier == custom.Tier &&
-                restoredCustom.DamageBonus == custom.DamageBonus,
-                "save/load did not preserve exact generated weapon identity");
+            Require(CharacterSelectState.TryCreateInventoryItem(
+                    loadedObsolete,
+                    out EquipmentItem migrated) &&
+                migrated.WeaponId == EquipmentCatalog.HunterBow.WeaponId,
+                "legacy inventory weapon did not migrate to canonical identity");
+
+            loadedObsolete.DefinitionId = "removed-prototype-weapon";
+            Require(!CharacterSelectState.TryCreateInventoryItem(
+                    loadedObsolete,
+                    out EquipmentItem skipped) &&
+                skipped == null,
+                "unknown saved weapon was exposed as a playable item");
+
+            SaveSlotData unknownEquipped = CreateSlot(
+                0,
+                "UNKNOWN",
+                EquipmentCatalog.HunterBow);
+            unknownEquipped.EquippedWeaponId = "removed-prototype-weapon";
+            Require(CharacterSelectState.CreateWeapon(unknownEquipped).WeaponId ==
+                EquipmentCatalog.KnightLongSword.WeaponId,
+                "unknown equipped weapon did not fall back safely");
+
+            string[] removedIds =
+            {
+                "war-axe",
+                "raider-axe",
+                "breaker-spiked-mace",
+                "reckoner-chain-flail"
+            };
+            foreach (string removedId in removedIds)
+            {
+                loadedObsolete.DefinitionId = removedId;
+                Require(!CharacterSelectState.TryCreateInventoryItem(
+                        loadedObsolete,
+                        out EquipmentItem removedItem) &&
+                    removedItem == null,
+                    $"removed inventory weapon {removedId} was exposed");
+
+                unknownEquipped.EquippedWeaponId = removedId;
+                Require(CharacterSelectState.CreateWeapon(unknownEquipped).WeaponId ==
+                    EquipmentCatalog.KnightLongSword.WeaponId,
+                    $"removed equipped weapon {removedId} did not fall back safely");
+            }
         }
         finally
         {
@@ -257,11 +348,11 @@ public static class WeaponIdentityValidation
         }
 
         var bossReward = new BossWeaponReward(
-            EquipmentCatalog.ReckonerChainFlail,
+            EquipmentCatalog.IronVanguardGreatsword,
             ItemRarity.Legendary).CreateItem();
         Require(bossReward?.WeaponId ==
-                EquipmentCatalog.ReckonerChainFlail.WeaponId &&
-            bossReward.WeaponType == WeaponFamily.ChainFlail,
+                EquipmentCatalog.IronVanguardGreatsword.WeaponId &&
+            bossReward.WeaponType == WeaponFamily.GreatSword,
             "boss reward factory changed weapon identity");
     }
 

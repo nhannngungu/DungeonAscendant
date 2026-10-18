@@ -72,6 +72,10 @@ public sealed class Player
     public ArmorDefinition EquippedArmor =>
         EquippedItems.Armor?.ArmorDefinition ?? EquipmentCatalog.KnightArmor;
     public WeaponFamily WeaponFamily => EquippedWeapon.Family;
+	public bool IsKnightSwordAndShield => string.Equals(
+		EquippedWeapon.WeaponId,
+		EquipmentCatalog.KnightLongSword.WeaponId,
+		StringComparison.Ordinal);
     public ArmorClass ArmorClass => EquippedArmor.Class;
     public bool UsesShield => EquippedWeapon.UsesShield;
     public int Level { get; private set; }
@@ -106,10 +110,12 @@ public sealed class Player
                     ? PlayerVisualState.GuardBreak
                     : Combat.State == CombatState.Dodging
                         ? PlayerVisualState.Dodge
-                    : Combat.CurrentTechnique?.Effect is
-                        WeaponTechniqueEffect.IronBastion or
-                        WeaponTechniqueEffect.OathStance &&
-                        Combat.TechniqueStageIndex == 0
+                    : (Combat.CurrentTechnique?.Effect is
+                            WeaponTechniqueEffect.KnightShieldGuard or
+                            WeaponTechniqueEffect.KnightShieldWall ||
+                       Combat.CurrentTechnique?.Effect ==
+                            WeaponTechniqueEffect.KnightFinalOath &&
+                            Combat.TechniqueStageIndex is 0 or 8)
                             ? PlayerVisualState.Block
                         : Combat.State == CombatState.ChargingHeavy
                             ? PlayerVisualState.HeavyCharge
@@ -165,9 +171,11 @@ public sealed class Player
         if (DebugGiveAllTestEquipment)
         {
             EnsureCanonicalTestWeapons();
-            foreach (EquipmentItem item in EquipmentCatalog.CreateSampleInventory())
-                if (item.ArmorDefinition != null)
-                    Inventory.TryAdd(item);
+            foreach (EquipmentItem item in
+                     EquipmentCatalog.CreateDevelopmentArmorInventory())
+            {
+                Inventory.TryAdd(item);
+            }
         }
 
         ApplyEquipmentToCombat();
@@ -199,6 +207,7 @@ public sealed class Player
         EquippedItems.SetStartingItems(
             weapon ?? EquipmentCatalog.CreateStartingWeapon(),
             armor ?? EquipmentCatalog.CreateStartingArmor());
+		Combat.CancelActions(restoreStamina: true);
         ApplyEquipmentToCombat();
         CurrentHealth = MaxHealth;
     }
@@ -273,6 +282,10 @@ public sealed class Player
             verticalVelocity +=
                 GreatswordTuning.FallingBastionDownwardBoost * elapsedSeconds;
         }
+        if (Combat.IsKnightFallingShield)
+            verticalVelocity = MathF.Max(
+                verticalVelocity,
+                KnightTuning.FallingShieldDownwardSpeed);
         if (Combat.IsAstralDescending)
             verticalVelocity = MathF.Max(verticalVelocity, 760f);
         if (Combat.CurrentTechnique?.Effect ==
@@ -345,7 +358,8 @@ public sealed class Player
 
     public void PullToward(Vector2 target, float distance, DungeonMap dungeon)
     {
-        if (!IsAlive || dungeon == null || distance <= 0f)
+        if (!IsAlive || Combat.IsUltimateControlImmune ||
+            dungeon == null || distance <= 0f)
             return;
 
         Combat.HardInterrupt();
@@ -367,7 +381,8 @@ public sealed class Player
         float distance,
         DungeonMap dungeon)
     {
-        if (!IsAlive || dungeon == null || distance <= 0f)
+        if (!IsAlive || Combat.IsUltimateControlImmune ||
+            dungeon == null || distance <= 0f)
             return;
 
         Combat.HardInterrupt();
@@ -424,6 +439,7 @@ public sealed class Player
             Inventory))
             return false;
 
+		Combat.CancelActions();
         ApplyEquipmentToCombat();
         CurrentHealth = Math.Min(CurrentHealth, MaxHealth);
         return true;
@@ -478,14 +494,10 @@ public sealed class Player
             }
         }
 
-        // An old debug loadout owned every pre-Greatsword archetype. Only that
-        // recognizable test fixture is normalized; partial/earned inventories
-        // are left intact.
-        if (ownedCanonicalIds.Count <
-            EquipmentCatalog.AllImplementedWeapons.Count - 1)
-        {
+        // Only exact historical debug rosters are normalized. Partial current
+        // inventories and legitimate duplicate rewards remain untouched.
+        if (!IsRecognizedLegacyDevelopmentRoster(ownedCanonicalIds))
             return false;
-        }
 
         bool equippedIsCanonical = EquipmentCatalog.GetImplementedWeaponOrder(
             EquippedItems.Weapon?.WeaponId) != int.MaxValue;
@@ -532,6 +544,44 @@ public sealed class Player
         ApplyEquipmentToCombat();
         CurrentHealth = Math.Min(CurrentHealth, MaxHealth);
         return true;
+    }
+
+    private static bool IsRecognizedLegacyDevelopmentRoster(
+        HashSet<string> ownedWeaponIds)
+    {
+        if (ownedWeaponIds == null)
+            return false;
+
+        bool IsCurrentExcept(params WeaponDefinition[] laterAdditions)
+        {
+            var excluded = new HashSet<string>(StringComparer.Ordinal);
+            foreach (WeaponDefinition definition in laterAdditions)
+                excluded.Add(definition.WeaponId);
+
+            if (ownedWeaponIds.Count !=
+                EquipmentCatalog.AllImplementedWeapons.Count - excluded.Count)
+            {
+                return false;
+            }
+
+            foreach (WeaponDefinition definition in
+                     EquipmentCatalog.AllImplementedWeapons)
+            {
+                if (!excluded.Contains(definition.WeaponId) &&
+                    !ownedWeaponIds.Contains(definition.WeaponId))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return IsCurrentExcept(EquipmentCatalog.ShadowReaperScythe) ||
+            IsCurrentExcept(
+                EquipmentCatalog.IronVanguardGreatsword,
+                EquipmentCatalog.ForbiddenSovereignAbyssRing,
+                EquipmentCatalog.ShadowReaperScythe);
     }
 
     public int CountOwnedImplementedWeapons()
@@ -627,7 +677,8 @@ public sealed class Player
 
     public void ApplySlow(float movementMultiplier, float durationSeconds)
     {
-        if (!IsAlive || durationSeconds <= 0f)
+        if (!IsAlive || Combat.IsUltimateControlImmune ||
+            durationSeconds <= 0f)
             return;
 
         float clampedMultiplier = MathHelper.Clamp(

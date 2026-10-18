@@ -25,12 +25,6 @@ public sealed class WeaponResourceState
         HunterUltimate / RangerTuning.UltimateMaximum, 0f, 1f);
     public bool IsHunterUltimateReady =>
         HunterUltimate >= RangerTuning.UltimateMaximum;
-    public float ChainMomentum { get; private set; }
-    public float ChainMomentumRatio =>
-        ReckonerTuning.MomentumRatio(ChainMomentum);
-    public float BreakerInertia { get; private set; }
-    public float BreakerInertiaRatio =>
-        BreakerTuning.InertiaRatio(BreakerInertia);
     public int ElderSigils { get; private set; }
     public int ActiveValue => Family switch
     {
@@ -40,12 +34,6 @@ public sealed class WeaponResourceState
         WeaponFamily.HunterBow => HunterFocus <= 0f
             ? 0
             : Math.Clamp((int)MathF.Ceiling(HunterFocus / 25f), 1, 4),
-        WeaponFamily.ChainFlail => ChainMomentum <= 0f
-            ? 0
-            : Math.Clamp((int)MathF.Ceiling(ChainMomentum / 10f), 1, 10),
-        WeaponFamily.SpikedMace => BreakerInertia <= 0f
-            ? 0
-            : Math.Clamp((int)MathF.Ceiling(BreakerInertia / 10f), 1, 10),
         WeaponFamily.ArcaneWarStaff => ElderSigils,
         _ => 0
     };
@@ -53,9 +41,7 @@ public sealed class WeaponResourceState
         ? 4
         : Family == WeaponFamily.ArcaneWarStaff
             ? AncientStaffTuning.MaximumElderSigils
-        : Family is WeaponFamily.DualSwords or
-        WeaponFamily.ChainFlail or
-        WeaponFamily.SpikedMace ? 10 : 0;
+        : Family == WeaponFamily.DualSwords ? 10 : 0;
 
     public void SetFamily(WeaponFamily family)
     {
@@ -97,30 +83,6 @@ public sealed class WeaponResourceState
             return;
         }
 
-        if (Family == WeaponFamily.SpikedMace)
-        {
-            if (_inactiveSeconds >= BreakerTuning.InertiaDecayDelaySeconds)
-            {
-                BreakerInertia = MathF.Max(
-                    0f,
-                    BreakerInertia - BreakerTuning.InertiaDecayPerSecond *
-                        elapsedSeconds);
-            }
-            return;
-        }
-
-        if (Family == WeaponFamily.ChainFlail)
-        {
-            if (_inactiveSeconds >= ReckonerTuning.MomentumDecayDelaySeconds)
-            {
-                ChainMomentum = MathF.Max(
-                    0f,
-                    ChainMomentum - ReckonerTuning.MomentumDecayPerSecond *
-                        elapsedSeconds);
-            }
-            return;
-        }
-
         if (_inactiveSeconds < OtherResourceDecayDelay)
             return;
 
@@ -139,8 +101,6 @@ public sealed class WeaponResourceState
 
         if (Family == WeaponFamily.DualSwords)
             AddDuelistMomentum(gain);
-        else if (Family == WeaponFamily.ChainFlail)
-            AddChainMomentum(gain);
         else if (Family == WeaponFamily.ArcaneWarStaff && gain > 0)
             AddElderSigil(gain);
     }
@@ -164,6 +124,13 @@ public sealed class WeaponResourceState
             DuelistTuning.MomentumMaximum,
             DuelistMomentum + amount);
         MarkCombatActivity();
+    }
+
+    public void LoseDuelistMomentum(float amount)
+    {
+        if (Family != WeaponFamily.DualSwords || amount <= 0f)
+            return;
+        DuelistMomentum = MathF.Max(0f, DuelistMomentum - amount);
     }
 
     public void AddHunterFocus(float amount)
@@ -239,97 +206,6 @@ public sealed class WeaponResourceState
         _decayClock = 0f;
     }
 
-    public void AddChainMomentum(float amount)
-    {
-        if (Family != WeaponFamily.ChainFlail || amount <= 0f)
-            return;
-
-        ChainMomentum = MathF.Min(
-            ReckonerTuning.MomentumMaximum,
-            ChainMomentum + amount);
-        MarkCombatActivity();
-    }
-
-    public void LoseChainMomentum(float amount)
-    {
-        if (Family != WeaponFamily.ChainFlail || amount <= 0f)
-            return;
-
-        ChainMomentum = MathF.Max(0f, ChainMomentum - amount);
-        MarkCombatActivity();
-    }
-
-    public float ConsumeChainMomentum(float amount)
-    {
-        if (Family != WeaponFamily.ChainFlail || amount <= 0f)
-            return 0f;
-
-        float consumed = MathF.Min(ChainMomentum, amount);
-        ChainMomentum -= consumed;
-        MarkCombatActivity();
-        return consumed;
-    }
-
-    public float SpendAllChainMomentum()
-    {
-        if (Family != WeaponFamily.ChainFlail)
-            return 0f;
-
-        float amount = ChainMomentum;
-        ChainMomentum = 0f;
-        MarkCombatActivity();
-        return amount;
-    }
-
-    public void AddBreakerInertia(float amount)
-    {
-        if (Family != WeaponFamily.SpikedMace || amount <= 0f)
-            return;
-
-        BreakerInertia = MathF.Min(
-            BreakerTuning.MaximumInertia,
-            BreakerInertia + amount);
-        MarkCombatActivity();
-    }
-
-    public void LoseBreakerInertia(float amount)
-    {
-        if (Family != WeaponFamily.SpikedMace || amount <= 0f)
-            return;
-
-        BreakerInertia = MathF.Max(0f, BreakerInertia - amount);
-        MarkCombatActivity();
-    }
-
-    public float ConsumeBreakerInertia(float amount)
-    {
-        if (Family != WeaponFamily.SpikedMace || amount <= 0f)
-            return 0f;
-
-        float consumed = MathF.Min(BreakerInertia, amount);
-        BreakerInertia -= consumed;
-        MarkCombatActivity();
-        return consumed;
-    }
-
-    public float ConsumeBreakerInertiaRatio(float ratio)
-    {
-        ratio = Math.Clamp(ratio, 0f, 1f);
-        return ConsumeBreakerInertia(BreakerInertia * ratio);
-    }
-
-    public float SpendAllBreakerInertia()
-    {
-        if (Family != WeaponFamily.SpikedMace)
-            return 0f;
-
-        float amount = BreakerInertia;
-        BreakerInertia = 0f;
-        ElderSigils = 0;
-        MarkCombatActivity();
-        return amount;
-    }
-
     public float SpendAllDuelistMomentum()
     {
         if (Family != WeaponFamily.DualSwords)
@@ -366,16 +242,6 @@ public sealed class WeaponResourceState
             LoseHunterFocus(RangerTuning.DamageFocusLoss);
             MarkRangerCombatActivity();
         }
-        else if (Family == WeaponFamily.SpikedMace)
-        {
-            LoseBreakerInertia(BreakerTuning.InterruptedAttackLoss);
-        }
-        else if (Family == WeaponFamily.ChainFlail)
-        {
-            LoseChainMomentum(heavyDamage
-                ? ReckonerTuning.HeavyDamageMomentumLoss
-                : ReckonerTuning.InterruptedMomentumLoss);
-        }
     }
 
     public void Reset()
@@ -383,8 +249,6 @@ public sealed class WeaponResourceState
         DuelistMomentum = 0;
         HunterFocus = 0f;
         HunterUltimate = 0f;
-        ChainMomentum = 0f;
-        BreakerInertia = 0f;
         _inactiveSeconds = 0f;
         _decayClock = 0f;
         _focusInactiveSeconds = 0f;

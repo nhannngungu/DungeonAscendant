@@ -28,6 +28,8 @@ public static class SaveSlotValidation
         try
         {
             ValidateManagerRoundTrip(path);
+            ValidateDeleteFailureRollback(
+                Path.Combine(directory, "delete-failure-slots.json"));
             ValidateFrontendFlow(path);
             ValidateMapThreeReload(Path.Combine(directory, "map3-slots.json"));
         }
@@ -36,6 +38,29 @@ public static class SaveSlotValidation
             if (Directory.Exists(directory))
                 Directory.Delete(directory, true);
         }
+    }
+
+    private static void ValidateDeleteFailureRollback(string path)
+    {
+        var manager = new SaveSlotManager(path);
+        Need(manager.Store(new SaveSlotData
+        {
+            SlotIndex = 0,
+            Occupied = true,
+            CharacterName = "KEEP ME"
+        }), "Delete failure fixture could not be saved.");
+
+        File.Delete(path);
+        Directory.CreateDirectory(path);
+        Need(!manager.Delete(0),
+            "Delete unexpectedly succeeded against an invalid save target.");
+        Need(manager.GetSlot(0).Occupied &&
+            manager.GetSlot(0).CharacterName == "KEEP ME",
+            "Failed delete visually cleared its in-memory slot.");
+        Need(!string.IsNullOrWhiteSpace(manager.LastError),
+            "Failed delete did not expose an error.");
+        Need(!File.Exists(path + ".tmp"),
+            "Failed delete left a temporary save file behind.");
     }
 
     private static void ValidateManagerRoundTrip(string path)
@@ -187,7 +212,11 @@ public static class SaveSlotValidation
             session.Player.EquippedWeapon.WeaponId ==
                 EquipmentCatalog.IronVanguardGreatsword.WeaponId &&
             session.Player.Appearance.BodyType == CharacterBodyType.Male,
-            "Loading slot zero did not restore its independent player state.");
+            $"Loading slot zero did not restore its independent player state: " +
+            $"level={session.Player.Level}, notes={session.Player.Notes.Count}, " +
+            $"inventory={session.Player.Inventory.Count}/{slotZeroInventoryCount}, " +
+            $"weapon={session.Player.EquippedWeapon.WeaponId}, " +
+            $"body={session.Player.Appearance.BodyType}.");
 
         ReturnThroughPauseMenu(session);
         Press(session, Keys.D);
@@ -218,9 +247,53 @@ public static class SaveSlotValidation
         Press(deleteSession, Keys.Delete);
         Need(deleteSession.CharacterSelect.IsDeleteConfirmationOpen,
             "Delete did not require confirmation.");
+        Press(deleteSession, Keys.Right);
+        Need(deleteSession.CharacterSelect.SelectedSlotIndex == 0,
+            "Slot navigation remained active during delete confirmation.");
+        Press(deleteSession, Keys.Escape);
+        Need(!deleteSession.CharacterSelect.IsDeleteConfirmationOpen &&
+            new SaveSlotManager(path).GetSlot(0).Occupied,
+            "Canceling delete changed the selected save slot.");
+
+        PressTogether(deleteSession, Keys.Delete, Keys.Enter);
+        Need(deleteSession.CharacterSelect.IsDeleteConfirmationOpen &&
+            new SaveSlotManager(path).GetSlot(0).Occupied,
+            "The Delete key press also confirmed deletion.");
+        Press(deleteSession, Keys.Escape);
+
+        Press(deleteSession, Keys.Delete);
         Press(deleteSession, Keys.Enter);
-        Need(!new SaveSlotManager(path).GetSlot(0).Occupied,
+        var afterDelete = new SaveSlotManager(path);
+        Need(!afterDelete.GetSlot(0).Occupied,
             "Confirmed delete was not persisted.");
+        Need(afterDelete.GetSlot(1).Occupied &&
+            !afterDelete.GetSlot(2).Occupied,
+            "Deleting slot zero changed another save slot.");
+        Need(deleteSession.CharacterSelect.GetPreview(0) == null,
+            "Deleted character preview was not cleared immediately.");
+
+        Press(deleteSession, Keys.Delete);
+        Need(!deleteSession.CharacterSelect.IsDeleteConfirmationOpen,
+            "Delete opened for an empty slot.");
+        Press(deleteSession, Keys.Enter);
+        Need(deleteSession.State == GameState.CharacterCreation,
+            "Deleted slot did not re-enter character creation.");
+        deleteSession.CharacterCreator.MoveSelection(
+            (int)CharacterCreatorRow.Confirm -
+            (int)deleteSession.CharacterCreator.SelectedRow);
+        Press(deleteSession, Keys.Enter);
+        Need(deleteSession.State == GameState.Playing &&
+            new SaveSlotManager(path).GetSlot(0).Occupied,
+            "Deleted slot could not save a newly created character.");
+
+        var restartedAfterDelete = new GameSession(
+            new Rectangle(0, 0, 1280, 720),
+            randomSeed: null,
+            savePath: path);
+        Press(restartedAfterDelete, Keys.Enter);
+        Press(restartedAfterDelete, Keys.Enter);
+        Need(restartedAfterDelete.State == GameState.Playing,
+            "New character in the deleted slot did not survive restart.");
     }
 
     private static void ValidateMapThreeReload(string path)
@@ -347,6 +420,12 @@ public static class SaveSlotValidation
     private static void Press(GameSession session, Keys key)
     {
         session.Update(Frame, new KeyboardState(key), new MouseState());
+        session.Update(Frame, new KeyboardState(), new MouseState());
+    }
+
+    private static void PressTogether(GameSession session, params Keys[] keys)
+    {
+        session.Update(Frame, new KeyboardState(keys), new MouseState());
         session.Update(Frame, new KeyboardState(), new MouseState());
     }
 

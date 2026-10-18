@@ -139,8 +139,6 @@ public sealed class GameSession
     private readonly Dictionary<Enemy, int> _predatorFanHits = new();
     private int _predatorBossFanHits;
     private readonly List<ProjectileImpact> _pendingArrowRain = new();
-    private int _raiderDisplacementTechniqueUseId = -1;
-    private readonly HashSet<Enemy> _raiderWallImpactedEnemies = new();
     private int _spellbladeWorldEffectAttackId = -1;
     private int _spellbladeTechniqueUseId = -1;
     private object _runicStrikeChainTarget;
@@ -175,13 +173,15 @@ public sealed class GameSession
     private float _ancientStaffEffectDuration;
     private Vector2 _ancientStaffBlinkOrigin;
     private float _ancientStaffBlinkTrailRemaining;
-    private int _breakerWorldEffectAttackId = -1;
-    private int _breakerImpactFeedbackAttackId = -1;
     private int _greatswordLandingImpactId = -1;
-    private readonly List<BreakerShockwave> _breakerShockwaves = new();
-    private readonly List<BreakerImpactVisual> _breakerImpactVisuals = new();
-    private Rectangle _recentDuelistDangerZone;
-    private float _recentDuelistDangerTimeRemaining;
+    private int _knightLandingImpactId = -1;
+	private int _knightUltimateImpactFeedbackAttackId = -1;
+    private object _duelistUltimateCandidate;
+    private object _duelistUltimateLockedTarget;
+    private int _duelistUltimateTechniqueUseId = -1;
+    private int _duelistUltimateMotionAttackId = -1;
+    private int _duelistUltimateImpactFeedbackAttackId = -1;
+    private Vector2 _duelistUltimateSafeReturnPosition;
     private int _debugWeaponIndex = 1;
     private int _debugArmorIndex = 1;
     private bool _bossHitByPlayerAttack;
@@ -243,10 +243,6 @@ public sealed class GameSession
     public ProjectileManager Projectiles { get; }
     public GroundRuneManager GroundRunes { get; }
     public SovereignPortalSystem SovereignPortals { get; } = new();
-    public IReadOnlyList<BreakerShockwave> BreakerShockwaves =>
-        _breakerShockwaves;
-    public IReadOnlyList<BreakerImpactVisual> BreakerImpactVisuals =>
-        _breakerImpactVisuals;
     public RootHazardManager RootHazards { get; }
     public LootManager Loot { get; }
     public LoreNotePickup LoreNotePickup { get; private set; }
@@ -328,6 +324,11 @@ public sealed class GameSession
         _greatswordUltimateLockedTarget != null;
     public Rectangle GreatswordUltimateTargetBounds =>
         GetCombatTargetBounds(_greatswordUltimateLockedTarget);
+    public bool IsKnightUltimateTargetLocked =>
+        Player?.Combat.IsKnightFinalOathActive == true &&
+        _greatswordUltimateLockedTarget != null;
+    public Rectangle KnightUltimateTargetBounds =>
+        GetCombatTargetBounds(_greatswordUltimateLockedTarget);
     public bool IsSovereignUltimateTargetLocked =>
         _sovereignUltimateLockedTarget != null;
     public Rectangle SovereignUltimateTargetBounds =>
@@ -336,6 +337,20 @@ public sealed class GameSession
         _scytheUltimateLockedTarget != null;
     public Rectangle ScytheUltimateTargetBounds =>
         GetCombatTargetBounds(_scytheUltimateLockedTarget);
+    public bool IsDuelistUltimateTargetLocked =>
+        _duelistUltimateLockedTarget != null;
+    public Rectangle DuelistUltimateTargetBounds =>
+        GetCombatTargetBounds(_duelistUltimateLockedTarget);
+    public bool IsDuelistUltimateActive =>
+        Player?.Combat.IsDuelistUltimateActive == true;
+    public int DuelistUltimateStage => IsDuelistUltimateActive
+        ? Player.Combat.TechniqueStageIndex
+        : -1;
+    public float DuelistUltimateStageRatio =>
+        IsDuelistUltimateActive && Player.Combat.CurrentAttack != null
+            ? Math.Clamp(Player.Combat.StateElapsed /
+                Math.Max(.01f, Player.Combat.CurrentAttack.TotalTime), 0f, 1f)
+            : 0f;
     public bool IsScytheUltimateActive =>
         Player?.Combat.CurrentTechnique?.Effect ==
             WeaponTechniqueEffect.ScytheUmbraDevourer;
@@ -759,7 +774,6 @@ public sealed class GameSession
             ClearSovereignState();
             ClearAncientStaffState();
             Projectiles.Clear();
-            ClearBreakerEffects();
             RootHazards.Clear();
             ClearDemonRitualEffects();
             Player.ClearTemporaryStatus();
@@ -788,11 +802,9 @@ public sealed class GameSession
         }
 
         float elapsedSeconds = (float)gameTime.ElapsedGameTime.TotalSeconds;
-        UpdateRecentDuelistDangerZone(elapsedSeconds);
         GroundRunes.Update(elapsedSeconds);
         UpdateSpellbladeRuneNetwork();
         UpdateAncientStaffCandidates();
-        UpdateBreakerEffects(elapsedSeconds);
         _worldTierTransitionTimeRemaining = System.MathF.Max(
             0f,
             _worldTierTransitionTimeRemaining - elapsedSeconds);
@@ -806,6 +818,8 @@ public sealed class GameSession
         UpdateGreatswordUltimateCandidate();
         Player.Combat.SetGreatswordUltimateTargetAvailable(
             _greatswordUltimateCandidate != null);
+        Player.Combat.SetKnightUltimateTargetAvailable(
+            _greatswordUltimateCandidate != null);
         UpdateSovereignUltimateCandidate();
         Player.Combat.SetSovereignUltimateTargetAvailable(
             _sovereignUltimateCandidate != null);
@@ -814,6 +828,9 @@ public sealed class GameSession
         UpdateScytheUltimateCandidate();
         Player.Combat.SetScytheUltimateTargetAvailable(
             _scytheUltimateCandidate != null);
+        UpdateDuelistUltimateCandidate();
+        Player.Combat.SetDuelistUltimateTargetAvailable(
+            _duelistUltimateCandidate != null);
         bool entryFallWasActive = _mapEntryFallActive;
         GameTime playerCombatTime = IsSovereignExecutionActive
             ? ScaleGameTime(
@@ -830,12 +847,14 @@ public sealed class GameSession
         UpdateSovereignTargetLock();
         UpdateAncientStaffTargetLock();
         UpdateScytheUltimateLock();
+        UpdateDuelistUltimateLock();
         GameTime cinematicWorldTime = ScaleGameTime(
             gameTime,
             MathF.Min(
                 MathF.Min(
                     Player.Combat.RangerUltimateWorldTimeScale,
-                    Player.Combat.GreatswordUltimateWorldTimeScale),
+                    MathF.Min(Player.Combat.GreatswordUltimateWorldTimeScale,
+                        Player.Combat.KnightUltimateWorldTimeScale)),
                 MathF.Min(
                     MathF.Min(
                         Player.Combat.SovereignUltimateWorldTimeScale,
@@ -851,6 +870,11 @@ public sealed class GameSession
             _greatswordLandingImpactId =
                 Player.Combat.GreatswordLandingImpactId;
             Camera.AddImpactFeedback(1.65f);
+        }
+        if (_knightLandingImpactId != Player.Combat.KnightLandingImpactId)
+        {
+            _knightLandingImpactId = Player.Combat.KnightLandingImpactId;
+            Camera.AddImpactFeedback(1.25f);
         }
         UpdateDuelistTechniqueMovement();
         UpdateRangerTechniqueMovement();
@@ -1058,7 +1082,6 @@ public sealed class GameSession
             ClearAncientStaffState();
             Projectiles.Clear();
             GroundRunes.Clear();
-            ClearBreakerEffects();
             RootHazards.Clear();
             ClearDemonRitualEffects();
             Player.ClearTemporaryStatus();
@@ -1507,13 +1530,13 @@ public sealed class GameSession
         ClearGreatswordUltimateLock();
         ClearSovereignState();
         ClearAncientStaffState();
+        ClearDuelistUltimateLock(restorePosition: false);
         Projectiles.Clear();
         GroundRunes.Clear();
         RootHazards.Clear();
         ClearDemonRitualEffects();
         Corruption.Reset();
         CorruptionAnchors.Reset(null);
-        ClearBreakerEffects();
         Loot.Reset();
         Enemies.Reset(
             null,
@@ -1535,7 +1558,6 @@ public sealed class GameSession
         _playerAttackHits.Clear();
         _pendingArrowRain.Clear();
         _predatorFanHits.Clear();
-        _raiderWallImpactedEnemies.Clear();
         _wildForestShowcaseEnemies.Clear();
         _activeInventoryItems.Clear();
         ClearFusionState();
@@ -1573,11 +1595,23 @@ public sealed class GameSession
             {
                 CharacterSelect.CancelDelete();
             }
-            else if (confirmPressed || deletePressed)
+            else if (confirmPressed)
             {
-                _saveSlotManager.Delete(CharacterSelect.SelectedSlotIndex);
-                CharacterSelect.CancelDelete();
-                CharacterSelect.RefreshPreviews(_saveSlotManager.Slots);
+                int slotIndex = CharacterSelect.SelectedSlotIndex;
+                if (_saveSlotManager.Delete(slotIndex))
+                {
+                    _activeSlotIndex = -1;
+                    _pendingSlotIndex = -1;
+                    CharacterSelect.CancelDelete();
+                    CharacterSelect.RefreshPreviews(_saveSlotManager.Slots);
+                }
+                else
+                {
+                    CharacterSelect.ReportDeleteFailure();
+                    StartupLog.Write(
+                        $"[SAVE DELETE FAILED] slot={slotIndex}; " +
+                        _saveSlotManager.LastError);
+                }
             }
             return;
         }
@@ -1801,7 +1835,14 @@ public sealed class GameSession
         {
             var restoredInventory = new List<EquipmentItem>(slot.InventoryItems.Count);
             foreach (SavedEquipmentItemData savedItem in slot.InventoryItems)
-                restoredInventory.Add(CharacterSelectState.CreateInventoryItem(savedItem));
+            {
+                if (CharacterSelectState.TryCreateInventoryItem(
+                        savedItem,
+                        out EquipmentItem restoredItem))
+                {
+                    restoredInventory.Add(restoredItem);
+                }
+            }
             Player.Inventory.Restore(restoredInventory);
             Player.NormalizeDevelopmentTestWeapons();
         }
@@ -2038,12 +2079,9 @@ public sealed class GameSession
         _trackedPlayerAttackId = -1;
         _spawnedPlayerProjectileAttackId = -1;
         _duelistMotionAttackId = -1;
-        _recentDuelistDangerZone = Rectangle.Empty;
-        _recentDuelistDangerTimeRemaining = 0f;
         _bossHitByPlayerAttack = false;
         Projectiles.Clear();
         GroundRunes.Clear();
-        ClearBreakerEffects();
         _spellbladeWorldEffectAttackId = -1;
         _spellbladeTechniqueUseId = -1;
         _runicStrikeChainTarget = null;
@@ -2131,7 +2169,6 @@ public sealed class GameSession
         Enemies.ClearSequentialTestEnemies();
         Projectiles.Clear();
         GroundRunes.Clear();
-        ClearBreakerEffects();
         RootHazards.Clear();
         Loot.Reset();
         _wildForestShowcaseEnemies.Clear();
@@ -2444,7 +2481,7 @@ public sealed class GameSession
             _ => category switch
             {
                 AncientScholarRewardCategory.Weapon => new EquipmentItem(
-                    EquipmentCatalog.ReckonerChainFlail,
+                    EquipmentCatalog.IronVanguardGreatsword,
                     ItemRarity.Legendary),
                 AncientScholarRewardCategory.Relic => new EquipmentItem(
                     AncientScholarMedallion,
@@ -2624,14 +2661,28 @@ public sealed class GameSession
             Player.Combat.RangerUltimateCinematicRatio;
         float greatswordCinematic =
             Player.Combat.GreatswordUltimateCinematicRatio;
+        float knightCinematic = Player.Combat.KnightUltimateCinematicRatio;
         float sovereignCinematic =
             Player.Combat.SovereignUltimateCinematicRatio;
         float scytheCinematic =
             Player.Combat.ScytheUltimateCinematicRatio;
+        float duelistCinematic =
+            Player.Combat.DuelistUltimateCinematicRatio;
         float cinematic = MathF.Max(
-            MathF.Max(sovereignCinematic, scytheCinematic),
-            MathF.Max(rangerCinematic, greatswordCinematic));
-        float cinematicZoom = sovereignCinematic >=
+            MathF.Max(MathF.Max(sovereignCinematic, scytheCinematic),
+                duelistCinematic),
+            MathF.Max(knightCinematic,
+                MathF.Max(rangerCinematic, greatswordCinematic)));
+        float cinematicZoom = knightCinematic >= MathF.Max(
+                MathF.Max(duelistCinematic, sovereignCinematic),
+                MathF.Max(scytheCinematic,
+                    MathF.Max(rangerCinematic, greatswordCinematic)))
+            ? 1.32f
+            : duelistCinematic >= MathF.Max(
+                MathF.Max(sovereignCinematic, scytheCinematic),
+                MathF.Max(rangerCinematic, greatswordCinematic))
+            ? 1.24f
+            : sovereignCinematic >=
                 MathF.Max(scytheCinematic,
                     MathF.Max(rangerCinematic, greatswordCinematic))
             ? AbyssRingTuning.UltimateCameraZoom
@@ -2647,6 +2698,150 @@ public sealed class GameSession
                 cinematicZoom,
                 MathF.Sin(cinematic * MathHelper.PiOver2));
         Vector2 cameraTarget = Player.Position;
+		Rectangle knightTarget = KnightUltimateTargetBounds;
+		if (Player.Combat.IsKnightFinalOathActive && !knightTarget.IsEmpty)
+		{
+			Vector2 targetCenter = knightTarget.Center.ToVector2();
+			int stage = Player.Combat.TechniqueStageIndex;
+			AttackDefinition attack = Player.Combat.CurrentAttack;
+			float stageRatio = attack == null ? 0f : Math.Clamp(
+				Player.Combat.StateElapsed / MathF.Max(.01f, attack.TotalTime),
+				0f, 1f);
+			if (Player.Combat.State == CombatState.ChargingHeavy)
+			{
+				float resolve = MathHelper.SmoothStep(0f, 1f, knightCinematic);
+				cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+					.26f + resolve * .13f);
+				cameraTarget.Y -= 12f * resolve;
+				zoomTarget = MathHelper.Lerp(1f, 1.32f, resolve);
+			}
+			else if (stage == 0)
+			{
+				cameraTarget = Vector2.Lerp(Player.Position, targetCenter, .42f);
+				zoomTarget = 1.17f;
+			}
+			else if (stage == 1)
+			{
+				cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+					.54f + stageRatio * .12f);
+				zoomTarget = MathHelper.Lerp(1.13f, 1.18f,
+					MathF.Sin(stageRatio * MathHelper.Pi));
+			}
+			else if (stage is >= 2 and <= 4)
+			{
+				cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+					.57f + (stage - 2) * .035f);
+				zoomTarget = 1.13f + (stage - 2) * .015f;
+			}
+			else if (stage == 5)
+			{
+				float rise = MathHelper.SmoothStep(0f, 1f, stageRatio);
+				cameraTarget = Vector2.Lerp(Player.Position, targetCenter, .60f);
+				cameraTarget.Y -= 35f * rise;
+				zoomTarget = MathHelper.Lerp(1.13f, 1.08f, rise);
+			}
+			else if (stage == 6)
+			{
+				float impact = MathHelper.SmoothStep(0f, 1f,
+					Math.Clamp(1f - MathF.Abs(stageRatio - .52f) / .22f, 0f, 1f));
+				cameraTarget = Vector2.Lerp(Player.Position, targetCenter, .68f);
+				cameraTarget.Y -= MathHelper.Lerp(30f, 5f, stageRatio);
+				zoomTarget = MathHelper.Lerp(1.14f, 1.29f, impact);
+			}
+			else if (stage == 7)
+			{
+				cameraTarget = Vector2.Lerp(targetCenter, Player.Position, .34f);
+				cameraTarget.Y += 8f;
+				zoomTarget = MathHelper.Lerp(1.19f, 1.12f, stageRatio);
+			}
+			else
+			{
+				float settle = MathHelper.SmoothStep(0f, 1f, stageRatio);
+				cameraTarget = Vector2.Lerp(targetCenter, Player.Position,
+					.46f + settle * .54f);
+				zoomTarget = MathHelper.Lerp(1.10f, 1f, settle);
+			}
+		}
+        Rectangle duelistTarget = DuelistUltimateTargetBounds;
+        if (IsDuelistUltimateActive && !duelistTarget.IsEmpty)
+        {
+            Vector2 targetCenter = duelistTarget.Center.ToVector2();
+            int stage = DuelistUltimateStage;
+            float stageRatio = DuelistUltimateStageRatio;
+            cameraTarget = Vector2.Lerp(Player.Position, targetCenter, .70f);
+            if (Player.Combat.State == CombatState.ChargingHeavy)
+            {
+                float gaze = MathHelper.SmoothStep(0f, 1f,
+                    duelistCinematic);
+                cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+                    .30f + gaze * .12f);
+                cameraTarget.Y -= gaze * 18f;
+                zoomTarget = MathHelper.Lerp(1f, 1.28f, gaze);
+            }
+            else if (stage < DuelistTuning.UltimateStrikeCount)
+            {
+                int group = Math.Clamp(stage / 8, 0, 3);
+                float lift = Math.Clamp((stage + stageRatio) /
+                    DuelistTuning.UltimateStrikeCount, 0f, 1f);
+                // Camera-only lift sells Boss ascension while its collider and
+                // AI remain untouched. Normal enemies retain their safe launch.
+                cameraTarget = Vector2.Lerp(Player.Position, targetCenter,
+                    .76f + group * .045f);
+                cameraTarget.Y += lift * 58f;
+                zoomTarget = group switch
+                {
+                    0 => 1.11f,
+                    1 => 1.15f,
+                    2 => 1.19f,
+                    _ => 1.22f
+                };
+            }
+            else
+            {
+                cameraTarget = targetCenter;
+                if (stageRatio < .08f)
+                {
+                    cameraTarget.Y += 58f;
+                    zoomTarget = 1.22f;
+                }
+                else if (stageRatio < .22f)
+                {
+                    float ascent = MathHelper.SmoothStep(0f, 1f,
+                        (stageRatio - .08f) / .14f);
+                    cameraTarget.Y += MathHelper.Lerp(58f, -72f, ascent);
+                    zoomTarget = MathHelper.Lerp(1.18f, 1.04f, ascent);
+                }
+                else if (stageRatio < .40f)
+                {
+                    cameraTarget.Y -= 72f;
+                    zoomTarget = 1.34f;
+                }
+                else if (stageRatio < .56f)
+                {
+                    float descent = MathHelper.SmoothStep(0f, 1f,
+                        (stageRatio - .40f) / .16f);
+                    float impactFocus = MathHelper.SmoothStep(0f, 1f,
+                        Math.Clamp(1f - MathF.Abs(stageRatio - .49f) / .07f,
+                            0f, 1f));
+                    cameraTarget.Y = MathHelper.Lerp(
+                        targetCenter.Y - 72f,
+                        targetCenter.Y,
+                        descent);
+                    zoomTarget = MathHelper.Lerp(
+                        MathHelper.Lerp(1.16f, 1.24f, descent),
+                        1.45f,
+                        impactFocus);
+                }
+                else
+                {
+                    float restore = MathHelper.SmoothStep(0f, 1f,
+                        (stageRatio - .56f) / .44f);
+                    cameraTarget = Vector2.Lerp(targetCenter,
+                        Player.Position, restore * .52f);
+                    zoomTarget = MathHelper.Lerp(1.20f, 1f, restore);
+                }
+            }
+        }
         Rectangle scytheTarget = ScytheUltimateTargetBounds;
         if (IsScytheUltimateActive && !scytheTarget.IsEmpty)
         {
@@ -2735,7 +2930,9 @@ public sealed class GameSession
             Player.Facing,
             CurrentDungeon.WorldBounds,
             elapsedSeconds,
-            CurrentDungeon.IsAuthoredWildForest ? .54f :
+            IsDuelistUltimateActive ? .50f :
+				Player.Combat.IsKnightFinalOathActive ? .52f :
+                CurrentDungeon.IsAuthoredWildForest ? .54f :
                 CurrentDungeon.IsAncientCatacombs ? .55f :
                 CurrentDungeon.IsFallenCity ? .56f :
                 CurrentDungeon.IsDemonLands ? .57f : .58f);
@@ -3128,7 +3325,6 @@ public sealed class GameSession
         GroundRunes.Clear();
         RootHazards.Clear();
         ClearDemonRitualEffects();
-        ClearBreakerEffects();
         _rottenCorpseBursts.Clear();
         Enemies.ClearTemporaryBuffs();
         CityAlarm.Reset();
@@ -3273,7 +3469,6 @@ public sealed class GameSession
             _sequentialBossActive = false;
             _sequentialTestComplete = true;
             Projectiles.Clear();
-            ClearBreakerEffects();
             RootHazards.Clear();
             return;
         }
@@ -3308,40 +3503,6 @@ public sealed class GameSession
     {
         AttackDefinition attack = Player.Combat.CurrentAttack ??
             Player.Combat.MoveSet.GetLight(0);
-        if (Player.WeaponFamily == WeaponFamily.ChainFlail)
-        {
-            WeaponTechniqueEffect effect =
-                Player.Combat.CurrentTechnique?.Effect ??
-                WeaponTechniqueEffect.None;
-            Vector2 localOffset = ChainFlailMotion.GetHeadOffset(
-                effect,
-                Player.Combat.TechniqueStageIndex,
-                attack,
-                Player.Combat.StateElapsed,
-                Player.Combat.CalculateRange(attack),
-                effect == WeaponTechniqueEffect.ReckonerChainsOfJudgment
-                    ? Player.Combat.ReckonerMomentumSnapshotRatio
-                    : Player.Combat.Resources.ChainMomentumRatio,
-                Player.Combat.ReckonerOrbitHoldSeconds,
-                Player.Combat.ReckonerCurveSide);
-            PlayerAttackArea = ChainFlailMotion.CreateHeadHitbox(
-                Player.Position,
-                Player.Facing == DungeonAscendant.Player.FacingDirection.Left
-                    ? -1f
-                    : 1f,
-                localOffset,
-                attack,
-                CurrentDungeon,
-                out bool terrainClipped);
-            if (terrainClipped && effect ==
-                    WeaponTechniqueEffect.ReckonerChainHarpoon &&
-                Player.Combat.TechniqueStageIndex == 0)
-            {
-                Player.Combat.RequestReckonerHarpoonReturn();
-            }
-            return;
-        }
-
         if (Player.WeaponFamily == WeaponFamily.GreatSword &&
             Player.Combat.CurrentTechnique?.Effect ==
                 WeaponTechniqueEffect.GreatswordWhirlingJudgment &&
@@ -3525,6 +3686,12 @@ public sealed class GameSession
 
     private void UpdateDuelistTechniqueMovement()
     {
+        if (Player?.Combat.CurrentTechnique?.Effect ==
+            WeaponTechniqueEffect.DuelistInfiniteStarburst)
+        {
+            UpdateDuelistUltimateMovement();
+            return;
+        }
         if (Player.WeaponFamily != WeaponFamily.DualSwords ||
             Player.Combat.CurrentTechnique == null ||
             Player.Combat.CurrentAttack == null ||
@@ -3539,10 +3706,10 @@ public sealed class GameSession
         int stage = Player.Combat.TechniqueStageIndex;
         bool shouldReposition = effect switch
         {
-            WeaponTechniqueEffect.DuelistPhantomStep => stage == 0,
-            WeaponTechniqueEffect.DuelistAfterimageExecution => stage == 1,
-            WeaponTechniqueEffect.DuelistMirageCyclone => true,
-            WeaponTechniqueEffect.DuelistFinalWaltz => stage > 0,
+            WeaponTechniqueEffect.DuelistFlashBlade => true,
+            WeaponTechniqueEffect.DuelistThousandEdgeWaltz => true,
+            WeaponTechniqueEffect.DuelistCrossRequiem => stage > 0,
+            WeaponTechniqueEffect.DuelistFallingStar => true,
             _ => false
         };
 
@@ -3559,45 +3726,26 @@ public sealed class GameSession
 
         if (!hasTarget)
         {
-            float fallbackDistance = effect ==
-                WeaponTechniqueEffect.DuelistPhantomStep ? 92f : 64f;
             desired = start + new Vector2(
-                facingSign * fallbackDistance,
+                facingSign * 64f,
                 0f);
         }
         else
         {
-            int sequence = GetDuelistMovementSequence(effect, stage);
-            float currentSide = start.X <= targetPosition.X ? -1f : 1f;
-            float desiredSide = effect ==
-                WeaponTechniqueEffect.DuelistPhantomStep
-                    ? -currentSide
-                    : sequence % 2 == 0 ? -1f : 1f;
-
-            // Large targets use bounded side-crosses rather than a full-body
-            // traversal, keeping the player outside their hurtbox.
-            if (targetBounds.Width >= 96 &&
-                effect == WeaponTechniqueEffect.DuelistPhantomStep)
-            {
-                desiredSide = currentSide;
-            }
+            int sequence = stage;
+            float desiredSide = sequence % 2 == 0 ? -1f : 1f;
 
             float safeOffset = Player.Size.X / 2f + 14f;
             float desiredX = desiredSide < 0f
                 ? targetBounds.Left - safeOffset
                 : targetBounds.Right + safeOffset;
-            float verticalOffset = effect is
-                WeaponTechniqueEffect.DuelistMirageCyclone or
-                WeaponTechniqueEffect.DuelistFinalWaltz
+            float verticalOffset = effect ==
+                WeaponTechniqueEffect.DuelistThousandEdgeWaltz
                     ? (sequence % 3 - 1) * 6f
                     : 0f;
             desired = new Vector2(desiredX, start.Y + verticalOffset);
         }
 
-        Rectangle sweptBounds = CreateSweptPlayerBounds(start, desired);
-        bool crossedActiveAttack = effect ==
-            WeaponTechniqueEffect.DuelistPhantomStep &&
-            IntersectsActiveEnemyAttack(sweptBounds);
         Vector2 displacement = Player.MoveThroughCombatTechnique(
             desired,
             CurrentDungeon);
@@ -3612,11 +3760,40 @@ public sealed class GameSession
         if (hasTarget)
             Player.FaceToward(targetPosition.X);
 
-        if (crossedActiveAttack && displacement.LengthSquared() >= 24f * 24f)
-            Player.Combat.RegisterPerfectPhantomStep();
-
         if (hasTarget && displacement.LengthSquared() >= 36f * 36f)
             Player.Combat.RegisterAggressiveReposition();
+    }
+
+    private void UpdateDuelistUltimateMovement()
+    {
+        if (CurrentDungeon == null ||
+            _duelistUltimateMotionAttackId == Player.Combat.AttackId)
+            return;
+        _duelistUltimateMotionAttackId = Player.Combat.AttackId;
+
+        Rectangle target = GetCombatTargetBounds(
+            _duelistUltimateLockedTarget);
+        if (target.IsEmpty)
+            return;
+
+        int strike = Player.Combat.TechniqueStageIndex + 1;
+        float side = strike % 2 == 1 ? -1f : 1f;
+        float safeOffset = Player.Size.X * .5f + 14f;
+        Vector2 desired = new(
+            side < 0f ? target.Left - safeOffset :
+                target.Right + safeOffset,
+            Player.Position.Y);
+        Player.MoveThroughCombatTechnique(desired, CurrentDungeon);
+        Player.FaceToward(target.Center.X);
+        if (_duelistUltimateLockedTarget is Enemy enemy &&
+            strike <= DuelistTuning.UltimateStrikeCount &&
+            strike % 4 == 0)
+        {
+            // Existing launch physics supplies bounded, collision-aware lift;
+            // heavy/flying targets reject it in Enemy.ApplyRaiderLaunch.
+            int group = Math.Clamp((strike - 1) / 8, 0, 3);
+            enemy.ApplyRaiderLaunch(-76f - group * 8f);
+        }
     }
 
     private void UpdateRangerTechniqueMovement()
@@ -3752,6 +3929,105 @@ public sealed class GameSession
                     bestMaximumHealth, bestDistanceSquared, bestStableId))
                 _scytheUltimateCandidate = Boss;
         }
+    }
+
+    private void UpdateDuelistUltimateCandidate()
+    {
+        _duelistUltimateCandidate = null;
+        if (Player?.WeaponFamily != WeaponFamily.DualSwords ||
+            CurrentDungeon == null)
+            return;
+
+        float maximumDistanceSquared = DuelistTuning.UltimateTargetRange *
+            DuelistTuning.UltimateTargetRange;
+        int bestMaximumHealth = -1;
+        float bestDistanceSquared = float.MaxValue;
+        int bestStableId = int.MaxValue;
+        for (int index = 0; index < Enemies.Enemies.Count; index++)
+        {
+            Enemy enemy = Enemies.Enemies[index];
+            if (!enemy.CanBeTargeted ||
+                !Enemies.IsActive(enemy, Player.Position, CurrentDungeon))
+                continue;
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position, enemy.Position);
+            if (distanceSquared > maximumDistanceSquared ||
+                !IsBetterRangerUltimateTarget(enemy.MaxHealth,
+                    distanceSquared, index, bestMaximumHealth,
+                    bestDistanceSquared, bestStableId))
+                continue;
+            _duelistUltimateCandidate = enemy;
+            bestMaximumHealth = enemy.MaxHealth;
+            bestDistanceSquared = distanceSquared;
+            bestStableId = index;
+        }
+
+        if (ShouldRenderBoss && Boss?.IsAlive == true && Boss.IsActivated &&
+            !Boss.IsPhaseTransitioning)
+        {
+            float distanceSquared = Vector2.DistanceSquared(
+                Player.Position, Boss.Position);
+            if (distanceSquared <= maximumDistanceSquared &&
+                IsBetterRangerUltimateTarget(Boss.MaxHealth,
+                    distanceSquared, Enemies.Enemies.Count,
+                    bestMaximumHealth, bestDistanceSquared, bestStableId))
+                _duelistUltimateCandidate = Boss;
+        }
+    }
+
+    private void UpdateDuelistUltimateLock()
+    {
+        bool active = Player?.Combat.IsDuelistUltimateActive == true;
+        if (!active)
+        {
+            ClearDuelistUltimateLock();
+            return;
+        }
+
+        if (_duelistUltimateTechniqueUseId !=
+            Player.Combat.CurrentTechniqueUseId)
+        {
+            _duelistUltimateTechniqueUseId =
+                Player.Combat.CurrentTechniqueUseId;
+            _duelistUltimateLockedTarget = _duelistUltimateCandidate;
+            _duelistUltimateSafeReturnPosition = Player.Position;
+            _duelistUltimateMotionAttackId = -1;
+            _duelistUltimateImpactFeedbackAttackId = -1;
+        }
+
+        if (!IsDuelistUltimateTargetValid(_duelistUltimateLockedTarget))
+        {
+            Player.MoveThroughCombatTechnique(
+                _duelistUltimateSafeReturnPosition, CurrentDungeon);
+            Player.Combat.CancelDuelistUltimateForLostTarget();
+            ClearDuelistUltimateLock();
+        }
+    }
+
+    private bool IsDuelistUltimateTargetValid(object target)
+    {
+        if (target is Enemy enemy)
+            return enemy.CanBeTargeted && IsActiveEnemy(enemy);
+        return target is AncientTreant boss && ReferenceEquals(boss, Boss) &&
+            ShouldRenderBoss && boss.IsAlive && boss.IsActivated &&
+            !boss.IsPhaseTransitioning;
+    }
+
+    private void ClearDuelistUltimateLock(bool restorePosition = true)
+    {
+        if (restorePosition && _duelistUltimateLockedTarget != null && Player != null &&
+            CurrentDungeon != null)
+        {
+            Player.MoveThroughCombatTechnique(
+                _duelistUltimateSafeReturnPosition, CurrentDungeon);
+        }
+        _duelistUltimateCandidate = null;
+        _duelistUltimateLockedTarget = null;
+        _duelistUltimateTechniqueUseId = -1;
+        _duelistUltimateMotionAttackId = -1;
+        _duelistUltimateImpactFeedbackAttackId = -1;
+        Player?.Combat.SetDuelistUltimateTargetAvailable(false);
+        Camera?.ResetCinematicZoom();
     }
 
     private void UpdateScytheUltimateLock()
@@ -3943,18 +4219,21 @@ public sealed class GameSession
 
     private void UpdateGreatswordUltimateCandidate()
     {
-        if (Player?.Combat.CurrentTechnique?.Effect ==
-            WeaponTechniqueEffect.GreatswordFinalVerdict)
+        if (Player?.Combat.CurrentTechnique?.Effect is
+            WeaponTechniqueEffect.GreatswordFinalVerdict or
+            WeaponTechniqueEffect.KnightFinalOath)
             return;
 
         _greatswordUltimateCandidate = null;
-        if (Player?.WeaponFamily != WeaponFamily.GreatSword ||
+		bool knight = Player?.IsKnightSwordAndShield == true;
+		if (Player?.WeaponFamily != WeaponFamily.GreatSword && !knight ||
             CurrentDungeon == null)
             return;
 
-        float maximumDistanceSquared =
-            GreatswordTuning.FinalVerdictTargetRange *
-            GreatswordTuning.FinalVerdictTargetRange;
+		float range = knight
+            ? KnightTuning.UltimateTargetRange
+            : GreatswordTuning.FinalVerdictTargetRange;
+        float maximumDistanceSquared = range * range;
         int bestMaximumHealth = -1;
         float bestDistanceSquared = float.MaxValue;
         int bestStableId = int.MaxValue;
@@ -4030,8 +4309,10 @@ public sealed class GameSession
 
     private void UpdateGreatswordUltimateLock()
     {
-        bool active = Player.Combat.CurrentTechnique?.Effect ==
-            WeaponTechniqueEffect.GreatswordFinalVerdict;
+        WeaponTechniqueEffect activeEffect =
+            Player.Combat.CurrentTechnique?.Effect ?? WeaponTechniqueEffect.None;
+        bool active = activeEffect is WeaponTechniqueEffect.GreatswordFinalVerdict or
+            WeaponTechniqueEffect.KnightFinalOath;
         if (!active)
         {
             ClearGreatswordUltimateLock();
@@ -4054,7 +4335,10 @@ public sealed class GameSession
                 _greatswordUltimateLockedTarget))
         {
             _greatswordUltimateLandingRequested = true;
-            Player.Combat.RequestGreatswordUltimateLanding();
+            if (activeEffect == WeaponTechniqueEffect.KnightFinalOath)
+                Player.Combat.RequestKnightUltimateLanding();
+            else
+                Player.Combat.RequestGreatswordUltimateLanding();
         }
     }
 
@@ -4176,8 +4460,10 @@ public sealed class GameSession
 
     private void UpdateGreatswordUltimateMovement(float elapsedSeconds)
     {
-        if (Player.Combat.CurrentTechnique?.Effect !=
-                WeaponTechniqueEffect.GreatswordFinalVerdict ||
+        WeaponTechniqueEffect effect = Player.Combat.CurrentTechnique?.Effect ??
+            WeaponTechniqueEffect.None;
+        if (effect is not (WeaponTechniqueEffect.GreatswordFinalVerdict or
+                WeaponTechniqueEffect.KnightFinalOath) ||
             Player.Combat.CurrentAttack == null)
             return;
 
@@ -4190,24 +4476,28 @@ public sealed class GameSession
                 Player.FaceToward(target.Center.X);
         }
 
-        if (stage == 0 && _greatswordUltimateMotionAttackId !=
+        int leapStage = effect == WeaponTechniqueEffect.KnightFinalOath ? 5 : 0;
+        if (stage == leapStage && _greatswordUltimateMotionAttackId !=
                 Player.Combat.AttackId)
         {
             _greatswordUltimateMotionAttackId = Player.Combat.AttackId;
             Player.BeginGreatswordUltimateLeap(-365f);
         }
 
-        if (stage != 0 && stage !=
+        int approachStage = effect == WeaponTechniqueEffect.KnightFinalOath ? 1 : 0;
+        if (stage != approachStage && stage !=
                 Player.Combat.EffectiveTechniqueStageCount - 1)
             return;
 
-        Vector2 destination = stage == 0
+        Vector2 destination = stage == approachStage
             ? _greatswordUltimateApproachPosition
             : ResolveGreatswordLandingFallback();
         float horizontal = destination.X - Player.Position.X;
         float movement = MathF.Min(
             MathF.Abs(horizontal),
-            GreatswordTuning.FinalVerdictApproachSpeed *
+            (effect == WeaponTechniqueEffect.KnightFinalOath
+                ? KnightTuning.UltimateApproachSpeed
+                : GreatswordTuning.FinalVerdictApproachSpeed) *
                 MathF.Max(0f, elapsedSeconds));
         if (movement > .01f)
         {
@@ -4262,7 +4552,9 @@ public sealed class GameSession
         _greatswordUltimateTechniqueUseId = -1;
         _greatswordUltimateMotionAttackId = -1;
         _greatswordUltimateLandingRequested = false;
+		_knightUltimateImpactFeedbackAttackId = -1;
         Player?.Combat.SetGreatswordUltimateTargetAvailable(false);
+        Player?.Combat.SetKnightUltimateTargetAvailable(false);
         Camera?.ResetCinematicZoom();
     }
 
@@ -4801,110 +5093,6 @@ public sealed class GameSession
         return bestScore <= 520f * 520f;
     }
 
-    private bool IntersectsActiveEnemyAttack(Rectangle sweptBounds)
-    {
-        if (_recentDuelistDangerTimeRemaining > 0f &&
-            sweptBounds.Intersects(_recentDuelistDangerZone))
-        {
-            return true;
-        }
-
-        foreach (Enemy enemy in Enemies.Enemies)
-        {
-            if (enemy.CanBeTargeted && enemy.IsCombatAttackActive &&
-                sweptBounds.Intersects(enemy.ActiveAttackArea))
-            {
-                return true;
-            }
-        }
-
-        foreach (Projectile projectile in Projectiles.Projectiles)
-        {
-            if (!projectile.IsPlayerOwned &&
-                projectile.LifetimeRemaining > 0f &&
-                sweptBounds.Intersects(projectile.Bounds))
-            {
-                return true;
-            }
-        }
-
-        return ShouldRenderBoss && Boss.IsAlive && Boss.Attack.IsActive &&
-            sweptBounds.Intersects(Boss.AttackArea);
-    }
-
-    private void UpdateRecentDuelistDangerZone(float elapsedSeconds)
-    {
-        _recentDuelistDangerTimeRemaining = MathF.Max(
-            0f,
-            _recentDuelistDangerTimeRemaining - MathF.Max(0f, elapsedSeconds));
-        Rectangle activeZone = Rectangle.Empty;
-        float bestDistance = float.MaxValue;
-
-        void Consider(Rectangle zone)
-        {
-            float distance = Vector2.DistanceSquared(
-                Player.Position,
-                zone.Center.ToVector2());
-            if (distance < bestDistance)
-            {
-                bestDistance = distance;
-                activeZone = zone;
-            }
-        }
-
-        foreach (Enemy enemy in Enemies.Enemies)
-        {
-            if (!enemy.CanBeTargeted || !enemy.IsCombatAttackActive)
-                continue;
-
-            Consider(enemy.ActiveAttackArea);
-        }
-
-        if (ShouldRenderBoss && Boss.IsAlive && Boss.Attack.IsActive)
-        {
-            Consider(Boss.AttackArea);
-        }
-
-        foreach (Projectile projectile in Projectiles.Projectiles)
-        {
-            if (projectile.IsPlayerOwned || projectile.LifetimeRemaining <= 0f)
-                continue;
-
-            Consider(projectile.Bounds);
-        }
-
-        if (!activeZone.IsEmpty)
-        {
-            _recentDuelistDangerZone = activeZone;
-            // Covers the single-input chord wait plus a small timing grace.
-            _recentDuelistDangerTimeRemaining = .38f;
-        }
-        else if (_recentDuelistDangerTimeRemaining <= 0f)
-        {
-            _recentDuelistDangerZone = Rectangle.Empty;
-        }
-    }
-
-    private Rectangle CreateSweptPlayerBounds(Vector2 start, Vector2 end)
-    {
-        float halfWidth = Player.Size.X / 2f;
-        float halfHeight = Player.Size.Y / 2f;
-        int left = (int)MathF.Floor(MathF.Min(start.X, end.X) - halfWidth);
-        int right = (int)MathF.Ceiling(MathF.Max(start.X, end.X) + halfWidth);
-        int top = (int)MathF.Floor(MathF.Min(start.Y, end.Y) - halfHeight);
-        int bottom = (int)MathF.Ceiling(MathF.Max(start.Y, end.Y) + halfHeight);
-        return new Rectangle(left, top, right - left, bottom - top);
-    }
-
-    private static int GetDuelistMovementSequence(
-        WeaponTechniqueEffect effect,
-        int stage)
-    {
-        if (effect == WeaponTechniqueEffect.DuelistAfterimageExecution)
-            return 1;
-        return stage;
-    }
-
     private void RegisterPlayerHitEffect(Rectangle targetBounds)
     {
         RegisterPlayerHitEffect(
@@ -4950,6 +5138,20 @@ public sealed class GameSession
         PlayerHitTechniqueEffect = effect;
         PlayerHitTechniqueStage = stage;
         PlayerHitEffectId++;
+		if (effect == WeaponTechniqueEffect.KnightFinalOath &&
+			stage is 1 or 6 &&
+			_knightUltimateImpactFeedbackAttackId != Player.Combat.AttackId)
+		{
+			_knightUltimateImpactFeedbackAttackId = Player.Combat.AttackId;
+			Camera.AddImpactFeedback(stage == 6 ? 4.2f : 2.4f);
+		}
+        if (effect == WeaponTechniqueEffect.DuelistInfiniteStarburst &&
+            stage >= DuelistTuning.UltimateStrikeCount &&
+            _duelistUltimateImpactFeedbackAttackId != Player.Combat.AttackId)
+        {
+            _duelistUltimateImpactFeedbackAttackId = Player.Combat.AttackId;
+            Camera.AddImpactFeedback(5f);
+        }
     }
 
     private void ProcessPlayerAttack()
@@ -4992,9 +5194,8 @@ public sealed class GameSession
         if (ProcessAncientStaffWorldEffect(technique))
             return;
 
-        if (Player.WeaponFamily == WeaponFamily.GreatSword &&
-            technique?.Effect ==
-                WeaponTechniqueEffect.GreatswordFinalVerdict &&
+        if (technique?.Effect is (WeaponTechniqueEffect.GreatswordFinalVerdict or
+                WeaponTechniqueEffect.KnightFinalOath) &&
             damage <= 0 && poiseDamage <= 0f)
         {
             return;
@@ -5014,15 +5215,6 @@ public sealed class GameSession
             Player.Combat.TechniqueStageIndex == 0)
             _scytheShadowSeverTarget = null;
 
-        if (Player.WeaponFamily == WeaponFamily.WarAxe &&
-            Player.Combat.CurrentTechniqueUseId !=
-                _raiderDisplacementTechniqueUseId)
-        {
-            _raiderDisplacementTechniqueUseId =
-                Player.Combat.CurrentTechniqueUseId;
-            _raiderWallImpactedEnemies.Clear();
-        }
-
         foreach (Enemy enemy in Enemies.Enemies)
         {
             if (!enemy.CanBeTargeted ||
@@ -5031,6 +5223,8 @@ public sealed class GameSession
                     !ReferenceEquals(
                         _greatswordUltimateLockedTarget,
                         enemy) ||
+                technique?.Effect == WeaponTechniqueEffect.KnightFinalOath &&
+                    !ReferenceEquals(_greatswordUltimateLockedTarget, enemy) ||
                 technique?.Effect ==
                     WeaponTechniqueEffect.SovereignGoldenCataclysm &&
                     !ReferenceEquals(
@@ -5039,6 +5233,9 @@ public sealed class GameSession
                 technique?.Effect ==
                     WeaponTechniqueEffect.ScytheUmbraDevourer &&
                     !ReferenceEquals(_scytheUltimateLockedTarget, enemy) ||
+                technique?.Effect ==
+                    WeaponTechniqueEffect.DuelistInfiniteStarburst &&
+                    !ReferenceEquals(_duelistUltimateLockedTarget, enemy) ||
                 technique?.Effect ==
                     WeaponTechniqueEffect.ScytheAbyssalRequiem &&
                     Player.Combat.TechniqueStageIndex == 5 &&
@@ -5055,9 +5252,6 @@ public sealed class GameSession
             bool wasStaggered = enemy.IsStaggered;
             int imprintStacks = enemy.ArcaneImprintCount;
             float damageMultiplier = enemy.PhysicalDamageTakenMultiplier;
-            damageMultiplier *= GetReckonerDamageMultiplier(
-                technique,
-                enemy.Position);
             damageMultiplier *= Player.Combat.GetTargetDamageMultiplier(
                 enemy.MaxHealth <= 0
                     ? 1f
@@ -5065,46 +5259,16 @@ public sealed class GameSession
             damageMultiplier *= GetScytheDamageMultiplier(
                 technique, enemy.ReapMarkCount);
 
-            if (technique?.Effect ==
-                WeaponTechniqueEffect.DuelistFinalWaltz &&
-                !IsPrimaryFinalWaltzTarget(enemy.Position))
-            {
-                damageMultiplier *= .55f;
-            }
-
             if (technique?.Effect == WeaponTechniqueEffect.ConsumeHunterMark &&
                 enemy.IsHunterMarked)
                 damageMultiplier *= 1.45f;
 
-            bool wasUnstable = wasStaggered ||
-                enemy.CurrentPoise <=
-                    enemy.MaxPoise * RaiderTuning.UnstablePoiseRatio;
-            damageMultiplier *= GetRaiderDamageMultiplier(
-                technique,
-                wasUnstable,
-                _raiderWallImpactedEnemies.Contains(enemy));
-
             if (wasStaggered && technique?.Id is "iron-reversal" or
                 "skullsplitter")
                 damageMultiplier *= 1.35f;
-            if (wasStaggered && technique?.Effect ==
-                WeaponTechniqueEffect.BreakerAnvilFall)
-            {
-                damageMultiplier *= 1f +
-                    BreakerTuning.AnvilStaggeredDamageBonus;
-            }
-
             float targetPoiseDamage = poiseDamage;
-            targetPoiseDamage *= GetRaiderPoiseMultiplier(
-                technique,
-                wasUnstable);
-            targetPoiseDamage *= GetBreakerDirectPoiseMultiplier(
-                technique,
-                enemy.Position,
-                enemy.CurrentPoise,
-                enemy.MaxPoise);
-            if (technique?.Id == "knights-edge" &&
-                Player.Combat.TechniqueStageIndex == 2 &&
+            if (technique?.Effect == WeaponTechniqueEffect.KnightCombo &&
+                Player.Combat.TechniqueStageIndex == 3 &&
                 !enemy.IsStaggered &&
                 enemy.CurrentPoise <= enemy.MaxPoise * .40f)
             {
@@ -5131,24 +5295,9 @@ public sealed class GameSession
                 technique,
                 imprintStacks,
                 targetDamage);
-            ResolveBreakerEnemyHit(enemy, technique, wasUnstable);
             bool scytheHandled = ResolveScytheEnemyHit(enemy, technique);
 
-            if (IsRaiderTechnique(technique?.Effect ?? WeaponTechniqueEffect.None))
-            {
-                ResolveRaiderEnemyHit(enemy, technique, wasUnstable);
-                bool heavyImpact =
-                    technique.GetStage(Player.Combat.TechniqueStageIndex).IsHeavy ||
-                    targetPoiseDamage >= 65f;
-                Player.Combat.RegisterRaiderImpactFeedback(
-                    heavyImpact);
-                if (heavyImpact)
-                    Camera.AddImpactFeedback(1.8f);
-            }
-            else if (scytheHandled)
-            {
-            }
-            else if (ResolveReckonerEnemyHit(enemy, technique))
+            if (scytheHandled)
             {
             }
             else if (technique?.Effect == WeaponTechniqueEffect.HookPull)
@@ -5174,15 +5323,6 @@ public sealed class GameSession
                 enemy.ApplyKnockback(Player.Position, knockback, CurrentDungeon);
 
             Player.Combat.RegisterSuccessfulHit();
-            if (technique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainHarpoon &&
-                Player.Combat.TechniqueStageIndex == 0 &&
-                Player.Combat.RegisterReckonerHarpoonOutboundTarget(
-                    enemy.WeightClass == EnemyWeightClass.Heavy ||
-                    enemy.IsHeavyPullAnchor))
-            {
-                break;
-            }
         }
 
         if (Player.Combat.AttackId != processingAttackId)
@@ -5192,12 +5332,17 @@ public sealed class GameSession
             (technique?.Effect !=
                 WeaponTechniqueEffect.GreatswordFinalVerdict ||
              ReferenceEquals(_greatswordUltimateLockedTarget, Boss)) &&
+            (technique?.Effect != WeaponTechniqueEffect.KnightFinalOath ||
+             ReferenceEquals(_greatswordUltimateLockedTarget, Boss)) &&
             (technique?.Effect !=
                 WeaponTechniqueEffect.SovereignGoldenCataclysm ||
              ReferenceEquals(_sovereignUltimateLockedTarget, Boss)) &&
             (technique?.Effect !=
                 WeaponTechniqueEffect.ScytheUmbraDevourer ||
              ReferenceEquals(_scytheUltimateLockedTarget, Boss)) &&
+            (technique?.Effect !=
+                WeaponTechniqueEffect.DuelistInfiniteStarburst ||
+             ReferenceEquals(_duelistUltimateLockedTarget, Boss)) &&
             (technique?.Effect !=
                 WeaponTechniqueEffect.ScytheAbyssalRequiem ||
              Player.Combat.TechniqueStageIndex != 5 ||
@@ -5208,41 +5353,14 @@ public sealed class GameSession
             _bossHitByPlayerAttack = true;
             RegisterPlayerHitEffect(Boss.Bounds);
             int bossImprintStacks = Boss.ArcaneImprintCount;
-            float bossDamageMultiplier = technique?.Effect ==
-                WeaponTechniqueEffect.DuelistFinalWaltz &&
-                !IsPrimaryFinalWaltzTarget(Boss.Position)
-                    ? .55f
-                    : 1f;
-            bossDamageMultiplier *= GetReckonerDamageMultiplier(
-                technique,
-                Boss.Position);
+            float bossDamageMultiplier = 1f;
             bossDamageMultiplier *= Player.Combat.GetTargetDamageMultiplier(
                 Boss.MaxHealth <= 0
                     ? 1f
                     : Boss.CurrentHealth / (float)Boss.MaxHealth);
             bossDamageMultiplier *= GetScytheDamageMultiplier(
                 technique, Boss.ReapMarkCount);
-            bool bossWasUnstable = Boss.IsStaggered ||
-                Boss.CurrentPoise <=
-                    Boss.MaxPoise * RaiderTuning.UnstablePoiseRatio;
-            bossDamageMultiplier *= GetRaiderDamageMultiplier(
-                technique,
-                bossWasUnstable,
-                wallImpacted: false);
-            float bossPoiseMultiplier = GetRaiderPoiseMultiplier(
-                technique,
-                bossWasUnstable);
-            if (Boss.IsStaggered && technique?.Effect ==
-                WeaponTechniqueEffect.BreakerAnvilFall)
-            {
-                bossDamageMultiplier *= 1f +
-                    BreakerTuning.AnvilStaggeredDamageBonus;
-            }
-            bossPoiseMultiplier *= GetBreakerDirectPoiseMultiplier(
-                technique,
-                Boss.Position,
-                Boss.CurrentPoise,
-                Boss.MaxPoise);
+            float bossPoiseMultiplier = 1f;
             int bossDamage = Math.Max(0, (int)MathF.Round(
                 damage * bossDamageMultiplier));
             float bossPoiseDamage =
@@ -5259,25 +5377,20 @@ public sealed class GameSession
                 technique,
                 bossImprintStacks,
                 bossDamage);
-            ResolveBreakerBossHit(technique);
-            ResolveReckonerBossHit(technique);
             ResolveScytheBossHit(technique);
-            bool suppressBossDisplacement = technique?.Effect ==
-                WeaponTechniqueEffect.DuelistFinalWaltz &&
-                Player.Combat.TechniqueStageIndex < technique.StageCount - 1;
-            suppressBossDisplacement |= technique?.Effect is
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment or
-                WeaponTechniqueEffect.ReckonerVortexSnare or
+            bool suppressBossDisplacement = technique?.Effect is
                 WeaponTechniqueEffect.SovereignEventHorizonPalm or
                 WeaponTechniqueEffect.ScytheUmbraDevourer or
                 WeaponTechniqueEffect.ScytheAbyssalRequiem or
                 WeaponTechniqueEffect.ScythePhantomCross or
-                WeaponTechniqueEffect.ScytheEclipseWaltz;
-            bool raiderTechnique = IsRaiderTechnique(
-                technique?.Effect ?? WeaponTechniqueEffect.None);
-            if (!raiderTechnique &&
-                technique?.Effect != WeaponTechniqueEffect.IronJuggernaut &&
-                !suppressBossDisplacement)
+                WeaponTechniqueEffect.ScytheEclipseWaltz or
+                WeaponTechniqueEffect.KnightShieldBash or
+                WeaponTechniqueEffect.KnightGuardCounter or
+                WeaponTechniqueEffect.KnightShieldWall or
+                WeaponTechniqueEffect.KnightFallingShield or
+                WeaponTechniqueEffect.KnightFinalOath or
+                WeaponTechniqueEffect.DuelistInfiniteStarburst;
+            if (!suppressBossDisplacement)
             {
                 Boss.ApplyKnockback(
                     Player.Position,
@@ -5286,33 +5399,8 @@ public sealed class GameSession
             }
             if (technique?.Effect == WeaponTechniqueEffect.HookPull)
                 Player.PullToward(Boss.Position, 20f, CurrentDungeon);
-            if (raiderTechnique)
-            {
-                if (technique.Effect == WeaponTechniqueEffect.RaiderHookingAxe)
-                {
-                    Player.PullToward(
-                        Boss.Position,
-                        RaiderTuning.BossHookPlayerAdvance,
-                        CurrentDungeon);
-                }
-                bool heavyImpact =
-                    technique.GetStage(Player.Combat.TechniqueStageIndex).IsHeavy ||
-                    poiseDamage >= 65f;
-                Player.Combat.RegisterRaiderImpactFeedback(heavyImpact);
-                if (heavyImpact)
-                    Camera.AddImpactFeedback(2.2f);
-            }
             Player.Combat.RegisterSuccessfulHit();
-            if (technique?.Effect ==
-                    WeaponTechniqueEffect.ReckonerChainHarpoon &&
-                Player.Combat.TechniqueStageIndex == 0)
-            {
-                Player.Combat.RegisterReckonerHarpoonOutboundTarget(
-                    heavyOrBoss: true);
-            }
         }
-
-        ProcessBreakerWorldEffect(technique);
     }
 
     private void TryResolveSovereignExecution(
@@ -5455,28 +5543,6 @@ public sealed class GameSession
             if (ReferenceEquals(active, enemy))
                 return true;
         return false;
-    }
-
-    private float GetReckonerDamageMultiplier(
-        WeaponTechnique technique,
-        Vector2 targetPosition)
-    {
-        if (Player.WeaponFamily != WeaponFamily.ChainFlail ||
-            technique?.Effect !=
-                WeaponTechniqueEffect.ReckonerCrescentRequiem ||
-            Player.Combat.TechniqueStageIndex != 1)
-        {
-            return 1f;
-        }
-
-        float range = Player.Combat.CalculateRange(Player.Combat.CurrentAttack);
-        float distance = Vector2.Distance(Player.Position, targetPosition);
-        if (distance < range * ReckonerTuning.CrescentOuterEdgeStartRatio)
-            return 1f;
-
-        return 1f + ReckonerTuning.CrescentOuterEdgeDamageBonus +
-            Player.Combat.Resources.ChainMomentumRatio *
-                ReckonerTuning.CrescentMomentumDamageBonus;
     }
 
     private float GetScytheDamageMultiplier(
@@ -5652,361 +5718,6 @@ public sealed class GameSession
         };
         if (strength > 0f)
             Camera.AddImpactFeedback(strength);
-    }
-
-    private bool ResolveReckonerEnemyHit(
-        Enemy enemy,
-        WeaponTechnique technique)
-    {
-        if (Player.WeaponFamily != WeaponFamily.ChainFlail ||
-            enemy == null || technique == null)
-        {
-            return false;
-        }
-
-        int stage = Player.Combat.TechniqueStageIndex;
-        switch (technique.Effect)
-        {
-            case WeaponTechniqueEffect.ReckonerChainHarpoon when stage == 1:
-                enemy.PullTowardSafe(
-                    Player.Position,
-                    24f,
-                    34f,
-                    CurrentDungeon);
-                return true;
-
-            case WeaponTechniqueEffect.ReckonerVortexSnare when stage is >= 1 and <= 5:
-                float slow = enemy.WeightClass == EnemyWeightClass.Heavy
-                    ? ReckonerTuning.VortexHeavySlowMultiplier
-                    : ReckonerTuning.VortexSlowMultiplier -
-                        Player.Combat.ReckonerMomentumSnapshotRatio * .07f;
-                enemy.ApplyControl(
-                    slow,
-                    ReckonerTuning.VortexSlowDurationSeconds +
-                        Player.Combat.ReckonerMomentumSnapshotRatio * .12f);
-                return true;
-
-            case WeaponTechniqueEffect.ReckonerVortexSnare when stage == 6:
-                enemy.PullTowardSafe(
-                    Player.Position,
-                    36f + Player.Combat.ReckonerMomentumSnapshotRatio * 12f,
-                    30f,
-                    CurrentDungeon);
-                return true;
-
-            case WeaponTechniqueEffect.ReckonerChainsOfJudgment when stage is >= 1 and <= 5:
-                return true;
-
-            case WeaponTechniqueEffect.ReckonerChainsOfJudgment when stage == 6:
-                float facing = Player.Facing ==
-                    DungeonAscendant.Player.FacingDirection.Left ? -1f : 1f;
-                Vector2 controlCenter = Player.Position +
-                    new Vector2(facing * 92f, 0f);
-                enemy.PullTowardSafe(
-                    controlCenter,
-                    42f * (1f + Player.Combat.ReckonerMomentumSnapshotRatio *
-                        ReckonerTuning.UltimateMaximumControlBonus),
-                    20f,
-                    CurrentDungeon);
-                return true;
-
-            case WeaponTechniqueEffect.ReckonerChainsOfJudgment when stage == 7:
-                Camera.AddImpactFeedback(2.6f);
-                return false;
-        }
-
-        return false;
-    }
-
-    private void ResolveReckonerBossHit(WeaponTechnique technique)
-    {
-        if (Player.WeaponFamily != WeaponFamily.ChainFlail ||
-            technique == null)
-        {
-            return;
-        }
-
-        int stage = Player.Combat.TechniqueStageIndex;
-        if (technique.Effect == WeaponTechniqueEffect.ReckonerVortexSnare &&
-            stage is >= 1 and <= 5)
-        {
-            Boss.ApplyArcaneSlow(.86f, .24f);
-        }
-        else if (technique.Effect ==
-                WeaponTechniqueEffect.ReckonerChainsOfJudgment &&
-            stage == 7)
-        {
-            Camera.AddImpactFeedback(3.2f);
-        }
-    }
-
-    private void ProcessBreakerWorldEffect(WeaponTechnique technique)
-    {
-        if (Player.WeaponFamily != WeaponFamily.SpikedMace ||
-            technique == null ||
-            _breakerWorldEffectAttackId == Player.Combat.AttackId)
-            return;
-
-        WeaponTechniqueEffect effect = technique.Effect;
-        if (effect is < WeaponTechniqueEffect.BreakerIronCrush or
-            > WeaponTechniqueEffect.BreakerWorldbreaker)
-            return;
-
-        _breakerWorldEffectAttackId = Player.Combat.AttackId;
-        float facing = Player.Facing ==
-            DungeonAscendant.Player.FacingDirection.Left ? -1f : 1f;
-        Vector2 impact = new(
-            Player.Position.X + facing * 38f,
-            Player.Bounds.Bottom - 3f);
-        float ratio = Player.Combat.BreakerInertiaSnapshotRatio;
-
-        if (effect == WeaponTechniqueEffect.BreakerEarthbreaker)
-        {
-            float radius = BreakerTuning.EarthbreakerShockwaveRadius *
-                (1f + ratio * .12f);
-            _breakerImpactVisuals.Add(new BreakerImpactVisual(
-                impact,
-                radius,
-                .45f + ratio * .40f));
-            ApplyBreakerRadialShockwave(
-                impact,
-                radius,
-                BreakerTuning.EarthbreakerShockwaveDamage,
-                BreakerTuning.EarthbreakerShockwavePoise * (1f + ratio * .35f),
-                ratio,
-                worldbreaker: false);
-            Camera.AddImpactFeedback(2.6f + ratio * 1.4f);
-        }
-        else if (effect == WeaponTechniqueEffect.BreakerCataclysmWheel)
-        {
-            _breakerImpactVisuals.Add(new BreakerImpactVisual(
-                impact,
-                66f,
-                .65f + ratio * .25f));
-            _breakerShockwaves.Add(new BreakerShockwave(
-                impact,
-                facing,
-                ratio));
-            Camera.AddImpactFeedback(3.4f);
-        }
-        else if (effect == WeaponTechniqueEffect.BreakerWorldbreaker)
-        {
-            float radius = BreakerTuning.WorldbreakerBaseShockwaveRadius +
-                BreakerTuning.WorldbreakerMaximumShockwaveRadiusBonus * ratio;
-            _breakerImpactVisuals.Add(new BreakerImpactVisual(
-                impact,
-                radius,
-                .85f + ratio * .15f));
-            ApplyBreakerRadialShockwave(
-                impact,
-                radius,
-                BreakerTuning.WorldbreakerShockwaveDamage,
-                BreakerTuning.WorldbreakerShockwavePoise * (1f + ratio * .55f),
-                ratio,
-                worldbreaker: true);
-            Player.Combat.RegisterBreakerImpactFeedback(worldbreaker: true);
-            Camera.AddImpactFeedback(5.2f + ratio * 2f);
-        }
-    }
-
-    private void ApplyBreakerRadialShockwave(
-        Vector2 impact,
-        float radius,
-        int baseDamage,
-        float basePoise,
-        float inertiaRatio,
-        bool worldbreaker)
-    {
-        float radiusSquared = radius * radius;
-        foreach (Enemy enemy in Enemies.Enemies)
-        {
-            if (!enemy.CanBeTargeted)
-                continue;
-            float distanceSquared = Vector2.DistanceSquared(
-                impact,
-                enemy.Position);
-            if (distanceSquared > radiusSquared)
-                continue;
-            float distanceRatio = MathF.Sqrt(distanceSquared) / radius;
-            float falloff = MathHelper.Lerp(1f, .45f, distanceRatio);
-            enemy.ReceiveDamage(
-                Math.Max(1, (int)MathF.Round(baseDamage * falloff)),
-                basePoise * falloff);
-            enemy.ApplyKnockback(
-                Player.Position,
-                (worldbreaker ? 56f : 24f) * falloff,
-                CurrentDungeon);
-            if ((worldbreaker || inertiaRatio >= .75f) &&
-                enemy.WeightClass != EnemyWeightClass.Heavy)
-            {
-                enemy.ApplyRaiderLaunch(worldbreaker
-                    ? BreakerTuning.WorldbreakerNormalLaunchVelocity
-                    : -125f);
-            }
-        }
-
-        if (ShouldRenderBoss && Boss.IsAlive &&
-            Vector2.DistanceSquared(impact, Boss.Position) <= radiusSquared)
-        {
-            float distanceRatio = MathF.Min(
-                1f,
-                Vector2.Distance(impact, Boss.Position) / radius);
-            float falloff = MathHelper.Lerp(1f, .55f, distanceRatio);
-            Boss.ReceiveDamage(
-                Math.Max(1, (int)MathF.Round(baseDamage * falloff)),
-                basePoise * falloff);
-        }
-    }
-
-    private float GetBreakerDirectPoiseMultiplier(
-        WeaponTechnique technique,
-        Vector2 targetPosition,
-        float currentPoise,
-        float maximumPoise)
-    {
-        if (technique == null ||
-            Player.WeaponFamily != WeaponFamily.SpikedMace)
-            return 1f;
-
-        if (technique.Effect ==
-                WeaponTechniqueEffect.BreakerTitansBackhand &&
-            MathF.Abs(targetPosition.X - Player.Position.X) >=
-                Player.Combat.CalculateRange(Player.Combat.CurrentAttack) * .68f)
-            return 1.32f;
-
-        if (technique.Effect == WeaponTechniqueEffect.BreakerIronCrush &&
-            Player.Combat.TechniqueStageIndex == 2 && maximumPoise > 0f &&
-            currentPoise <= maximumPoise * .42f)
-            return 1.25f;
-
-        return 1f;
-    }
-
-    private void ResolveBreakerEnemyHit(
-        Enemy enemy,
-        WeaponTechnique technique,
-        bool wasUnstable)
-    {
-        if (enemy == null || technique == null ||
-            Player.WeaponFamily != WeaponFamily.SpikedMace)
-            return;
-
-        if (technique.Effect ==
-                WeaponTechniqueEffect.BreakerBatteringRush &&
-            wasUnstable && enemy.WeightClass != EnemyWeightClass.Heavy)
-        {
-            enemy.ApplyRaiderLaunch(BreakerTuning.BatteringRushLaunchVelocity);
-        }
-        else if (technique.Effect ==
-                WeaponTechniqueEffect.BreakerWorldbreaker &&
-            enemy.WeightClass != EnemyWeightClass.Heavy)
-        {
-            enemy.ApplyRaiderLaunch(
-                BreakerTuning.WorldbreakerNormalLaunchVelocity);
-        }
-
-        RegisterBreakerImpactFeedback(technique);
-    }
-
-    private void ResolveBreakerBossHit(WeaponTechnique technique)
-    {
-        if (technique == null ||
-            Player.WeaponFamily != WeaponFamily.SpikedMace)
-            return;
-        RegisterBreakerImpactFeedback(technique);
-    }
-
-    private void RegisterBreakerImpactFeedback(WeaponTechnique technique)
-    {
-        if (_breakerImpactFeedbackAttackId == Player.Combat.AttackId)
-            return;
-        _breakerImpactFeedbackAttackId = Player.Combat.AttackId;
-        bool worldbreaker = technique.Effect ==
-            WeaponTechniqueEffect.BreakerWorldbreaker;
-        Player.Combat.RegisterBreakerImpactFeedback(worldbreaker);
-        Camera.AddImpactFeedback(worldbreaker ? 5.2f : 2.4f);
-    }
-
-    private void UpdateBreakerEffects(float elapsedSeconds)
-    {
-        for (int index = _breakerImpactVisuals.Count - 1; index >= 0; index--)
-        {
-            BreakerImpactVisual visual = _breakerImpactVisuals[index];
-            visual.TimeRemaining -= elapsedSeconds;
-            if (visual.TimeRemaining <= 0f)
-                _breakerImpactVisuals.RemoveAt(index);
-        }
-
-        for (int index = _breakerShockwaves.Count - 1; index >= 0; index--)
-        {
-            BreakerShockwave wave = _breakerShockwaves[index];
-            float movement = MathF.Min(
-                wave.Speed * elapsedSeconds,
-                wave.MaximumDistance - wave.DistanceTraveled);
-            Vector2 candidate = wave.Position +
-                new Vector2(wave.Direction * movement, 0f);
-            Vector2 collisionCenter = candidate - new Vector2(0f, 11f);
-            if (!SideScrollingCollision.IsPositionFree(
-                    collisionCenter,
-                    new Vector2(18f, 18f),
-                    CurrentDungeon))
-            {
-                wave.IsExpired = true;
-            }
-            else
-            {
-                wave.Position = candidate;
-                wave.DistanceTraveled += movement;
-                ResolveBreakerShockwaveHits(wave);
-            }
-
-            if (wave.DistanceTraveled >= wave.MaximumDistance)
-                wave.IsExpired = true;
-            if (wave.IsExpired)
-                _breakerShockwaves.RemoveAt(index);
-        }
-    }
-
-    private void ResolveBreakerShockwaveHits(BreakerShockwave wave)
-    {
-        int damage = Math.Max(1, (int)MathF.Round(MathHelper.Lerp(
-            wave.NearDamage,
-            wave.FarDamage,
-            wave.Progress)));
-        float poise = MathHelper.Lerp(
-            wave.NearPoise,
-            wave.FarPoise,
-            wave.Progress);
-
-        foreach (Enemy enemy in Enemies.Enemies)
-        {
-            if (!enemy.CanBeTargeted || wave.HitEnemies.Contains(enemy) ||
-                !wave.Bounds.Intersects(enemy.MeleeTargetBounds))
-                continue;
-            wave.HitEnemies.Add(enemy);
-            bool unstable = enemy.IsStaggered ||
-                enemy.CurrentPoise <= enemy.MaxPoise *
-                    BreakerTuning.UnstablePoiseRatio;
-            enemy.ReceiveDamage(damage, poise);
-            enemy.ApplyKnockback(Player.Position, 44f, CurrentDungeon);
-            if (unstable && enemy.WeightClass != EnemyWeightClass.Heavy)
-                enemy.ApplyRaiderLaunch(-145f);
-        }
-
-        if (!wave.HitBoss && ShouldRenderBoss && Boss.IsAlive &&
-            wave.Bounds.Intersects(Boss.Bounds))
-        {
-            wave.HitBoss = true;
-            Boss.ReceiveDamage(damage, poise);
-        }
-    }
-
-    private void ClearBreakerEffects()
-    {
-        _breakerShockwaves.Clear();
-        _breakerImpactVisuals.Clear();
-        _breakerWorldEffectAttackId = -1;
-        _breakerImpactFeedbackAttackId = -1;
     }
 
     private void UpdateAncientStaffCandidates()
@@ -6896,336 +6607,6 @@ public sealed class GameSession
         }
     }
 
-    private static bool IsRaiderTechnique(WeaponTechniqueEffect effect) =>
-        effect is WeaponTechniqueEffect.RaiderSavageCleave or
-            WeaponTechniqueEffect.RaiderHookingAxe or
-            WeaponTechniqueEffect.RaiderBucklerRam or
-            WeaponTechniqueEffect.RaiderRavagersRush or
-            WeaponTechniqueEffect.RaiderExecutionersGrip or
-            WeaponTechniqueEffect.RaiderSkullbreaker or
-            WeaponTechniqueEffect.RaiderCrowdCrusher or
-            WeaponTechniqueEffect.RaiderWarbringersDominion;
-
-    private float GetRaiderDamageMultiplier(
-        WeaponTechnique technique,
-        bool unstable,
-        bool wallImpacted)
-    {
-        if (technique == null || !unstable)
-        {
-            return technique?.Effect ==
-                    WeaponTechniqueEffect.RaiderWarbringersDominion &&
-                Player.Combat.TechniqueStageIndex == 3 && wallImpacted
-                    ? 1f + RaiderTuning.DominionWallDamageBonus
-                    : 1f;
-        }
-
-        int stage = Player.Combat.TechniqueStageIndex;
-        float multiplier = technique.Effect switch
-        {
-            WeaponTechniqueEffect.RaiderExecutionersGrip when stage == 2 =>
-                1f + RaiderTuning.ExecutionerUnstableDamageBonus,
-            WeaponTechniqueEffect.RaiderSkullbreaker when stage == 1 =>
-                1f + RaiderTuning.SkullbreakerUnstableDamageBonus,
-            WeaponTechniqueEffect.RaiderWarbringersDominion when stage == 3 =>
-                1f + RaiderTuning.DominionFinalUnstableDamageBonus,
-            _ => 1f
-        };
-        if (technique.Effect ==
-                WeaponTechniqueEffect.RaiderWarbringersDominion &&
-            stage == 3 && wallImpacted)
-        {
-            multiplier += RaiderTuning.DominionWallDamageBonus;
-        }
-        return multiplier;
-    }
-
-    private float GetRaiderPoiseMultiplier(
-        WeaponTechnique technique,
-        bool unstable)
-    {
-        if (technique == null)
-            return 1f;
-
-        int stage = Player.Combat.TechniqueStageIndex;
-        if (technique.Effect == WeaponTechniqueEffect.RaiderSavageCleave &&
-            stage == 2 && unstable)
-            return 1.25f;
-        if (technique.Effect ==
-                WeaponTechniqueEffect.RaiderExecutionersGrip &&
-            stage == 2 && unstable)
-            return 1f + RaiderTuning.ExecutionerUnstablePoiseBonus;
-        if (technique.Effect == WeaponTechniqueEffect.RaiderSkullbreaker &&
-            stage == 1 && unstable)
-            return 1.25f;
-        if (technique.Effect ==
-                WeaponTechniqueEffect.RaiderWarbringersDominion &&
-            stage == 3 && unstable)
-            return 1.20f;
-        return 1f;
-    }
-
-    private void ResolveRaiderEnemyHit(
-        Enemy enemy,
-        WeaponTechnique technique,
-        bool wasUnstable)
-    {
-        if (enemy == null || technique == null || !enemy.CanBeTargeted)
-            return;
-
-        int stage = Player.Combat.TechniqueStageIndex;
-        float facing = Player.Facing ==
-            DungeonAscendant.Player.FacingDirection.Left ? -1f : 1f;
-        EnemyDisplacementResult displacement = default;
-        bool createsCollisionImpact = false;
-
-        switch (technique.Effect)
-        {
-            case WeaponTechniqueEffect.RaiderSavageCleave:
-                displacement = enemy.DisplaceHorizontally(
-                    facing,
-                    stage == 2 ? 32f : 10f + stage * 5f,
-                    CurrentDungeon);
-                createsCollisionImpact = stage == 2;
-                break;
-
-            case WeaponTechniqueEffect.RaiderHookingAxe:
-                if (enemy.WeightClass == EnemyWeightClass.Heavy)
-                {
-                    displacement = enemy.DisplaceHorizontally(
-                        -facing,
-                        16f,
-                        CurrentDungeon);
-                    Player.PullToward(
-                        enemy.Position,
-                        RaiderTuning.HeavyHookPlayerAdvance,
-                        CurrentDungeon);
-                }
-                else
-                {
-                    displacement = enemy.PullTowardSafe(
-                        Player.Position,
-                        RaiderTuning.HookPullDistance,
-                        RaiderTuning.HookSafeDistance,
-                        CurrentDungeon);
-                }
-                break;
-
-            case WeaponTechniqueEffect.RaiderBucklerRam:
-                displacement = enemy.DisplaceHorizontally(
-                    facing,
-                    RaiderTuning.BucklerRamPushDistance,
-                    CurrentDungeon);
-                createsCollisionImpact = true;
-                break;
-
-            case WeaponTechniqueEffect.RaiderRavagersRush:
-                displacement = enemy.DisplaceHorizontally(
-                    facing,
-                    RaiderTuning.RavagersRushPushDistance,
-                    CurrentDungeon);
-                if (wasUnstable)
-                    enemy.ApplyRaiderLaunch(-235f);
-                createsCollisionImpact = true;
-                break;
-
-            case WeaponTechniqueEffect.RaiderExecutionersGrip:
-                if (stage == 1)
-                {
-                    displacement = enemy.PullTowardSafe(
-                        Player.Position,
-                        RaiderTuning.ExecutionerRepositionDistance,
-                        RaiderTuning.HookSafeDistance,
-                        CurrentDungeon);
-                }
-                else if (stage == 2)
-                {
-                    displacement = enemy.DisplaceHorizontally(
-                        facing,
-                        28f,
-                        CurrentDungeon);
-                }
-                break;
-
-            case WeaponTechniqueEffect.RaiderSkullbreaker:
-                displacement = enemy.DisplaceHorizontally(
-                    facing,
-                    stage == 0 ? 24f : 46f,
-                    CurrentDungeon);
-                createsCollisionImpact = stage == 1;
-                if (stage == 1 && wasUnstable)
-                    enemy.ApplyRaiderLaunch(-180f);
-                break;
-
-            case WeaponTechniqueEffect.RaiderCrowdCrusher:
-                if (enemy.WeightClass == EnemyWeightClass.Heavy)
-                {
-                    displacement = enemy.DisplaceHorizontally(
-                        Player.Combat.RaiderControlDirection,
-                        stage == 2 ? 28f : 8f,
-                        CurrentDungeon);
-                }
-                else if (stage == 0)
-                {
-                    displacement = enemy.PullTowardSafe(
-                        Player.Position,
-                        48f,
-                        RaiderTuning.HookSafeDistance,
-                        CurrentDungeon);
-                }
-                else if (stage == 2)
-                {
-                    displacement = enemy.DisplaceHorizontally(
-                        Player.Combat.RaiderControlDirection,
-                        RaiderTuning.CrowdCrusherThrowDistance,
-                        CurrentDungeon);
-                    createsCollisionImpact = true;
-                }
-                break;
-
-            case WeaponTechniqueEffect.RaiderWarbringersDominion:
-                if (stage == 0)
-                {
-                    float movementMultiplier = enemy.WeightClass ==
-                        EnemyWeightClass.Heavy
-                            ? .85f
-                            : RaiderTuning.WarCryMovementMultiplier;
-                    enemy.ApplyControl(
-                        movementMultiplier,
-                        RaiderTuning.WarCryHesitationSeconds);
-                }
-                else if (stage == 1)
-                {
-                    Vector2 gatherPoint = Player.Position +
-                        new Vector2(
-                            facing * RaiderTuning.DominionGatherZoneDistance,
-                            0f);
-                    displacement = enemy.PullTowardSafe(
-                        gatherPoint,
-                        RaiderTuning.GatheringPullDistance,
-                        18f,
-                        CurrentDungeon);
-                }
-                else if (stage == 2)
-                {
-                    displacement = enemy.DisplaceHorizontally(
-                        facing,
-                        RaiderTuning.DominionPushDistance,
-                        CurrentDungeon);
-                    createsCollisionImpact = true;
-                }
-                else
-                {
-                    displacement = enemy.DisplaceHorizontally(
-                        facing,
-                        38f,
-                        CurrentDungeon);
-                    createsCollisionImpact = true;
-                }
-                break;
-        }
-
-        if (createsCollisionImpact)
-        {
-            ResolveRaiderDisplacementCollision(
-                enemy,
-                displacement,
-                displacement.EndPosition.X - displacement.StartPosition.X);
-        }
-    }
-
-    private void ResolveRaiderDisplacementCollision(
-        Enemy displaced,
-        EnemyDisplacementResult displacement,
-        float direction)
-    {
-        if (displaced == null || displacement.RequestedDistance <= 0f)
-            return;
-
-        if (displacement.HitWall && displaced.ApplyDisplacementImpact(
-                RaiderTuning.WallCollisionPoise,
-                RaiderTuning.WallCollisionDamage))
-        {
-            _raiderWallImpactedEnemies.Add(displaced);
-            RegisterPlayerHitEffect(displaced.MeleeTargetBounds);
-            Camera.AddImpactFeedback(2.5f);
-        }
-
-        Rectangle swept = CreateEnemyDisplacementBounds(
-            displaced,
-            displacement.StartPosition,
-            displacement.EndPosition);
-        float resolvedDirection = MathF.Abs(direction) > .1f
-            ? MathF.Sign(direction)
-            : Player.Combat.RaiderControlDirection;
-
-        foreach (Enemy other in Enemies.Enemies)
-        {
-            if (ReferenceEquals(other, displaced) || !other.CanBeTargeted ||
-                !swept.Intersects(other.MeleeTargetBounds))
-                continue;
-
-            bool inTravelDirection = resolvedDirection > 0f
-                ? other.Position.X >= displacement.StartPosition.X
-                : other.Position.X <= displacement.StartPosition.X;
-            if (!inTravelDirection)
-                continue;
-
-            displaced.ApplyDisplacementImpact(
-                RaiderTuning.EnemyCollisionPoise);
-            other.ApplyDisplacementImpact(
-                RaiderTuning.EnemyCollisionPoise);
-            other.DisplaceHorizontally(
-                resolvedDirection,
-                RaiderTuning.EnemyCollisionNudge,
-                CurrentDungeon);
-            displaced.DisplaceHorizontally(
-                -resolvedDirection,
-                6f,
-                CurrentDungeon);
-            RegisterPlayerHitEffect(other.MeleeTargetBounds);
-            break;
-        }
-    }
-
-    private static Rectangle CreateEnemyDisplacementBounds(
-        Enemy enemy,
-        Vector2 start,
-        Vector2 end)
-    {
-        float halfWidth = enemy.Size.X / 2f + 5f;
-        float halfHeight = enemy.Size.Y / 2f;
-        int left = (int)MathF.Floor(MathF.Min(start.X, end.X) - halfWidth);
-        int right = (int)MathF.Ceiling(MathF.Max(start.X, end.X) + halfWidth);
-        int top = (int)MathF.Floor(MathF.Min(start.Y, end.Y) - halfHeight);
-        int bottom = (int)MathF.Ceiling(MathF.Max(start.Y, end.Y) + halfHeight);
-        return new Rectangle(left, top, right - left, bottom - top);
-    }
-
-    private bool IsPrimaryFinalWaltzTarget(Vector2 candidatePosition)
-    {
-        float candidateDistance = Vector2.DistanceSquared(
-            Player.Position,
-            candidatePosition);
-
-        foreach (Enemy enemy in Enemies.Enemies)
-        {
-            if (!enemy.CanBeTargeted || enemy.Position == candidatePosition)
-                continue;
-
-            if (Vector2.DistanceSquared(Player.Position, enemy.Position) <
-                candidateDistance)
-            {
-                return false;
-            }
-        }
-
-        return !ShouldRenderBoss || !Boss.IsAlive ||
-            Boss.Position == candidatePosition ||
-            Vector2.DistanceSquared(Player.Position, Boss.Position) >=
-                candidateDistance;
-    }
-
     private void SpawnPlayerProjectile(AttackDefinition attack)
     {
         if (_spawnedPlayerProjectileAttackId == Player.Combat.AttackId ||
@@ -8034,9 +7415,6 @@ public sealed class GameSession
                 break;
             case WeaponTechniqueEffect.BrokenArmor:
                 enemy.ApplyBrokenArmor();
-                break;
-            case WeaponTechniqueEffect.DefenseWeaken:
-                enemy.ApplyDefenseWeakening(1.10f, 4f);
                 break;
             case WeaponTechniqueEffect.GravityControl:
                 enemy.ApplyControl(.58f, 1.25f);

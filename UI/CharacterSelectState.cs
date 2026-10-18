@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DungeonAscendant.Core;
 using DungeonAscendant.Items;
 using DungeonAscendant.Persistence;
 using Microsoft.Xna.Framework;
@@ -17,6 +18,7 @@ public sealed class CharacterSelectState
 
     public int SelectedSlotIndex { get; private set; }
     public bool IsDeleteConfirmationOpen { get; private set; }
+    public bool DeleteFailed { get; private set; }
 
     public void Begin(
         IReadOnlyList<SaveSlotData> slots,
@@ -37,6 +39,7 @@ public sealed class CharacterSelectState
                 SaveSlotManager.SlotCount - 1);
         }
         IsDeleteConfirmationOpen = false;
+        DeleteFailed = false;
         RefreshPreviews(slots);
     }
 
@@ -50,13 +53,19 @@ public sealed class CharacterSelectState
     public void BeginDelete(SaveSlotData selectedSlot)
     {
         if (selectedSlot?.Occupied == true)
+        {
             IsDeleteConfirmationOpen = true;
+            DeleteFailed = false;
+        }
     }
 
     public void CancelDelete()
     {
         IsDeleteConfirmationOpen = false;
+        DeleteFailed = false;
     }
+
+    public void ReportDeleteFailure() => DeleteFailed = true;
 
     public PlayerCharacter GetPreview(int slotIndex)
     {
@@ -90,12 +99,20 @@ public sealed class CharacterSelectState
 
     public static EquipmentItem CreateWeapon(SaveSlotData slot)
     {
-        WeaponDefinition definition = EquipmentCatalog.RestoreWeaponDefinition(
-            slot.EquippedWeaponId,
-            slot.EquippedWeaponName,
-            slot.EquippedWeaponFamily,
-            slot.EquippedWeaponTier,
-            slot.EquippedWeaponDamageBonus);
+        if (!EquipmentCatalog.TryResolveSavedWeaponId(
+                slot.EquippedWeaponId,
+                out WeaponDefinition definition))
+        {
+            StartupLog.Write(
+                EquipmentCatalog.IsRemovedWeaponId(slot.EquippedWeaponId)
+                    ? $"[SAVE MIGRATION] Removed equipped weapon ID " +
+                        $"'{slot.EquippedWeaponId}' replaced with " +
+                        $"'{EquipmentCatalog.KnightLongSword.WeaponId}'."
+                    : $"[SAVE MIGRATION] Unknown equipped weapon ID " +
+                $"'{slot.EquippedWeaponId}' replaced with " +
+                $"'{EquipmentCatalog.KnightLongSword.WeaponId}'.");
+            definition = EquipmentCatalog.KnightLongSword;
+        }
         return new EquipmentItem(definition, slot.EquippedWeaponRarity);
     }
 
@@ -115,17 +132,31 @@ public sealed class CharacterSelectState
             slot.EquippedArmorGrade);
     }
 
-    public static EquipmentItem CreateInventoryItem(SavedEquipmentItemData saved)
+    public static bool TryCreateInventoryItem(
+        SavedEquipmentItemData saved,
+        out EquipmentItem item)
     {
+        item = null;
+        if (saved == null)
+            return false;
+
         if (saved.Slot == EquipmentSlot.Weapon)
         {
-            WeaponDefinition definition = EquipmentCatalog.RestoreWeaponDefinition(
-                saved.DefinitionId,
-                saved.Name,
-                saved.WeaponFamily,
-                saved.Tier,
-                saved.DamageBonus);
-            return new EquipmentItem(definition, saved.Rarity);
+            if (!EquipmentCatalog.TryResolveSavedWeaponId(
+                    saved.DefinitionId,
+                    out WeaponDefinition definition))
+            {
+                StartupLog.Write(
+                    EquipmentCatalog.IsRemovedWeaponId(saved.DefinitionId)
+                        ? $"[SAVE MIGRATION] Removed obsolete inventory weapon ID " +
+                            $"'{saved.DefinitionId}'."
+                        : $"[SAVE MIGRATION] Skipped unknown inventory weapon ID " +
+                            $"'{saved.DefinitionId}'.");
+                return false;
+            }
+
+            item = new EquipmentItem(definition, saved.Rarity);
+            return true;
         }
 
         ArmorDefinition armor = saved.DefinitionId.StartsWith(
@@ -136,6 +167,7 @@ public sealed class CharacterSelectState
                 saved.Tier,
                 saved.HealthBonus)
             : EquipmentCatalog.ResolveSavedArmorId(saved.DefinitionId);
-        return new EquipmentItem(armor, saved.Rarity, saved.ArmorGrade);
+        item = new EquipmentItem(armor, saved.Rarity, saved.ArmorGrade);
+        return true;
     }
 }

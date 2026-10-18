@@ -56,8 +56,13 @@ public sealed class SaveSlotManager
         if (slotIndex < 0 || slotIndex >= SlotCount)
             return false;
 
+        SaveSlotData previous = _slots[slotIndex];
         _slots[slotIndex] = SaveSlotData.Empty(slotIndex);
-        return Save();
+        if (Save())
+            return true;
+
+        _slots[slotIndex] = previous;
+        return false;
     }
 
     public void Reload()
@@ -100,6 +105,7 @@ public sealed class SaveSlotManager
     private bool Save()
     {
         LastError = string.Empty;
+        string temporaryPath = _savePath + ".tmp";
 
         try
         {
@@ -113,7 +119,6 @@ public sealed class SaveSlotManager
                 Slots = new List<SaveSlotData>(_slots)
             };
             string json = JsonSerializer.Serialize(data, JsonOptions);
-            string temporaryPath = _savePath + ".tmp";
             File.WriteAllText(temporaryPath, json);
             File.Move(temporaryPath, _savePath, true);
             return true;
@@ -122,6 +127,15 @@ public sealed class SaveSlotManager
             exception is IOException or UnauthorizedAccessException)
         {
             LastError = exception.Message;
+            try
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
+            catch (Exception cleanupException) when (
+                cleanupException is IOException or UnauthorizedAccessException)
+            {
+            }
             return false;
         }
     }

@@ -1,5 +1,3 @@
-using System;
-
 namespace DungeonAscendant.Items;
 
 public sealed class EquipmentItem : Item
@@ -64,27 +62,4 @@ public sealed class EquipmentItem : Item
         ArmorGrade = ArmorGradeRules.Clamp(armorGrade);
     }
 
-    public EquipmentItem(
-        int itemLevel,
-        ItemRarity rarity,
-        EquipmentSlot slot,
-        int damageBonus,
-        int healthBonus)
-        : base(
-            $"legacy-{slot.ToString().ToLowerInvariant()}-t{itemLevel}",
-            slot == EquipmentSlot.Weapon ? "Generated Weapon" : "Generated Armor",
-            itemLevel,
-            rarity)
-    {
-        Definition = slot == EquipmentSlot.Weapon
-            ? EquipmentCatalog.CreateGeneratedWeapon(
-                WeaponFamily.LongSword,
-                itemLevel,
-                Math.Max(0, damageBonus))
-            : EquipmentCatalog.CreateGeneratedArmor(
-                ArmorClass.Medium,
-                itemLevel,
-                Math.Max(0, healthBonus));
-        ArmorGrade = ArmorGrade.C1;
-    }
 }
