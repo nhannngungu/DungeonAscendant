@@ -121,7 +121,9 @@ public abstract class Enemy
         EnemyType.WarBishop or EnemyType.BrokenKing or
         EnemyType.BoneHarvester or EnemyType.Hellbrute or
         EnemyType.RiftWarden or EnemyType.DemonLegionnaire or
-        EnemyType.HornedGeneral;
+        EnemyType.HornedGeneral or EnemyType.DemonShieldbearer or
+        EnemyType.InfernalSmith or EnemyType.DemonOfficer or
+        EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner;
 
     public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
         MaxPoise,
@@ -1046,6 +1048,11 @@ public abstract class Enemy
             EnemyType.RiftWarden => 175f,
             EnemyType.DemonLegionnaire => 190f,
             EnemyType.HornedGeneral => 360f,
+            EnemyType.DemonShieldbearer => 150f,
+            EnemyType.InfernalSmith => 185f,
+            EnemyType.DemonOfficer => 160f,
+            EnemyType.BallistaGunner => 260f,
+            EnemyType.BlackGuardExecutioner => 340f,
             _ => 60f
         };
     }

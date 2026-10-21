@@ -169,10 +169,12 @@ public sealed class GameRenderer : IDisposable
     private readonly DemonHeavySpriteRenderer _demonHeavySpriteRenderer;
     private readonly DemonRitualSpriteRenderer _demonRitualSpriteRenderer;
     private readonly DemonLegionSpriteRenderer _demonLegionSpriteRenderer;
+    private readonly DemonFortressEnemySpriteRenderer _demonFortressEnemySpriteRenderer;
     private readonly CatacombEnvironmentRenderer _catacombEnvironmentRenderer;
     private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
     private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
     private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
+    private readonly DemonFortressEnvironmentRenderer _demonFortressEnvironmentRenderer;
     private int _observedElderSigils;
     private float _elderSigilPulseRemaining;
     private int _observedDuelistMomentumTier = -1;
@@ -253,6 +255,9 @@ public sealed class GameRenderer : IDisposable
         _demonLegionSpriteRenderer = new DemonLegionSpriteRenderer(
             _spriteBatch,
             _pixel);
+        _demonFortressEnemySpriteRenderer = new DemonFortressEnemySpriteRenderer(
+            _spriteBatch,
+            _pixel);
         _catacombEnvironmentRenderer = new CatacombEnvironmentRenderer(
             _spriteBatch,
             _pixel);
@@ -263,6 +268,9 @@ public sealed class GameRenderer : IDisposable
             _spriteBatch,
             _pixel);
         _demonLandsEnvironmentRenderer = new DemonLandsEnvironmentRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonFortressEnvironmentRenderer = new DemonFortressEnvironmentRenderer(
             _spriteBatch,
             _pixel);
     }
@@ -682,6 +690,7 @@ public sealed class GameRenderer : IDisposable
             DrawDemonicCorruptionMeter(gameSession);
             DrawBrokenKingBossBar(gameSession);
             DrawHornedGeneralBossBar(gameSession);
+            DrawDemonFortressBossBar(gameSession);
             DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
             DrawWeaponResource(gameSession.Player, gameTime);
             DrawTechniqueFeedback(gameSession.Player);
@@ -1716,6 +1725,77 @@ public sealed class GameRenderer : IDisposable
             markerColor);
     }
 
+    private void DrawDemonFortressBossBar(GameSession session)
+    {
+        if (session.CurrentDungeon?.IsDemonFortress != true)
+            return;
+
+        DemonFortressEnemy target = null;
+        float nearest = float.MaxValue;
+        foreach (Enemy enemy in session.Enemies.Enemies)
+        {
+            if (enemy is not DemonFortressEnemy candidate || !candidate.IsAlive ||
+                !candidate.IsBossTierEncounter || !candidate.IsHealthBarVisible)
+                continue;
+            float distance = Vector2.DistanceSquared(
+                candidate.Position, session.Player.Position);
+            if (distance >= nearest)
+                continue;
+            nearest = distance;
+            target = candidate;
+        }
+        if (target == null)
+            return;
+
+        bool executioner = target.Type == EnemyType.BlackGuardExecutioner;
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int viewportHeight = _graphicsDevice.Viewport.Height;
+        int width = Math.Clamp(
+            viewportWidth * (executioner ? 7 : 6) / 16, 350, executioner ? 700 : 610);
+        int x = (viewportWidth - width) / 2;
+        int y = viewportHeight - 104;
+        string key = executioner
+            ? "enemy.black_guard_executioner"
+            : "enemy.ballista_gunner";
+        DrawCenteredDebugText(
+            Loc.Get(key + ".name"),
+            viewportWidth / 2,
+            y - 30,
+            executioner ? new Color(220, 207, 195) : new Color(210, 170, 112),
+            1);
+        DrawCenteredDebugText(
+            Loc.Get(key + ".title"),
+            viewportWidth / 2,
+            y - 17,
+            executioner ? new Color(151, 63, 66) : new Color(139, 112, 82),
+            1);
+
+        var frame = new Rectangle(x, y + 4, width, executioner ? 17 : 14);
+        _spriteBatch.Draw(_pixel, frame, new Color(18, 13, 16, 238));
+        DrawRectangleOutline(frame, 2,
+            executioner ? new Color(132, 52, 57, 240) : new Color(126, 91, 55, 235));
+        var track = new Rectangle(x + 3, y + 7, width - 6, frame.Height - 6);
+        _spriteBatch.Draw(_pixel, track, new Color(54, 23, 25, 242));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(
+            target.CurrentHealth / (float)target.MaxHealth, 0f, 1f));
+        if (fill > 0)
+        {
+            Color health = executioner
+                ? target.BossCombatPhase == 2
+                    ? new Color(185, 46, 48)
+                    : new Color(126, 48, 55)
+                : target.BossCombatPhase == 2
+                    ? new Color(194, 82, 41)
+                    : new Color(143, 75, 43);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(track.X, track.Y, fill, track.Height), health);
+        }
+        int phaseMarker = track.X + (int)MathF.Round(track.Width * .60f);
+        _spriteBatch.Draw(_pixel,
+            new Rectangle(phaseMarker, track.Y - 2, 2, track.Height + 4),
+            new Color(220, 183, 120, 205));
+    }
+
     private void DrawDemonLands(
         GameSession session,
         Rectangle visibleBounds,
@@ -1744,6 +1824,14 @@ public sealed class GameRenderer : IDisposable
                 DrawExitMarker(
                     gameSession.ExitPosition,
                     gameSession.IsExitUnlocked);
+            return;
+        }
+
+        if (dungeon.IsDemonFortress)
+        {
+            _demonFortressEnvironmentRenderer.DrawWorld(
+                gameSession, visibleBounds, gameTime);
+            DrawExitMarker(gameSession.ExitPosition, false);
             return;
         }
 
@@ -2567,6 +2655,9 @@ public sealed class GameRenderer : IDisposable
                 else
                     DrawDemonLandsEnemy(demon);
                 break;
+            case DemonFortressEnemy fortress:
+                _demonFortressEnemySpriteRenderer.Draw(fortress, gameTime);
+                break;
         }
 
         if (enemy.IsBuffed)
@@ -2960,6 +3051,8 @@ public sealed class GameRenderer : IDisposable
             enemy.Type == EnemyType.FallenKnight ||
             enemy.Type == EnemyType.BrokenKing ||
             enemy.Type == EnemyType.HornedGeneral ||
+            enemy.Type == EnemyType.BallistaGunner ||
+            enemy.Type == EnemyType.BlackGuardExecutioner ||
             enemy.MaxHealth <= 0)
         {
             return;

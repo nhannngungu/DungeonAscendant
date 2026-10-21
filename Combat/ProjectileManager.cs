@@ -523,6 +523,23 @@ public sealed class ProjectileManager
         _plagueDamageCooldownRemaining = 0f;
     }
 
+    public void ClearEnemyProjectilesInRoom(int roomId)
+    {
+        for (int index = _projectiles.Count - 1; index >= 0; index--)
+        {
+            Projectile projectile = _projectiles[index];
+            if (!projectile.IsPlayerOwned && projectile.RoomId == roomId)
+                _projectiles.RemoveAt(index);
+        }
+
+        for (int index = _impacts.Count - 1; index >= 0; index--)
+        {
+            Projectile projectile = _impacts[index].Projectile;
+            if (!projectile.IsPlayerOwned && projectile.RoomId == roomId)
+                _impacts.RemoveAt(index);
+        }
+    }
+
     public void SpawnArrowRainAtImpact(Projectile projectile, Vector2 impact)
     {
         if (projectile == null || projectile.HasSplit ||

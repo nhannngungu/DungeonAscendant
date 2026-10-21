@@ -120,6 +120,13 @@ static bool RunRequestedValidation(string[] arguments, out string name)
         System.Console.WriteLine(
             "Demon Lands map, corruption, anchors, enemies, boss, and admin validation passed.");
     }
+    else if (Has("--validate-demon-fortress"))
+    {
+        DungeonAscendant.Dungeon.DemonFortressMapValidation.ValidateOrThrow();
+        name = "demon-fortress";
+        System.Console.WriteLine(
+            "Demon Fortress foundation, traversal, sockets, and placeholders validation passed.");
+    }
     else if (Has("--validate-last-dice"))
     {
         DungeonAscendant.Core.LastDiceTableValidation.ValidateOrThrow();

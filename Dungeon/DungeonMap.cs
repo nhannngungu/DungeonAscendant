@@ -20,6 +20,7 @@ public sealed class DungeonMap
     public bool IsAncientCatacombs { get; }
     public bool IsFallenCity { get; }
     public bool IsDemonLands { get; }
+    public bool IsDemonFortress { get; }
     public IReadOnlyList<WildForestSection> WildForestSections { get; }
     public IReadOnlyList<EncounterZone> EncounterZones { get; }
     public IReadOnlyList<SpawnSocket> SpawnSockets { get; }
@@ -39,6 +40,9 @@ public sealed class DungeonMap
     public IReadOnlyList<CorruptionFieldDefinition> CorruptionFields { get; }
     public IReadOnlyList<PurificationShrineDefinition> PurificationShrines { get; }
     public IReadOnlyList<CorruptionAnchorDefinition> CorruptionAnchors { get; }
+    public IReadOnlyList<DemonFortressZoneDefinition> DemonFortressZones { get; }
+    public IReadOnlyList<FortressPropDefinition> FortressProps { get; }
+    public IReadOnlyList<FortressCheckpointDefinition> FortressCheckpoints { get; }
 
     public DungeonMap(
         IReadOnlyList<DungeonRoom> rooms,
@@ -48,6 +52,7 @@ public sealed class DungeonMap
         bool isAncientCatacombs = false,
         bool isFallenCity = false,
         bool isDemonLands = false,
+        bool isDemonFortress = false,
         IReadOnlyList<WildForestSection> wildForestSections = null,
         IReadOnlyList<EncounterZone> encounterZones = null,
         IReadOnlyList<SpawnSocket> spawnSockets = null,
@@ -66,6 +71,9 @@ public sealed class DungeonMap
         IReadOnlyList<CorruptionFieldDefinition> corruptionFields = null,
         IReadOnlyList<PurificationShrineDefinition> purificationShrines = null,
         IReadOnlyList<CorruptionAnchorDefinition> corruptionAnchors = null,
+        IReadOnlyList<DemonFortressZoneDefinition> demonFortressZones = null,
+        IReadOnlyList<FortressPropDefinition> fortressProps = null,
+        IReadOnlyList<FortressCheckpointDefinition> fortressCheckpoints = null,
         DungeonRoom exitRoomOverride = null,
         Vector2? authoredExitPosition = null)
     {
@@ -76,6 +84,7 @@ public sealed class DungeonMap
         IsAncientCatacombs = isAncientCatacombs;
         IsFallenCity = isFallenCity;
         IsDemonLands = isDemonLands;
+        IsDemonFortress = isDemonFortress;
         WildForestSections = new List<WildForestSection>(
             wildForestSections ?? Array.Empty<WildForestSection>());
         EncounterZones = new List<EncounterZone>(
@@ -108,6 +117,12 @@ public sealed class DungeonMap
             purificationShrines ?? Array.Empty<PurificationShrineDefinition>());
         CorruptionAnchors = new List<CorruptionAnchorDefinition>(
             corruptionAnchors ?? Array.Empty<CorruptionAnchorDefinition>());
+        DemonFortressZones = new List<DemonFortressZoneDefinition>(
+            demonFortressZones ?? Array.Empty<DemonFortressZoneDefinition>());
+        FortressProps = new List<FortressPropDefinition>(
+            fortressProps ?? Array.Empty<FortressPropDefinition>());
+        FortressCheckpoints = new List<FortressCheckpointDefinition>(
+            fortressCheckpoints ?? Array.Empty<FortressCheckpointDefinition>());
         AuthoredExitPosition = authoredExitPosition;
         var platforms = new List<Platform>();
 

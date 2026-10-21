@@ -249,7 +249,8 @@ public sealed class EnemyManager
             EnemyType.StreetExecutioner or EnemyType.RoyalGuard or
             EnemyType.AshKnight or EnemyType.WarBishop or EnemyType.BrokenKing or
             EnemyType.RiftWarden or EnemyType.DemonLegionnaire or
-            EnemyType.HornedGeneral;
+            EnemyType.HornedGeneral or EnemyType.DemonOfficer or
+            EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner;
         var context = new EnemySpawnContext(
             socket.Position,
             enemyLevel,
@@ -475,7 +476,11 @@ public sealed class EnemyManager
                  enemy.Type == EnemyType.WarBishop ||
                  enemy.Type == EnemyType.BrokenKing ||
                  enemy.Type == EnemyType.DemonLegionnaire ||
-                 enemy.Type == EnemyType.HornedGeneral)
+                 enemy.Type == EnemyType.HornedGeneral ||
+                 enemy.Type == EnemyType.InfernalSmith ||
+                 enemy.Type == EnemyType.DemonOfficer ||
+                 enemy.Type == EnemyType.BallistaGunner ||
+                 enemy.Type == EnemyType.BlackGuardExecutioner)
             {
                 _defeatPresentations.Add(enemy);
             }

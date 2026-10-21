@@ -26,6 +26,8 @@ public sealed class CombatAudioDirector
         public CatacombCombatState? CatacombState;
         public FallenCityCombatState? FallenCityState;
         public DemonFrontierCombatState? DemonState;
+        public DemonFortressCombatState? FortressState;
+        public bool FortressBlockReacting;
     }
 
     private readonly AudioManager _audio;
@@ -570,6 +572,8 @@ public sealed class CombatAudioDirector
             }
             else if (enemy is FallenCityEnemy city)
                 ObserveFallenCityAttack(city, previous, listener);
+            else if (enemy is DemonFortressEnemy fortress)
+                ObserveDemonFortressAttack(fortress, previous, listener);
             else
                 ObserveStandardAttack(enemy, previous, listener);
 
@@ -606,6 +610,75 @@ public sealed class CombatAudioDirector
         if (enemy is DemonLandsEnemy demon &&
             previous.DemonState != demon.FrontierCombatState &&
             IsDemonSpecialState(demon.FrontierCombatState))
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveDemonFortressAttack(
+        DemonFortressEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        bool blockReacting = enemy.IsLegionBlockReacting ||
+            enemy.IsShieldbearerBlockReacting;
+        if (blockReacting && !previous.FortressBlockReacting)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+        if (previous.FortressState != enemy.CombatState &&
+            enemy.CombatState == DemonFortressCombatState.HornBlast)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+        if (previous.FortressState != enemy.CombatState &&
+            enemy.CombatState == DemonFortressCombatState.HornInterrupted)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Stagger,
+                enemy.Position,
+                listener);
+        }
+        if (previous.FortressState != enemy.CombatState &&
+            enemy.CombatState == DemonFortressCombatState.HoundLanding)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+        if (previous.FortressState != enemy.CombatState &&
+            enemy.CombatState is DemonFortressCombatState.SmithSlamImpact or
+                DemonFortressCombatState.OfficerCommandActive)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+        if (previous.FortressState != enemy.CombatState &&
+            enemy.CombatState is DemonFortressCombatState.BallistaWarning or
+                DemonFortressCombatState.BallistaRecoil or
+                DemonFortressCombatState.BallistaReloadCrank or
+                DemonFortressCombatState.ExecutionerCounterWindow or
+                DemonFortressCombatState.ExecutionerJudgmentImpact or
+                DemonFortressCombatState.ExecutionerPhaseTransition)
         {
             _audio.PlayEnemy(
                 enemy.Type,
@@ -785,7 +858,13 @@ public sealed class CombatAudioDirector
             : null,
         DemonState = enemy is DemonLandsEnemy demon
             ? demon.FrontierCombatState
-            : null
+            : null,
+        FortressState = enemy is DemonFortressEnemy fortress
+            ? fortress.CombatState
+            : null,
+        FortressBlockReacting = enemy is DemonFortressEnemy fortressBlock &&
+            (fortressBlock.IsLegionBlockReacting ||
+                fortressBlock.IsShieldbearerBlockReacting)
     };
 
     private void Reset()

@@ -29,7 +29,7 @@ public sealed class WildForestEncounterDirector
         ActiveZoneId = string.Empty;
         if (map == null || (!map.IsAuthoredWildForest &&
             !map.IsAncientCatacombs && !map.IsFallenCity &&
-            !map.IsDemonLands))
+            !map.IsDemonLands && !map.IsDemonFortress))
             return;
         foreach (EncounterZone zone in map.EncounterZones)
             _states[zone.ZoneId] = new ZoneState(zone);
@@ -46,13 +46,24 @@ public sealed class WildForestEncounterDirector
     {
         if (map == null || (!map.IsAuthoredWildForest &&
             !map.IsAncientCatacombs && !map.IsFallenCity &&
-            !map.IsDemonLands))
+            !map.IsDemonLands && !map.IsDemonFortress))
             return;
 
         WarningZoneId = string.Empty;
         ActiveZoneId = string.Empty;
         float elapsed = MathF.Min(
             (float)gameTime.ElapsedGameTime.TotalSeconds, .05f);
+        ZoneState activeFortressTrial = null;
+        foreach (ZoneState candidate in _states.Values)
+        {
+            if (candidate.Spawned && !candidate.Cleared &&
+                candidate.Zone.ZoneId is ("fortress-ballista-gunner" or
+                    "fortress-black-guard"))
+            {
+                activeFortressTrial = candidate;
+                break;
+            }
+        }
 
         foreach (ZoneState state in _states.Values)
         {
@@ -64,6 +75,8 @@ public sealed class WildForestEncounterDirector
             }
 
             if (suppressActivation ||
+                (activeFortressTrial != null &&
+                    !ReferenceEquals(activeFortressTrial, state)) ||
                 (state.Zone.IsBossZone && map.IsAuthoredWildForest) || state.Spawned ||
                 !state.Zone.ActivationBounds.Contains(playerPosition.ToPoint()))
                 continue;
@@ -96,6 +109,22 @@ public sealed class WildForestEncounterDirector
 
     public bool IsCleared(string zoneId) =>
         _states.TryGetValue(zoneId, out ZoneState state) && state.Cleared;
+
+    public bool TryGetActiveFortressTrialBounds(out Rectangle bounds)
+    {
+        foreach (ZoneState state in _states.Values)
+        {
+            if (state.Spawned && !state.Cleared &&
+                state.Zone.ZoneId is ("fortress-ballista-gunner" or
+                    "fortress-black-guard"))
+            {
+                bounds = state.Zone.ActivationBounds;
+                return true;
+            }
+        }
+        bounds = Rectangle.Empty;
+        return false;
+    }
 
     public bool MarkCleared(string zoneId)
     {

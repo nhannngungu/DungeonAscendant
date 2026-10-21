@@ -92,7 +92,17 @@ public static class EnemyFactory
             [EnemyType.CorruptionPriest] = context => Demon(context, EnemyType.CorruptionPriest),
             [EnemyType.RiftWarden] = context => Demon(context, EnemyType.RiftWarden),
             [EnemyType.DemonLegionnaire] = context => Demon(context, EnemyType.DemonLegionnaire),
-            [EnemyType.HornedGeneral] = context => Demon(context, EnemyType.HornedGeneral)
+            [EnemyType.HornedGeneral] = context => Demon(context, EnemyType.HornedGeneral),
+            [EnemyType.DemonLegionnaireFortress] = context => Fortress(context, EnemyType.DemonLegionnaireFortress),
+            [EnemyType.FortressArcher] = context => Fortress(context, EnemyType.FortressArcher),
+            [EnemyType.HornGuard] = context => Fortress(context, EnemyType.HornGuard),
+            [EnemyType.DemonShieldbearer] = context => Fortress(context, EnemyType.DemonShieldbearer),
+            [EnemyType.InfernalPikeman] = context => Fortress(context, EnemyType.InfernalPikeman),
+            [EnemyType.WarHound] = context => Fortress(context, EnemyType.WarHound),
+            [EnemyType.InfernalSmith] = context => Fortress(context, EnemyType.InfernalSmith),
+            [EnemyType.DemonOfficer] = context => Fortress(context, EnemyType.DemonOfficer),
+            [EnemyType.BallistaGunner] = context => Fortress(context, EnemyType.BallistaGunner),
+            [EnemyType.BlackGuardExecutioner] = context => Fortress(context, EnemyType.BlackGuardExecutioner)
         };
 
     private static Enemy Catacomb(EnemySpawnContext context,EnemyType type)=>
@@ -119,6 +129,16 @@ public static class EnemyFactory
             context.RoomId,
             context.IsElite || type is EnemyType.RiftWarden or
                 EnemyType.DemonLegionnaire or EnemyType.HornedGeneral);
+
+    private static Enemy Fortress(EnemySpawnContext context, EnemyType type) =>
+        new DemonFortressEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId,
+            context.IsElite || type is EnemyType.DemonOfficer or
+                EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner);
 
     public static Enemy Create(EnemyType type, EnemySpawnContext context)
     {

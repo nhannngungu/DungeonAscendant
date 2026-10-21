@@ -25,7 +25,7 @@ public enum WildForestEnemyIdentity
     BellWatcher, StreetExecutioner, RoyalGuard, AshKnight, WarBishop,
     BrokenKing, ImpRaider, HellArcher, SpineHound, RiftStalker,
     BoneHarvester, Hellbrute, CorruptionPriest, RiftWarden,
-    DemonLegionnaire, HornedGeneral
+    DemonLegionnaire, HornedGeneral, BallistaGunner, BlackGuardExecutioner
 }
 
 public sealed class EnemyIntroductionDefinition
@@ -81,6 +81,8 @@ public sealed class EnemyIntroductionDefinition
         WildForestEnemyIdentity.RiftWarden => "rift_warden",
         WildForestEnemyIdentity.DemonLegionnaire => "demon_legionnaire",
         WildForestEnemyIdentity.HornedGeneral => "horned_general",
+        WildForestEnemyIdentity.BallistaGunner => "ballista_gunner",
+        WildForestEnemyIdentity.BlackGuardExecutioner => "black_guard_executioner",
         _ => "unknown"
     };
 
@@ -145,7 +147,9 @@ public sealed class EnemyIntroductionManager
         new(WildForestEnemyIdentity.CorruptionPriest,"CORRUPTION PRIEST","VOICE OF THE TAINTED GODS","A ritual support demon that empowers corruption, anchors, and nearby allies.",2),
         new(WildForestEnemyIdentity.RiftWarden,"RIFT WARDEN","KEEPER OF THE FRACTURED GATE","An armored sentinel that shapes rifts into weapons and guarded passages.",2),
         new(WildForestEnemyIdentity.DemonLegionnaire,"DEMON LEGIONNAIRE","SOLDIER OF THE INFERNAL LEGION","A disciplined shield bearer that commands the legion line.",2),
-        new(WildForestEnemyIdentity.HornedGeneral,"THE HORNED GENERAL","WARLORD OF THE INFERNAL FRONTIER","The commander of the Demon Lands makes his final stand in the Infernal Heart.",3)
+        new(WildForestEnemyIdentity.HornedGeneral,"THE HORNED GENERAL","WARLORD OF THE INFERNAL FRONTIER","The commander of the Demon Lands makes his final stand in the Infernal Heart.",3),
+        new(WildForestEnemyIdentity.BallistaGunner,"BALLISTA GUNNER","SIEGE MASTER OF THE BASTION","Read the siege cycle, break the firing lane, and punish the reload.",2),
+        new(WildForestEnemyIdentity.BlackGuardExecutioner,"BLACK GUARD EXECUTIONER","CHAMPION OF THE BLACK GUARD TRIAL","The fortress champion measures every step before the sentence falls.",2)
     };
 
     private readonly HashSet<WildForestEnemyIdentity> _discovered = new();
@@ -291,6 +295,8 @@ public sealed class EnemyIntroductionManager
             EnemyType.RiftWarden => WildForestEnemyIdentity.RiftWarden,
             EnemyType.DemonLegionnaire => WildForestEnemyIdentity.DemonLegionnaire,
             EnemyType.HornedGeneral => WildForestEnemyIdentity.HornedGeneral,
+            EnemyType.BallistaGunner => WildForestEnemyIdentity.BallistaGunner,
+            EnemyType.BlackGuardExecutioner => WildForestEnemyIdentity.BlackGuardExecutioner,
             _ => default
         };
         return type is
@@ -312,6 +318,7 @@ public sealed class EnemyIntroductionManager
             EnemyType.SpineHound or EnemyType.RiftStalker or
             EnemyType.BoneHarvester or EnemyType.Hellbrute or
             EnemyType.CorruptionPriest or EnemyType.RiftWarden or
-            EnemyType.DemonLegionnaire or EnemyType.HornedGeneral;
+            EnemyType.DemonLegionnaire or EnemyType.HornedGeneral or
+            EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner;
     }
 }

@@ -76,7 +76,8 @@ public sealed class DeveloperPanel
         "MAP 1 - CORRUPTED WILDERNESS",
         "MAP 2 - ANCIENT CATACOMBS",
         "MAP 3 - FALLEN CITY",
-        "MAP 4 - DEMON LANDS"
+        "MAP 4 - DEMON LANDS",
+        "MAP 5 - DEMON FORTRESS"
     };
 
     private static readonly string[][] ZoneNames =
@@ -110,6 +111,14 @@ public sealed class DeveloperPanel
             "demon.zone.bone_forest", "demon.zone.infernal_quarry",
             "demon.zone.blood_shrine", "demon.zone.legion_camp",
             "demon.zone.gate_of_horns", "demon.zone.infernal_heart"
+        },
+        new[]
+        {
+            "fortress.zone.outer_battlefield", "fortress.zone.demon_gate",
+            "fortress.zone.barracks", "fortress.zone.infernal_forge",
+            "fortress.zone.citadel_ramparts", "fortress.zone.command_citadel",
+            "fortress.zone.ballista_bastion", "fortress.zone.execution_court",
+            "fortress.zone.sealed_ascent"
         }
     };
 
@@ -130,7 +139,7 @@ public sealed class DeveloperPanel
             if (toggle && session.State == GameState.Playing)
             {
                 IsOpen = true;
-                TargetMap = Math.Clamp(session.DungeonDepth, 1, 4);
+                TargetMap = Math.Clamp(session.DungeonDepth, 1, 5);
                 TargetZone = Math.Max(0, session.GetCurrentZoneIndex());
                 Feedback = "GAMEPLAY PAUSED";
                 session.Player.Combat.CancelActions(restoreStamina: false);
@@ -268,7 +277,7 @@ public sealed class DeveloperPanel
         Feedback = GetLabel(SelectedCommand) + " COMPLETE";
         if (SelectedCommand is DeveloperCommand.TeleportMap or DeveloperCommand.TeleportZone)
         {
-            TargetMap = Math.Clamp(session.DungeonDepth, 1, 4);
+            TargetMap = Math.Clamp(session.DungeonDepth, 1, 5);
             TargetZone = Math.Max(0, session.GetCurrentZoneIndex());
         }
     }

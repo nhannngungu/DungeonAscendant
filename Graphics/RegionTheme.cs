@@ -73,6 +73,14 @@ public readonly struct RegionTheme
                 new Color(130, 52, 36, 90),
                 new Color(80, 42, 36),
                 new Color(142, 32, 82, 120)),
+            RegionType.DemonFortress => new RegionTheme(
+                new Color(10, 10, 13),
+                new Color(43, 43, 48),
+                new Color(116, 56, 45),
+                new Color(52, 49, 49),
+                new Color(120, 50, 42, 82),
+                new Color(70, 54, 45),
+                new Color(134, 42, 32, 105)),
             _ => new RegionTheme(
                 new Color(9, 11, 16),
                 new Color(48, 43, 46),

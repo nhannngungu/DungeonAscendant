@@ -344,6 +344,59 @@ public static class AudioProfiles
                 A("Enemies/Map2/FallenKnight/fallenknight_final_oath_01"))
         },
         CityArmorFallback);
+    private static readonly EnemySoundProfile WarHoundSounds = E(
+        "war_hound",
+        ImpactMaterial.Flesh,
+        "Map1/DireWolf",
+        "direwolf_idle_01",
+        "direwolf_idle_01",
+        "direwolf_attack_01",
+        "direwolf_hurt_01",
+        "direwolf_hurt_01",
+        "direwolf_death_01",
+        "direwolf_attack_01");
+    private static readonly EnemySoundProfile InfernalSmithSounds = new(
+        "infernal_smith",
+        ImpactMaterial.MetalArmor,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(
+                A("Enemies/Map2/DeathKnight/deathknight_step_01")),
+            [EnemySoundEvent.AttackWindup] = C(
+                A("Enemies/Map2/CursedKnight/cursedknight_hum_01")),
+            [EnemySoundEvent.AttackRelease] = C(
+                A("Weapons/Breaker/breaker_mace_swing_01")),
+            [EnemySoundEvent.Hit] = C(
+                A("Enemies/Map2/UndeadGuard/undeadguard_shield_01")),
+            [EnemySoundEvent.Stagger] = C(
+                A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.Death] = C(
+                A("Enemies/Map2/DeathKnight/deathknight_death_01")),
+            [EnemySoundEvent.Special] = C(
+                A("Weapons/Knight/knight_shield_bash_01"))
+        },
+        CityArmorFallback);
+    private static readonly EnemySoundProfile DemonOfficerSounds = new(
+        "demon_officer",
+        ImpactMaterial.MetalArmor,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(
+                A("Enemies/Map2/UndeadGuard/undeadguard_step_01")),
+            [EnemySoundEvent.AttackWindup] = C(
+                A("Enemies/Map2/FallenKnight/fallenknight_counter_01")),
+            [EnemySoundEvent.AttackRelease] = C(
+                A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.Hit] = C(
+                A("Enemies/Map2/UndeadGuard/undeadguard_shield_01")),
+            [EnemySoundEvent.Stagger] = C(
+                A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.Death] = C(
+                A("Enemies/Map2/FallenKnight/fallenknight_death_01")),
+            [EnemySoundEvent.Special] = C(
+                A("Enemies/Map2/FallenKnight/fallenknight_phase_01"))
+        },
+        DemonLegionnaireSounds);
     private static readonly IReadOnlyDictionary<EnemyType,EnemySoundProfile> Enemies = new Dictionary<EnemyType,EnemySoundProfile>
     {
         [EnemyType.DireWolf]=E("dire_wolf",ImpactMaterial.Flesh,"Map1/DireWolf","direwolf_idle_01","direwolf_idle_01","direwolf_attack_01","direwolf_hurt_01","direwolf_hurt_01","direwolf_death_01","direwolf_attack_01"),
@@ -385,7 +438,19 @@ public static class AudioProfiles
         [EnemyType.CorruptionPriest]=CorruptionPriestSounds,
         [EnemyType.RiftWarden]=RiftWardenSounds,
         [EnemyType.DemonLegionnaire]=DemonLegionnaireSounds,
-        [EnemyType.HornedGeneral]=HornedGeneralSounds
+        [EnemyType.HornedGeneral]=HornedGeneralSounds,
+        // Fortress profiles reuse only established local clips; specialized
+        // roles receive distinct event mappings as their detail passes land.
+        [EnemyType.DemonLegionnaireFortress]=DemonLegionnaireSounds,
+        [EnemyType.FortressArcher]=HellArcherSounds,
+        [EnemyType.HornGuard]=DemonLegionnaireSounds,
+        [EnemyType.DemonShieldbearer]=DemonLegionnaireSounds,
+        [EnemyType.InfernalPikeman]=DemonLegionnaireSounds,
+        [EnemyType.WarHound]=WarHoundSounds,
+        [EnemyType.InfernalSmith]=InfernalSmithSounds,
+        [EnemyType.DemonOfficer]=DemonOfficerSounds,
+        [EnemyType.BallistaGunner]=RuinedCrossbowmanSounds,
+        [EnemyType.BlackGuardExecutioner]=StreetExecutionerSounds
     };
 
     private static readonly IReadOnlyDictionary<ImpactMaterial,string[]> Impacts = new Dictionary<ImpactMaterial,string[]>

@@ -97,6 +97,7 @@ public sealed class GameSession
     private readonly CatacombMapGenerator _catacombGenerator;
     private readonly FallenCityMapGenerator _fallenCityGenerator;
     private readonly DemonLandsMapGenerator _demonLandsGenerator;
+    private readonly DemonFortressMapGenerator _demonFortressGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
     private readonly List<RottenCorpseBurst> _rottenCorpseBursts = new();
     private readonly HashSet<Enemy> _playerAttackHits = new();
@@ -234,6 +235,8 @@ public sealed class GameSession
     public bool Map03ExitPrepared { get; private set; }
     public bool Map04Cleared { get; private set; }
     public bool Map04ExitPrepared { get; private set; }
+    public bool Map05BallistaDefeated { get; private set; }
+    public bool Map05ExecutionerDefeated { get; private set; }
     public bool Map2PigPhotoCollected { get; private set; }
     public bool IsPigPhotoPopupOpen { get; private set; }
     public CityAlarmSystem CityAlarm { get; }
@@ -458,8 +461,10 @@ public sealed class GameSession
         };
     public WeaponTechniqueEffect PlayerHitTechniqueEffect { get; private set; }
     public int PlayerHitTechniqueStage { get; private set; } = -1;
-    public string CurrentMapName => CurrentDungeon?.IsDemonLands == true
-        ? Loc.Get("hud.map_demon_lands")
+    public string CurrentMapName => CurrentDungeon?.IsDemonFortress == true
+        ? Loc.Get("hud.map_demon_fortress")
+        : CurrentDungeon?.IsDemonLands == true
+            ? Loc.Get("hud.map_demon_lands")
         : CurrentDungeon?.IsFallenCity == true
             ? Loc.Get("hud.map_fallen_city")
         : CurrentDungeon?.IsAncientCatacombs == true
@@ -469,7 +474,7 @@ public sealed class GameSession
     public int ActiveEnemyCount => CountActiveEnemies();
     public bool ShouldRenderBoss => CurrentDungeon != null &&
         !CurrentDungeon.IsAncientCatacombs && !CurrentDungeon.IsFallenCity &&
-        !CurrentDungeon.IsDemonLands;
+        !CurrentDungeon.IsDemonLands && !CurrentDungeon.IsDemonFortress;
     public IReadOnlyList<Enemy> WildForestShowcaseEnemies =>
         _wildForestShowcaseEnemies;
     public bool IsSequentialEnemyTestComplete => _sequentialTestComplete;
@@ -521,6 +526,7 @@ public sealed class GameSession
         _catacombGenerator = new CatacombMapGenerator();
         _fallenCityGenerator = new FallenCityMapGenerator();
         _demonLandsGenerator = new DemonLandsMapGenerator();
+        _demonFortressGenerator = new DemonFortressMapGenerator();
         Enemies = new EnemyManager(randomSeed);
         WildForestEncounters = new WildForestEncounterDirector();
         EnemyIntroductions = new EnemyIntroductionManager();
@@ -944,6 +950,7 @@ public sealed class GameSession
             activeEnemyLevel,
             WorldTier,
             suppressActivation: insideScholarSafeZone);
+        EnforceDemonFortressTrialGate();
         CorruptionAnchors.Update(
             gameTime,
             CurrentDungeon,
@@ -1007,7 +1014,7 @@ public sealed class GameSession
         }
         if (CurrentDungeon.IsAuthoredWildForest ||
             CurrentDungeon.IsAncientCatacombs || CurrentDungeon.IsFallenCity ||
-            CurrentDungeon.IsDemonLands)
+            CurrentDungeon.IsDemonLands || CurrentDungeon.IsDemonFortress)
         {
             EnemyIntroductions.Update(
                 gameTime,
@@ -1169,6 +1176,27 @@ public sealed class GameSession
         }
     }
 
+    private void EnforceDemonFortressTrialGate()
+    {
+        if (CurrentDungeon?.IsDemonFortress != true ||
+            !WildForestEncounters.TryGetActiveFortressTrialBounds(
+                out Rectangle arena))
+        {
+            return;
+        }
+
+        float inset = Player.Size.X * .5f + 14f;
+        float minimumX = arena.Left + inset;
+        float maximumX = arena.Right - inset;
+        float constrainedX = Math.Clamp(Player.Position.X, minimumX, maximumX);
+        if (MathF.Abs(constrainedX - Player.Position.X) <= .01f)
+            return;
+
+        Player.MoveThroughCombatTechnique(
+            new Vector2(constrainedX, Player.Position.Y),
+            CurrentDungeon);
+    }
+
     private void ProcessDefeatedEnemies()
     {
         int defeatedCount = Enemies.RemoveDefeated(
@@ -1242,6 +1270,24 @@ public sealed class GameSession
                     enemy as DemonLandsEnemy,
                     includeAuthoredBossAnchors: true);
                 Corruption.Reduce(100f);
+            }
+
+            if (CurrentDungeon.IsDemonFortress &&
+                enemy.Type == EnemyType.BallistaGunner &&
+                !Map05BallistaDefeated)
+            {
+                Map05BallistaDefeated = true;
+                WildForestEncounters.MarkCleared("fortress-ballista-gunner");
+                Projectiles.ClearEnemyProjectilesInRoom(enemy.RoomId);
+            }
+
+            if (CurrentDungeon.IsDemonFortress &&
+                enemy.Type == EnemyType.BlackGuardExecutioner &&
+                !Map05ExecutionerDefeated)
+            {
+                Map05ExecutionerDefeated = true;
+                WildForestEncounters.MarkCleared("fortress-black-guard");
+                Projectiles.ClearEnemyProjectilesInRoom(enemy.RoomId);
             }
 
             if (enemy.CanDropLoot)
@@ -1668,6 +1714,8 @@ public sealed class GameSession
         Map03ExitPrepared = false;
         Map04Cleared = false;
         Map04ExitPrepared = false;
+        Map05BallistaDefeated = false;
+        Map05ExecutionerDefeated = false;
         IsPigPhotoPopupOpen = false;
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
@@ -1812,7 +1860,7 @@ public sealed class GameSession
 
         ScholarTomb.ResetForNewRun();
         LastDiceTable.ResetForNewRun();
-        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 4);
+        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 5);
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
         _worldTierTransitionTimeRemaining = 0f;
@@ -1821,6 +1869,7 @@ public sealed class GameSession
             2 => _catacombGenerator.Generate(),
             3 => _fallenCityGenerator.Generate(),
             4 => _demonLandsGenerator.Generate(),
+            5 => _demonFortressGenerator.Generate(),
             _ => _dungeonGenerator.GenerateWildForest()
         };
         Player = new PlayerCharacter(
@@ -1870,6 +1919,8 @@ public sealed class GameSession
         }
         IsPigPhotoPopupOpen = false;
         KillCount = slot.KillCount;
+        Map05BallistaDefeated = slot.Map05BallistaDefeated;
+        Map05ExecutionerDefeated = slot.Map05ExecutionerDefeated;
         IsInventoryOpen = false;
         ShowCombatDebug = DebugCombatHitboxes;
         ShowMapDebug = false;
@@ -1906,12 +1957,18 @@ public sealed class GameSession
         Map02Cleared = slot.Map02Cleared;
         Map03Cleared = slot.Map03Cleared;
         Map04Cleared = slot.Map04Cleared;
+        Map05BallistaDefeated = slot.Map05BallistaDefeated;
+        Map05ExecutionerDefeated = slot.Map05ExecutionerDefeated;
         if (CurrentDungeon.IsAncientCatacombs && Map02Cleared)
             WildForestEncounters.MarkCleared("fallen-knight");
         if (CurrentDungeon.IsFallenCity && Map03Cleared)
             WildForestEncounters.MarkCleared("broken-king");
         if (CurrentDungeon.IsDemonLands && Map04Cleared)
             WildForestEncounters.MarkCleared("horned-general");
+        if (CurrentDungeon.IsDemonFortress && Map05BallistaDefeated)
+            WildForestEncounters.MarkCleared("fortress-ballista-gunner");
+        if (CurrentDungeon.IsDemonFortress && Map05ExecutionerDefeated)
+            WildForestEncounters.MarkCleared("fortress-black-guard");
         if (slot.BossDefeated)
         {
             BossDefeated = true;
@@ -1986,6 +2043,8 @@ public sealed class GameSession
             Map02Cleared = Map02Cleared,
             Map03Cleared = Map03Cleared,
             Map04Cleared = Map04Cleared,
+            Map05BallistaDefeated = Map05BallistaDefeated,
+            Map05ExecutionerDefeated = Map05ExecutionerDefeated,
             Map2PigPhotoCollected = Map2PigPhotoCollected,
             BossDefeated = BossDefeated,
             LastDiceStarted = LastDiceTable.Started,
@@ -2054,6 +2113,7 @@ public sealed class GameSession
             2 => _catacombGenerator.Generate(),
             3 => _fallenCityGenerator.Generate(),
             4 => _demonLandsGenerator.Generate(),
+            5 => _demonFortressGenerator.Generate(),
             _ => throw new InvalidOperationException(
                 $"Map {DungeonDepth} is not implemented.")
         };
@@ -2105,9 +2165,14 @@ public sealed class GameSession
                 CurrentDungeon.IsAuthoredWildForest ||
                 CurrentDungeon.IsAncientCatacombs ||
                 CurrentDungeon.IsFallenCity ||
-                CurrentDungeon.IsDemonLands);
+                CurrentDungeon.IsDemonLands ||
+                CurrentDungeon.IsDemonFortress);
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom, avoidEnemies: true);
         WildForestEncounters.Reset(CurrentDungeon);
+        if (CurrentDungeon.IsDemonFortress && Map05BallistaDefeated)
+            WildForestEncounters.MarkCleared("fortress-ballista-gunner");
+        if (CurrentDungeon.IsDemonFortress && Map05ExecutionerDefeated)
+            WildForestEncounters.MarkCleared("fortress-black-guard");
         EnemyIntroductions.Reset();
         Curse.Reset();
         Tombs.Reset(CurrentDungeon);
@@ -2337,6 +2402,7 @@ public sealed class GameSession
             if (CurrentDungeon.IsDemonLands)
             {
                 Map04ExitPrepared = true;
+                CompleteDungeon();
                 return true;
             }
             if (CurrentDungeon.IsFallenCity)
@@ -3074,6 +3140,15 @@ public sealed class GameSession
             return FindNearestDemonLandsZone();
         }
 
+        if (CurrentDungeon.IsDemonFortress)
+        {
+            for (int index = 0; index < CurrentDungeon.DemonFortressZones.Count; index++)
+                if (CurrentDungeon.DemonFortressZones[index].Bounds.Contains(
+                    Player.Position.ToPoint()))
+                    return index;
+            return FindNearestDemonFortressZone();
+        }
+
         for (int index = 0; index < CurrentDungeon.WildForestSections.Count; index++)
             if (CurrentDungeon.WildForestSections[index].Bounds.Contains(Player.Position.ToPoint()))
                 return index;
@@ -3082,7 +3157,7 @@ public sealed class GameSession
 
     private void DeveloperLoadMap(int mapNumber)
     {
-        mapNumber = System.Math.Clamp(mapNumber, 1, 4);
+        mapNumber = System.Math.Clamp(mapNumber, 1, 5);
         DungeonDepth = mapNumber;
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
@@ -3092,6 +3167,7 @@ public sealed class GameSession
             2 => _catacombGenerator.Generate(),
             3 => _fallenCityGenerator.Generate(),
             4 => _demonLandsGenerator.Generate(),
+            5 => _demonFortressGenerator.Generate(),
             _ => _dungeonGenerator.GenerateWildForest()
         };
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
@@ -3127,8 +3203,10 @@ public sealed class GameSession
             return;
         }
 
-        int count = CurrentDungeon.IsDemonLands
-            ? CurrentDungeon.DemonLandsZones.Count
+        int count = CurrentDungeon.IsDemonFortress
+            ? CurrentDungeon.DemonFortressZones.Count
+            : CurrentDungeon.IsDemonLands
+                ? CurrentDungeon.DemonLandsZones.Count
             : CurrentDungeon.IsFallenCity
                 ? CurrentDungeon.FallenCityZones.Count
             : CurrentDungeon.IsAncientCatacombs
@@ -3138,8 +3216,10 @@ public sealed class GameSession
             return;
 
         zoneIndex = System.Math.Clamp(zoneIndex, 0, count - 1);
-        Rectangle bounds = CurrentDungeon.IsDemonLands
-            ? CurrentDungeon.DemonLandsZones[zoneIndex].Bounds
+        Rectangle bounds = CurrentDungeon.IsDemonFortress
+            ? CurrentDungeon.DemonFortressZones[zoneIndex].Bounds
+            : CurrentDungeon.IsDemonLands
+                ? CurrentDungeon.DemonLandsZones[zoneIndex].Bounds
             : CurrentDungeon.IsFallenCity
                 ? CurrentDungeon.FallenCityZones[zoneIndex].Bounds
             : CurrentDungeon.IsAncientCatacombs
@@ -3280,6 +3360,10 @@ public sealed class GameSession
             Map04ExitPrepared = false;
             CorruptionAnchors.Reset(CurrentDungeon);
         }
+        else if (zoneId == "fortress-ballista-gunner")
+            Map05BallistaDefeated = false;
+        else if (zoneId == "fortress-black-guard")
+            Map05ExecutionerDefeated = false;
         ClearDeveloperTransientState();
     }
 
@@ -3296,8 +3380,10 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return string.Empty;
-        string sectionId = CurrentDungeon.IsDemonLands
-            ? CurrentDungeon.DemonLandsZones[index].ZoneId
+        string sectionId = CurrentDungeon.IsDemonFortress
+            ? CurrentDungeon.DemonFortressZones[index].ZoneId
+            : CurrentDungeon.IsDemonLands
+                ? CurrentDungeon.DemonLandsZones[index].ZoneId
             : CurrentDungeon.IsFallenCity
                 ? CurrentDungeon.FallenCityZones[index].ZoneId
             : CurrentDungeon.IsAncientCatacombs
@@ -3355,8 +3441,10 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return "UNKNOWN";
-        return CurrentDungeon.IsDemonLands
-            ? Loc.Get(CurrentDungeon.DemonLandsZones[index].NameKey)
+        return CurrentDungeon.IsDemonFortress
+            ? Loc.Get(CurrentDungeon.DemonFortressZones[index].NameKey)
+            : CurrentDungeon.IsDemonLands
+                ? Loc.Get(CurrentDungeon.DemonLandsZones[index].NameKey)
             : CurrentDungeon.IsFallenCity
                 ? Loc.Get(CurrentDungeon.FallenCityZones[index].NameKey)
             : CurrentDungeon.IsAncientCatacombs
@@ -3439,12 +3527,31 @@ public sealed class GameSession
         return result;
     }
 
+    private int FindNearestDemonFortressZone()
+    {
+        int result = 0;
+        float distance = float.MaxValue;
+        for (int index = 0; index < CurrentDungeon.DemonFortressZones.Count; index++)
+        {
+            float candidate = MathF.Abs(
+                CurrentDungeon.DemonFortressZones[index].Bounds.Center.X -
+                Player.Position.X);
+            if (candidate < distance)
+            {
+                distance = candidate;
+                result = index;
+            }
+        }
+        return result;
+    }
+
     private static RegionDefinition GetRegionForDepth(int dungeonDepth) =>
         dungeonDepth switch
         {
             2 => RegionDefinition.AncientCatacombs,
             3 => RegionDefinition.FallenCity,
-            >= 4 => RegionDefinition.DemonLands,
+            4 => RegionDefinition.DemonLands,
+            >= 5 => RegionDefinition.DemonFortress,
             _ => RegionDefinition.WildForest
         };
 

@@ -58,6 +58,14 @@ public enum EnemyTheme
     ,DemonShrine
     ,DemonLegion
     ,HornedGeneral
+    ,FortressBattlefield
+    ,FortressGate
+    ,FortressBarracks
+    ,FortressForge
+    ,FortressRamparts
+    ,FortressCommand
+    ,FortressBallista
+    ,FortressExecution
 }
 
 public enum EncounterDifficulty

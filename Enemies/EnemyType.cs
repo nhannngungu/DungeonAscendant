@@ -41,5 +41,15 @@ public enum EnemyType
     CorruptionPriest,
     RiftWarden,
     DemonLegionnaire,
-    HornedGeneral
+    HornedGeneral,
+    DemonLegionnaireFortress,
+    FortressArcher,
+    HornGuard,
+    DemonShieldbearer,
+    InfernalPikeman,
+    WarHound,
+    InfernalSmith,
+    DemonOfficer,
+    BallistaGunner,
+    BlackGuardExecutioner
 }
