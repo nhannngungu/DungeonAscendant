@@ -51,5 +51,16 @@ public enum EnemyType
     InfernalSmith,
     DemonOfficer,
     BallistaGunner,
-    BlackGuardExecutioner
+    BlackGuardExecutioner,
+    DemonCityEnforcer,
+    SoulLanternKeeper,
+    AshbladeStalker,
+    ChainCollector,
+    BloodworksServitor,
+    SigilCantor,
+    VeilWarden,
+    GloomwingHarrier,
+    CathedralButcher,
+    AbyssalMagistrate,
+    Malachar
 }

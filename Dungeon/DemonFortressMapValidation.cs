@@ -40,6 +40,7 @@ public static class DemonFortressMapValidation
         ValidateSocketsAndRoster(map);
         ValidateBossTierSpaces(map);
         ValidateCheckpointsAndExit(map);
+        ValidateEncounterTraversalIndependence(map);
         ValidateSessionIntegration();
         ValidateLegionnaireAndArcherDetail(map);
         ValidateHornGuardAndShieldbearerDetail(map);
@@ -192,12 +193,46 @@ public static class DemonFortressMapValidation
 
         Need(map.AuthoredExitPosition.HasValue &&
             map.ExitRoom.Bounds.Contains(map.AuthoredExitPosition.Value.ToPoint()),
-            "Map 5 sealed ascent lacks an authored exit position.");
+            "Map 5 open ascent lacks an authored exit position.");
         bool hasSealedGate = false;
         foreach (FortressPropDefinition prop in map.FortressProps)
             hasSealedGate |= prop.Kind == FortressPropKind.SealedGate &&
                 prop.ZoneId == "fortress-09";
-        Need(hasSealedGate, "Map 5 exit is not visibly prepared and sealed.");
+        Need(hasSealedGate, "Map 5 exit lacks its authored open gate frame.");
+    }
+
+    private static void ValidateEncounterTraversalIndependence(DungeonMap map)
+    {
+        var director = new WildForestEncounterDirector();
+        var enemies = new EnemyManager(5505);
+        director.Reset(map);
+        foreach (EncounterZone encounter in map.EncounterZones)
+        {
+            Vector2 playerPosition = SideScrollingCollision.ResolveSafeEntrySpawn(
+                encounter.ActivationBounds.Left + 4f,
+                new Vector2(
+                    Player.Player.BodyHurtboxWidth,
+                    Player.Player.BodyHurtboxHeight),
+                map,
+                0f);
+            for (int frame = 0; frame < 12; frame++)
+            {
+                director.Update(
+                    new GameTime(TimeSpan.Zero, TimeSpan.FromSeconds(.05f)),
+                    playerPosition,
+                    map,
+                    enemies,
+                    enemyLevel: 7,
+                    worldTier: 3);
+            }
+            Need(director.IsTriggered(encounter.ZoneId),
+                $"Map 5 encounter {encounter.ZoneId} was gated by an earlier live encounter.");
+        }
+        Need(enemies.Enemies.Any(enemy =>
+                enemy.IsAlive && enemy.Type == EnemyType.BallistaGunner) &&
+            enemies.Enemies.Any(enemy =>
+                enemy.IsAlive && enemy.Type == EnemyType.BlackGuardExecutioner),
+            "Map 5 boss encounters cannot remain independently active during traversal.");
     }
 
     private static void ValidateSessionIntegration()
@@ -206,7 +241,8 @@ public static class DemonFortressMapValidation
         session.ExecuteDeveloperCommand(DeveloperCommand.TeleportMap, 5, 0);
         Need(session.DungeonDepth == 5 && session.CurrentDungeon.IsDemonFortress &&
             session.CurrentRegion == RegionType.DemonFortress &&
-            session.CurrentMapName.Length > 0 && !session.ShouldRenderBoss,
+            session.CurrentMapName.Length > 0 && !session.ShouldRenderBoss &&
+            session.IsExitUnlocked && !session.BossDefeated,
             "Map 5 GameSession/developer-load integration failed.");
 
         for (int zone = 0; zone < session.CurrentDungeon.DemonFortressZones.Count; zone++)
@@ -238,6 +274,53 @@ public static class DemonFortressMapValidation
         Need(session.WildForestEncounters.IsTriggered(first.ZoneId) &&
             session.Enemies.Enemies.Count > 0,
             "Map 5 encounter director did not spawn authored enemies.");
+
+        ValidateLiveBossTraversal(session);
+    }
+
+    private static void ValidateLiveBossTraversal(GameSession session)
+    {
+        session.Player.DebugGodMode = true;
+        EncounterZone ballista = FindEncounter(
+            session.CurrentDungeon, "fortress-ballista-gunner");
+        EncounterZone executioner = FindEncounter(
+            session.CurrentDungeon, "fortress-black-guard");
+        Need(ballista != null && executioner != null,
+            "Map 5 live traversal fixture lacks its boss encounters.");
+
+        Enemy ballistaBoss = TriggerEncounter(
+            session, ballista, EnemyType.BallistaGunner);
+        Enemy executionerBoss = TriggerEncounter(
+            session, executioner, EnemyType.BlackGuardExecutioner);
+
+        session.Player.MoveTo(session.ExitPosition);
+        float expectedX = session.Player.Position.X;
+        session.Update(Frame, new KeyboardState(), new MouseState());
+        Need(MathF.Abs(session.Player.Position.X - expectedX) < .5f &&
+            ballistaBoss.IsAlive && executionerBoss.IsAlive,
+            "Map 5 moved the player back into a live boss encounter.");
+        Need(ballista.ActivationBounds.Contains(ballistaBoss.Position.ToPoint()) &&
+            executioner.ActivationBounds.Contains(executionerBoss.Position.ToPoint()),
+            "Map 5 boss enemy bounds were lost while player containment was removed.");
+    }
+
+    private static Enemy TriggerEncounter(
+        GameSession session,
+        EncounterZone encounter,
+        EnemyType expectedType)
+    {
+        session.Player.MoveTo(SideScrollingCollision.ResolveSafeEntrySpawn(
+            encounter.ActivationBounds.Left + 4f,
+            session.Player.Size,
+            session.CurrentDungeon,
+            0f));
+        for (int frame = 0; frame < 36; frame++)
+            session.Update(Frame, new KeyboardState(), new MouseState());
+        Enemy target = session.Enemies.Enemies.FirstOrDefault(enemy =>
+            enemy.IsAlive && enemy.Type == expectedType);
+        Need(target != null,
+            $"Map 5 traversal fixture did not start {encounter.ZoneId}.");
+        return target;
     }
 
     private static void ValidateLegionnaireAndArcherDetail(DungeonMap map)
@@ -876,12 +959,10 @@ public static class DemonFortressMapValidation
         for (int frame = 0; frame < 40; frame++)
             encounterDirector.Update(Frame, ballistaEntry, map,
                 encounterEnemies, 7, 3);
-        Need(encounterDirector.TryGetActiveFortressTrialBounds(
-                out Rectangle activeBallistaBounds) &&
-            activeBallistaBounds == ballistaZone.ActivationBounds &&
+        Need(encounterDirector.IsTriggered(ballistaZone.ZoneId) &&
             encounterEnemies.Enemies.Count(enemy =>
                 enemy.Type == EnemyType.BallistaGunner) == 1,
-            "Ballista arena must seal around exactly one encounter spawn.");
+            "Ballista arena must create exactly one encounter spawn.");
 
         Vector2 executionerEntry = new(
             executionerZone.ActivationBounds.Left + 4f,
@@ -890,33 +971,28 @@ public static class DemonFortressMapValidation
             encounterDirector.Update(Frame, executionerEntry, map,
                 encounterEnemies, 7, 3);
         Need(encounterEnemies.Enemies.Count(enemy =>
-                enemy.Type == EnemyType.BlackGuardExecutioner) == 0,
-            "Black Guard Trial must not activate while the Ballista arena is sealed.");
+                enemy.Type == EnemyType.BlackGuardExecutioner) == 1,
+            "Black Guard Trial must activate while the living Ballista is bypassed.");
+        encounterDirector.EnforceArenaBounds();
         Enemy authoredBallista = encounterEnemies.Enemies.First(enemy =>
             enemy.Type == EnemyType.BallistaGunner);
+        Enemy authoredExecutioner = encounterEnemies.Enemies.First(enemy =>
+            enemy.Type == EnemyType.BlackGuardExecutioner);
+        Need(ballistaZone.ActivationBounds.Contains(
+                authoredBallista.Position.ToPoint()) &&
+            executionerZone.ActivationBounds.Contains(
+                authoredExecutioner.Position.ToPoint()),
+            "Map 5 boss enemies are not bounded independently of player traversal.");
         authoredBallista.ReceiveDamage(int.MaxValue);
         encounterDirector.Update(Frame, ballistaEntry, map,
             encounterEnemies, 7, 3);
-        Need(encounterDirector.IsCleared(ballistaZone.ZoneId) &&
-            !encounterDirector.TryGetActiveFortressTrialBounds(out _),
-            "Ballista arena gate did not open after its exact-once clear.");
-        for (int frame = 0; frame < 40; frame++)
-            encounterDirector.Update(Frame, executionerEntry, map,
-                encounterEnemies, 7, 3);
-        Need(encounterDirector.TryGetActiveFortressTrialBounds(
-                out Rectangle activeTrialBounds) &&
-            activeTrialBounds == executionerZone.ActivationBounds &&
-            encounterEnemies.Enemies.Count(enemy =>
-                enemy.Type == EnemyType.BlackGuardExecutioner) == 1,
-            "Black Guard Trial must seal as a single-enemy duel after entry.");
-        Enemy authoredExecutioner = encounterEnemies.Enemies.First(enemy =>
-            enemy.Type == EnemyType.BlackGuardExecutioner);
+        Need(encounterDirector.IsCleared(ballistaZone.ZoneId),
+            "Ballista completion did not resolve exactly once.");
         authoredExecutioner.ReceiveDamage(int.MaxValue);
         encounterDirector.Update(Frame, executionerEntry, map,
             encounterEnemies, 7, 3);
-        Need(encounterDirector.IsCleared(executionerZone.ZoneId) &&
-            !encounterDirector.TryGetActiveFortressTrialBounds(out _),
-            "Black Guard Trial gate/completion did not resolve exactly once.");
+        Need(encounterDirector.IsCleared(executionerZone.ZoneId),
+            "Black Guard Trial completion did not resolve exactly once.");
 
         SpawnSocket ballistaSocket = FindSocket(map, EnemyType.BallistaGunner);
         DungeonRoom ballistaRoom = map.FindRoomContaining(ballistaSocket.Position);

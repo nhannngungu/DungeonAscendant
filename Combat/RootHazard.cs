@@ -8,7 +8,14 @@ public enum RootHazardVisualKind
     Roots,
     AshTrail,
     CinderZone,
-    CommandSeal
+    CommandSeal,
+    BindingSigil,
+    DecreeZone,
+    BindingWrit,
+    FinalVerdictSeal,
+    AbyssalPillar,
+    DominionLane,
+    EdictSeal
 }
 
 public sealed class RootHazard

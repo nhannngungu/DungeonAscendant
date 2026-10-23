@@ -102,7 +102,32 @@ public static class EnemyFactory
             [EnemyType.InfernalSmith] = context => Fortress(context, EnemyType.InfernalSmith),
             [EnemyType.DemonOfficer] = context => Fortress(context, EnemyType.DemonOfficer),
             [EnemyType.BallistaGunner] = context => Fortress(context, EnemyType.BallistaGunner),
-            [EnemyType.BlackGuardExecutioner] = context => Fortress(context, EnemyType.BlackGuardExecutioner)
+            [EnemyType.BlackGuardExecutioner] = context => Fortress(context, EnemyType.BlackGuardExecutioner),
+            [EnemyType.DemonCityEnforcer] = context => DemonCity(
+                context, EnemyType.DemonCityEnforcer),
+            [EnemyType.SoulLanternKeeper] = context => DemonCity(
+                context, EnemyType.SoulLanternKeeper),
+            [EnemyType.AshbladeStalker] = context => DemonCity(
+                context, EnemyType.AshbladeStalker),
+            [EnemyType.ChainCollector] = context => DemonCity(
+                context, EnemyType.ChainCollector),
+            [EnemyType.BloodworksServitor] = context => DemonCityIndustrial(
+                context, EnemyType.BloodworksServitor),
+            [EnemyType.SigilCantor] = context => DemonCityIndustrial(
+                context, EnemyType.SigilCantor),
+            [EnemyType.VeilWarden] = context => DemonCityElite(
+                context, EnemyType.VeilWarden),
+            [EnemyType.GloomwingHarrier] = context => DemonCityElite(
+                context, EnemyType.GloomwingHarrier),
+            [EnemyType.CathedralButcher] = context => DemonCityBoss(
+                context, EnemyType.CathedralButcher),
+            [EnemyType.AbyssalMagistrate] = context => DemonCityBoss(
+                context, EnemyType.AbyssalMagistrate),
+            [EnemyType.Malachar] = context => new MalacharEnemy(
+                context.Position,
+                context.Level,
+                context.WorldTier,
+                context.RoomId)
         };
 
     private static Enemy Catacomb(EnemySpawnContext context,EnemyType type)=>
@@ -139,6 +164,41 @@ public static class EnemyFactory
             context.RoomId,
             context.IsElite || type is EnemyType.DemonOfficer or
                 EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner);
+
+    private static Enemy DemonCity(EnemySpawnContext context, EnemyType type) =>
+        new DemonCityEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId);
+
+    private static Enemy DemonCityIndustrial(
+        EnemySpawnContext context,
+        EnemyType type) => new DemonCityIndustrialEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId);
+
+    private static Enemy DemonCityElite(
+        EnemySpawnContext context,
+        EnemyType type) => new DemonCityEliteEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId);
+
+    private static Enemy DemonCityBoss(
+        EnemySpawnContext context,
+        EnemyType type) => new DemonCityBossEnemy(
+            type,
+            context.Position,
+            context.Level,
+            context.WorldTier,
+            context.RoomId);
 
     public static Enemy Create(EnemyType type, EnemySpawnContext context)
     {

@@ -27,6 +27,11 @@ public sealed class CombatAudioDirector
         public FallenCityCombatState? FallenCityState;
         public DemonFrontierCombatState? DemonState;
         public DemonFortressCombatState? FortressState;
+        public DemonCityCombatState? DemonCityState;
+        public DemonCityIndustrialState? DemonCityIndustrialState;
+        public DemonCityEliteState? DemonCityEliteState;
+        public DemonCityBossState? DemonCityBossState;
+        public MalacharState? MalacharState;
         public bool FortressBlockReacting;
     }
 
@@ -105,10 +110,12 @@ public sealed class CombatAudioDirector
         }
         if (session.State != GameState.Playing && session.State != GameState.Paused) return;
         if (session.CurrentDungeon.IsFallenCity ||
-            session.CurrentDungeon.IsDemonLands)
+            session.CurrentDungeon.IsDemonLands ||
+            session.CurrentDungeon.IsDemonCity)
         {
-            // Maps 3 and 4 have semantic hooks, but no dedicated music or
-            // ambience packs yet. Silence avoids borrowing another map's identity.
+            // These maps have semantic combat/world hooks but no dedicated
+            // music pack yet. Silence avoids borrowing Map 1's identity and
+            // guarantees that leaving a prior map clears stale music.
             _audio.SetMusic(MusicState.None);
             _audio.SetAmbience(AmbienceState.None);
             return;
@@ -485,6 +492,16 @@ public sealed class CombatAudioDirector
         _currentProjectiles.Clear();
         foreach (ProjectileImpact impact in session.Projectiles.Impacts)
         {
+            if (impact.Projectile.Type is ProjectileType.SoulBolt or
+                ProjectileType.SigilLance or ProjectileType.JudgmentBolt or
+                ProjectileType.DominionArc)
+            {
+                _audio.PlayImpact(
+                    ImpactMaterial.Spectral,
+                    impact.Position,
+                    session.Player.Position);
+                continue;
+            }
             if (impact.Projectile.Type == ProjectileType.PlagueFlask)
             {
                 _audio.PlayImpact(
@@ -574,6 +591,16 @@ public sealed class CombatAudioDirector
                 ObserveFallenCityAttack(city, previous, listener);
             else if (enemy is DemonFortressEnemy fortress)
                 ObserveDemonFortressAttack(fortress, previous, listener);
+            else if (enemy is DemonCityEnemy demonCity)
+                ObserveDemonCityAttack(demonCity, previous, listener);
+            else if (enemy is DemonCityIndustrialEnemy industrial)
+                ObserveDemonCityIndustrialAttack(industrial, previous, listener);
+            else if (enemy is DemonCityEliteEnemy cityElite)
+                ObserveDemonCityEliteAttack(cityElite, previous, listener);
+            else if (enemy is DemonCityBossEnemy cityBoss)
+                ObserveDemonCityBossAttack(cityBoss, previous, listener);
+            else if (enemy is MalacharEnemy malachar)
+                ObserveMalacharAttack(malachar, previous, listener);
             else
                 ObserveStandardAttack(enemy, previous, listener);
 
@@ -679,6 +706,150 @@ public sealed class CombatAudioDirector
                 DemonFortressCombatState.ExecutionerCounterWindow or
                 DemonFortressCombatState.ExecutionerJudgmentImpact or
                 DemonFortressCombatState.ExecutionerPhaseTransition)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveDemonCityAttack(
+        DemonCityEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        if (previous.DemonCityState == enemy.CombatState)
+            return;
+        if (enemy.CombatState is DemonCityCombatState.EnforcerShieldActive or
+            DemonCityCombatState.KeeperBurstActive or
+            DemonCityCombatState.StalkerHunterStep or
+            DemonCityCombatState.CollectorHookRetract)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveDemonCityIndustrialAttack(
+        DemonCityIndustrialEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        if (previous.DemonCityIndustrialState == enemy.CombatState)
+            return;
+        if (enemy.CombatState is DemonCityIndustrialState.VentActive or
+            DemonCityIndustrialState.BindingCommit or
+            DemonCityIndustrialState.WarCommit)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveDemonCityEliteAttack(
+        DemonCityEliteEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        bool blockReaction = enemy.IsGuardBlockReacting &&
+            !previous.GuardBlockReacting;
+        if (blockReaction)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+        if (previous.DemonCityEliteState == enemy.CombatState || blockReaction)
+            return;
+        if (enemy.CombatState is DemonCityEliteState.WardenGuardActive or
+            DemonCityEliteState.WardenReprisalPause or
+            DemonCityEliteState.HarrierTakeoff or
+            DemonCityEliteState.HarrierDiveBrake or
+            DemonCityEliteState.HarrierFeintRelocate)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveDemonCityBossAttack(
+        DemonCityBossEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        if (previous.DemonCityBossState == enemy.CombatState)
+            return;
+
+        if (enemy.CombatState is DemonCityBossState.BoltRelease or
+            DemonCityBossState.VerdictRelease)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.AttackRelease,
+                enemy.Position,
+                listener);
+        }
+
+        if (enemy.CombatState is DemonCityBossState.ChopImpact or
+            DemonCityBossState.StompImpact or
+            DemonCityBossState.DragRise or
+            DemonCityBossState.DecreeCommit or
+            DemonCityBossState.WritCommit or
+            DemonCityBossState.StepDistort or
+            DemonCityBossState.VerdictPlant or
+            DemonCityBossState.VerdictRelease or
+            DemonCityBossState.PhaseTransition)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveMalacharAttack(
+        MalacharEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        if (previous.MalacharState == enemy.CombatState)
+            return;
+
+        if (enemy.CombatState is MalacharState.ArcRelease or
+            MalacharState.RisingEdge)
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.AttackRelease,
+                enemy.Position,
+                listener);
+        }
+
+        if (enemy.CombatState is MalacharState.PhaseTransition or
+            MalacharState.ReversalPause or MalacharState.StepCompress or
+            MalacharState.PillarCommit or MalacharState.BreakActive or
+            MalacharState.DominionPlant or MalacharState.DominionSequence or
+            MalacharState.DominionSlash or MalacharState.EdictRaise or
+            MalacharState.EdictMark or MalacharState.EdictDescend)
         {
             _audio.PlayEnemy(
                 enemy.Type,
@@ -849,7 +1020,9 @@ public sealed class CombatAudioDirector
         Telegraphing = enemy.IsCombatAttackTelegraphing,
         Active = enemy.IsCombatAttackActive,
         GuardBlockReacting = enemy is CatacombEnemy guard &&
-            guard.IsGuardBlockReacting,
+                guard.IsGuardBlockReacting ||
+            enemy is DemonCityEliteEnemy eliteGuard &&
+                eliteGuard.IsGuardBlockReacting,
         CatacombState = enemy is CatacombEnemy catacomb
             ? catacomb.CombatState
             : null,
@@ -861,6 +1034,21 @@ public sealed class CombatAudioDirector
             : null,
         FortressState = enemy is DemonFortressEnemy fortress
             ? fortress.CombatState
+            : null,
+        DemonCityState = enemy is DemonCityEnemy demonCity
+            ? demonCity.CombatState
+            : null,
+        DemonCityIndustrialState = enemy is DemonCityIndustrialEnemy industrial
+            ? industrial.CombatState
+            : null,
+        DemonCityEliteState = enemy is DemonCityEliteEnemy eliteCity
+            ? eliteCity.CombatState
+            : null,
+        DemonCityBossState = enemy is DemonCityBossEnemy cityBoss
+            ? cityBoss.CombatState
+            : null,
+        MalacharState = enemy is MalacharEnemy malachar
+            ? malachar.CombatState
             : null,
         FortressBlockReacting = enemy is DemonFortressEnemy fortressBlock &&
             (fortressBlock.IsLegionBlockReacting ||

@@ -170,11 +170,20 @@ public sealed class GameRenderer : IDisposable
     private readonly DemonRitualSpriteRenderer _demonRitualSpriteRenderer;
     private readonly DemonLegionSpriteRenderer _demonLegionSpriteRenderer;
     private readonly DemonFortressEnemySpriteRenderer _demonFortressEnemySpriteRenderer;
+    private readonly DemonCityEnemySpriteRenderer _demonCityEnemySpriteRenderer;
+    private readonly DemonCityIndustrialEnemySpriteRenderer
+        _demonCityIndustrialEnemySpriteRenderer;
+    private readonly DemonCityEliteEnemySpriteRenderer
+        _demonCityEliteEnemySpriteRenderer;
+    private readonly DemonCityBossEnemySpriteRenderer
+        _demonCityBossEnemySpriteRenderer;
+    private readonly MalacharEnemySpriteRenderer _malacharEnemySpriteRenderer;
     private readonly CatacombEnvironmentRenderer _catacombEnvironmentRenderer;
     private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
     private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
     private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
     private readonly DemonFortressEnvironmentRenderer _demonFortressEnvironmentRenderer;
+    private readonly DemonCityEnvironmentRenderer _demonCityEnvironmentRenderer;
     private int _observedElderSigils;
     private float _elderSigilPulseRemaining;
     private int _observedDuelistMomentumTier = -1;
@@ -258,6 +267,17 @@ public sealed class GameRenderer : IDisposable
         _demonFortressEnemySpriteRenderer = new DemonFortressEnemySpriteRenderer(
             _spriteBatch,
             _pixel);
+        _demonCityEnemySpriteRenderer = new DemonCityEnemySpriteRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonCityIndustrialEnemySpriteRenderer =
+            new DemonCityIndustrialEnemySpriteRenderer(_spriteBatch, _pixel);
+        _demonCityEliteEnemySpriteRenderer =
+            new DemonCityEliteEnemySpriteRenderer(_spriteBatch, _pixel);
+        _demonCityBossEnemySpriteRenderer =
+            new DemonCityBossEnemySpriteRenderer(_spriteBatch, _pixel);
+        _malacharEnemySpriteRenderer =
+            new MalacharEnemySpriteRenderer(_spriteBatch, _pixel);
         _catacombEnvironmentRenderer = new CatacombEnvironmentRenderer(
             _spriteBatch,
             _pixel);
@@ -271,6 +291,9 @@ public sealed class GameRenderer : IDisposable
             _spriteBatch,
             _pixel);
         _demonFortressEnvironmentRenderer = new DemonFortressEnvironmentRenderer(
+            _spriteBatch,
+            _pixel);
+        _demonCityEnvironmentRenderer = new DemonCityEnvironmentRenderer(
             _spriteBatch,
             _pixel);
     }
@@ -589,6 +612,22 @@ public sealed class GameRenderer : IDisposable
             {
                 DrawPlagueFlaskImpact(impact);
             }
+            else if (impact.Projectile.Type == ProjectileType.SoulBolt)
+            {
+                DrawSoulBoltImpact(impact);
+            }
+            else if (impact.Projectile.Type == ProjectileType.SigilLance)
+            {
+                DrawSigilLanceImpact(impact);
+            }
+            else if (impact.Projectile.Type == ProjectileType.JudgmentBolt)
+            {
+                DrawJudgmentBoltImpact(impact);
+            }
+            else if (impact.Projectile.Type == ProjectileType.DominionArc)
+            {
+                DrawDominionArcImpact(impact);
+            }
             else
             {
                 DrawRangerImpact(impact);
@@ -648,6 +687,10 @@ public sealed class GameRenderer : IDisposable
             gameSession,
             gameSession.Camera.ViewBounds,
             gameTime);
+        _demonCityEnvironmentRenderer.DrawForeground(
+            gameSession,
+            gameSession.Camera.ViewBounds,
+            gameTime);
 
         if (gameSession.ShowMapDebug)
             DrawWildForestMapDebug(gameSession);
@@ -691,6 +734,7 @@ public sealed class GameRenderer : IDisposable
             DrawBrokenKingBossBar(gameSession);
             DrawHornedGeneralBossBar(gameSession);
             DrawDemonFortressBossBar(gameSession);
+            DrawDemonCityBossBar(gameSession);
             DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
             DrawWeaponResource(gameSession.Player, gameTime);
             DrawTechniqueFeedback(gameSession.Player);
@@ -1796,6 +1840,143 @@ public sealed class GameRenderer : IDisposable
             new Color(220, 183, 120, 205));
     }
 
+    private void DrawDemonCityBossBar(GameSession session)
+    {
+        if (session.CurrentDungeon?.IsDemonCity != true)
+            return;
+
+        Enemy selected = SelectDemonCityBossBarTarget(
+            session.Enemies.Enemies,
+            session.Player.Position);
+        if (selected is MalacharEnemy malachar)
+        {
+            DrawMalacharBossBar(malachar);
+            return;
+        }
+        if (selected is not DemonCityBossEnemy target)
+            return;
+
+        bool magistrate = target.Type == EnemyType.AbyssalMagistrate;
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int viewportHeight = _graphicsDevice.Viewport.Height;
+        int width = Math.Clamp(viewportWidth * (magistrate ? 7 : 6) / 16,
+            370, magistrate ? 720 : 640);
+        int x = (viewportWidth - width) / 2;
+        int y = viewportHeight - 108;
+        string key = magistrate
+            ? "enemy.abyssal_magistrate"
+            : "enemy.cathedral_butcher";
+        DrawCenteredDebugText(Loc.Get(key + ".name"), viewportWidth / 2,
+            y - 30, magistrate ? new Color(220, 198, 233) :
+                new Color(218, 194, 169), 1);
+        DrawCenteredDebugText(Loc.Get(key + ".title"), viewportWidth / 2,
+            y - 17, magistrate ? new Color(145, 94, 176) :
+                new Color(142, 59, 55), 1);
+
+        var frame = new Rectangle(x, y + 4, width, magistrate ? 18 : 16);
+        _spriteBatch.Draw(_pixel, frame, new Color(16, 11, 18, 242));
+        DrawRectangleOutline(frame, 2, magistrate
+            ? new Color(119, 75, 146, 240)
+            : new Color(125, 61, 52, 240));
+        var track = new Rectangle(x + 3, y + 7, width - 6, frame.Height - 6);
+        _spriteBatch.Draw(_pixel, track, new Color(48, 20, 27, 245));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(
+            target.CurrentHealth / (float)target.MaxHealth, 0f, 1f));
+        if (fill > 0)
+        {
+            Color health = magistrate
+                ? target.BossCombatPhase == 3
+                    ? new Color(173, 72, 194)
+                    : target.BossCombatPhase == 2
+                        ? new Color(133, 63, 164)
+                        : new Color(96, 57, 126)
+                : target.BossCombatPhase == 2
+                    ? new Color(177, 48, 47)
+                    : new Color(127, 51, 48);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(track.X, track.Y, fill, track.Height), health);
+        }
+
+        float[] thresholds = magistrate
+            ? new[] { .65f, .30f }
+            : new[] { .55f };
+        foreach (float threshold in thresholds)
+        {
+            int marker = track.X + (int)MathF.Round(track.Width * threshold);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(marker, track.Y - 2, 2, track.Height + 4),
+                new Color(224, 187, 119, 210));
+        }
+    }
+
+    internal static Enemy SelectDemonCityBossBarTarget(
+        IReadOnlyList<Enemy> enemies,
+        Vector2 playerPosition)
+    {
+        Enemy selected = null;
+        float nearest = float.MaxValue;
+        foreach (Enemy enemy in enemies)
+        {
+            bool ready = enemy switch
+            {
+                MalacharEnemy malachar => malachar.BossIntroCompleted,
+                DemonCityBossEnemy boss => boss.BossIntroCompleted,
+                _ => false
+            };
+            if (!ready || !enemy.IsAlive || !enemy.IsHealthBarVisible)
+                continue;
+            float distance = Vector2.DistanceSquared(
+                enemy.Position, playerPosition);
+            if (distance >= nearest)
+                continue;
+            nearest = distance;
+            selected = enemy;
+        }
+        return selected;
+    }
+
+    private void DrawMalacharBossBar(MalacharEnemy target)
+    {
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int viewportHeight = _graphicsDevice.Viewport.Height;
+        int width = Math.Clamp(viewportWidth * 3 / 5, 520, 840);
+        int x = (viewportWidth - width) / 2;
+        int y = viewportHeight - 120;
+        DrawCenteredDebugText(Loc.Get("enemy.malachar.name"),
+            viewportWidth / 2, y - 35, new Color(237, 215, 166), 2);
+        DrawCenteredDebugText(Loc.Get("enemy.malachar.title"),
+            viewportWidth / 2, y - 17, new Color(164, 103, 181), 1);
+
+        var frame = new Rectangle(x, y + 5, width, 21);
+        _spriteBatch.Draw(_pixel, frame, new Color(12, 9, 17, 246));
+        DrawRectangleOutline(frame, 3, new Color(164, 119, 71, 245));
+        var track = new Rectangle(x + 4, y + 9, width - 8, frame.Height - 8);
+        _spriteBatch.Draw(_pixel, track, new Color(39, 19, 38, 248));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(
+            target.CurrentHealth / (float)target.MaxHealth, 0f, 1f));
+        if (fill > 0)
+        {
+            Color health = target.CombatPhase switch
+            {
+                3 => new Color(188, 70, 116),
+                2 => new Color(133, 64, 151),
+                _ => new Color(91, 58, 112)
+            };
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(track.X, track.Y, fill, track.Height), health);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(track.X, track.Y, fill, 2),
+                new Color(228, 183, 108, 205));
+        }
+        foreach (float threshold in new[] { .70f, .35f })
+        {
+            int marker = track.X + (int)MathF.Round(track.Width * threshold);
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(marker, track.Y - 3, 3, track.Height + 6),
+                new Color(229, 193, 121, 225));
+        }
+    }
+
     private void DrawDemonLands(
         GameSession session,
         Rectangle visibleBounds,
@@ -1831,7 +2012,16 @@ public sealed class GameRenderer : IDisposable
         {
             _demonFortressEnvironmentRenderer.DrawWorld(
                 gameSession, visibleBounds, gameTime);
-            DrawExitMarker(gameSession.ExitPosition, false);
+            DrawExitMarker(gameSession.ExitPosition, gameSession.IsExitUnlocked);
+            return;
+        }
+
+        if (dungeon.IsDemonCity)
+        {
+            _demonCityEnvironmentRenderer.DrawWorld(
+                gameSession, visibleBounds, gameTime);
+            DrawExitMarker(gameSession.ExitPosition,
+                gameSession.IsExitUnlocked);
             return;
         }
 
@@ -2658,6 +2848,22 @@ public sealed class GameRenderer : IDisposable
             case DemonFortressEnemy fortress:
                 _demonFortressEnemySpriteRenderer.Draw(fortress, gameTime);
                 break;
+            case DemonCityEnemy demonCity:
+                _demonCityEnemySpriteRenderer.Draw(demonCity, gameTime);
+                break;
+            case DemonCityIndustrialEnemy industrial:
+                _demonCityIndustrialEnemySpriteRenderer.Draw(
+                    industrial, gameTime);
+                break;
+            case DemonCityEliteEnemy eliteCity:
+                _demonCityEliteEnemySpriteRenderer.Draw(eliteCity, gameTime);
+                break;
+            case DemonCityBossEnemy cityBoss:
+                _demonCityBossEnemySpriteRenderer.Draw(cityBoss, gameTime);
+                break;
+            case MalacharEnemy malachar:
+                _malacharEnemySpriteRenderer.Draw(malachar, gameTime);
+                break;
         }
 
         if (enemy.IsBuffed)
@@ -3053,6 +3259,9 @@ public sealed class GameRenderer : IDisposable
             enemy.Type == EnemyType.HornedGeneral ||
             enemy.Type == EnemyType.BallistaGunner ||
             enemy.Type == EnemyType.BlackGuardExecutioner ||
+            enemy.Type == EnemyType.CathedralButcher ||
+            enemy.Type == EnemyType.AbyssalMagistrate ||
+            enemy.Type == EnemyType.Malachar ||
             enemy.MaxHealth <= 0)
         {
             return;
@@ -3223,6 +3432,82 @@ public sealed class GameRenderer : IDisposable
             DrawWorldLine(center - soulDirection * 4f - normal * 5f,
                 center + soulDirection * 5f + normal * 4f,
                 2f, new Color(174, 164, 193, 205));
+            return;
+        }
+
+        if (projectile.Type == ProjectileType.SigilLance)
+        {
+            Vector2 center = projectile.Position;
+            Vector2 lanceDirection = projectile.Velocity;
+            if (lanceDirection.LengthSquared() > .01f)
+                lanceDirection.Normalize();
+            else
+                lanceDirection = Vector2.UnitX;
+            Vector2 normal = new(-lanceDirection.Y, lanceDirection.X);
+            DrawWorldLine(
+                projectile.PreviousPosition,
+                center,
+                3f,
+                new Color(104, 69, 143, 115));
+            DrawWorldLine(center - lanceDirection * 16f,
+                center + lanceDirection * 14f,
+                5f, new Color(80, 59, 105, 205));
+            DrawWorldLine(center - lanceDirection * 11f,
+                center + lanceDirection * 16f,
+                2f, new Color(205, 174, 226, 235));
+            DrawWorldLine(center - normal * 7f,
+                center + lanceDirection * 5f,
+                2f, new Color(145, 104, 175, 220));
+            DrawWorldLine(center + normal * 7f,
+                center + lanceDirection * 5f,
+                2f, new Color(145, 104, 175, 220));
+            return;
+        }
+
+        if (projectile.Type == ProjectileType.JudgmentBolt)
+        {
+            Vector2 judgmentDirection = projectile.Velocity;
+            if (judgmentDirection.LengthSquared() > .01f)
+                judgmentDirection.Normalize();
+            else
+                judgmentDirection = Vector2.UnitX;
+            Vector2 normal = new(-judgmentDirection.Y, judgmentDirection.X);
+            float length = projectile.EmpoweredVisual ? 25f : 19f;
+            DrawWorldLine(projectile.PreviousPosition, projectile.Position,
+                projectile.EmpoweredVisual ? 5f : 3f,
+                new Color(104, 67, 137, 120));
+            DrawWorldLine(projectile.Position - judgmentDirection * length,
+                projectile.Position + judgmentDirection * 10f,
+                projectile.EmpoweredVisual ? 7f : 5f,
+                new Color(213, 180, 112, 235));
+            DrawWorldLine(projectile.Position - normal * 8f,
+                projectile.Position + normal * 8f,
+                3f, new Color(146, 99, 177, 225));
+            return;
+        }
+
+        if (projectile.Type == ProjectileType.DominionArc)
+        {
+            Vector2 arcDirection = projectile.Velocity;
+            if (arcDirection.LengthSquared() > .01f)
+                arcDirection.Normalize();
+            else
+                arcDirection = Vector2.UnitX;
+            Vector2 normal = new(-arcDirection.Y, arcDirection.X);
+            float length = projectile.EmpoweredVisual ? 37f : 29f;
+            DrawWorldLine(projectile.PreviousPosition, projectile.Position,
+                projectile.EmpoweredVisual ? 7f : 5f,
+                new Color(89, 48, 116, 125));
+            DrawWorldLine(projectile.Position - arcDirection * length,
+                projectile.Position + arcDirection * 13f,
+                projectile.EmpoweredVisual ? 10f : 8f,
+                new Color(111, 67, 139, 230));
+            DrawWorldLine(projectile.Position - arcDirection * (length - 4f),
+                projectile.Position + arcDirection * 16f,
+                3f, new Color(230, 191, 111, 235));
+            DrawWorldLine(projectile.Position - normal * 9f,
+                projectile.Position + normal * 9f,
+                2f, new Color(175, 122, 191, 210));
             return;
         }
 
@@ -5449,6 +5734,64 @@ public sealed class GameRenderer : IDisposable
             new Color(164, 222, 187, 165));
     }
 
+    private void DrawSoulBoltImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        Color outer = new(112, 96, 153, 165);
+        Color inner = new(186, 166, 211, 210);
+        DrawWorldLine(center + new Vector2(-12f, 0f),
+            center + new Vector2(12f, 0f), 2f, outer);
+        DrawWorldLine(center + new Vector2(0f, -10f),
+            center + new Vector2(0f, 10f), 2f, outer);
+        DrawWorldLine(center + new Vector2(-7f, -7f),
+            center + new Vector2(7f, 7f), 2f, inner);
+        DrawWorldLine(center + new Vector2(-7f, 7f),
+            center + new Vector2(7f, -7f), 2f, inner);
+    }
+
+    private void DrawSigilLanceImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        Color violet = new(151, 105, 181, 190);
+        Color bronze = new(202, 162, 104, 205);
+        DrawWorldLine(center + new Vector2(-13f, -8f),
+            center + new Vector2(13f, 8f), 2f, violet);
+        DrawWorldLine(center + new Vector2(-13f, 8f),
+            center + new Vector2(13f, -8f), 2f, violet);
+        DrawWorldLine(center + new Vector2(-8f, 0f),
+            center + new Vector2(8f, 0f), 3f, bronze);
+    }
+
+    private void DrawJudgmentBoltImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        float radius = impact.Projectile.EmpoweredVisual ? 19f : 14f;
+        Color decree = new(151, 98, 181, 205);
+        Color gold = new(225, 190, 119, 225);
+        DrawWorldLine(center + new Vector2(-radius, 0f),
+            center + new Vector2(radius, 0f), 3f, decree);
+        DrawWorldLine(center + new Vector2(0f, -radius),
+            center + new Vector2(0f, radius), 3f, decree);
+        DrawWorldLine(center + new Vector2(-radius * .6f, -radius * .6f),
+            center + new Vector2(radius * .6f, radius * .6f), 2f, gold);
+        DrawWorldLine(center + new Vector2(-radius * .6f, radius * .6f),
+            center + new Vector2(radius * .6f, -radius * .6f), 2f, gold);
+    }
+
+    private void DrawDominionArcImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        float radius = impact.Projectile.EmpoweredVisual ? 24f : 18f;
+        Color violet = new(132, 75, 157, 210);
+        Color gold = new(230, 190, 111, 230);
+        DrawWorldLine(center + new Vector2(-radius, -7f),
+            center + new Vector2(radius, 7f), 4f, violet);
+        DrawWorldLine(center + new Vector2(-radius, 7f),
+            center + new Vector2(radius, -7f), 3f, gold);
+        DrawWorldLine(center + new Vector2(0f, -radius * .7f),
+            center + new Vector2(0f, radius * .7f), 2f, violet);
+    }
+
     private void DrawEnemyArrowImpact(ProjectileImpact impact)
     {
         Vector2 center = impact.Position;
@@ -5619,6 +5962,28 @@ public sealed class GameRenderer : IDisposable
             return;
         }
 
+        if (hazard.VisualKind == RootHazardVisualKind.BindingSigil)
+        {
+            DrawBindingSigil(hazard, bounds);
+            return;
+        }
+
+        if (hazard.VisualKind is RootHazardVisualKind.DecreeZone or
+            RootHazardVisualKind.BindingWrit or
+            RootHazardVisualKind.FinalVerdictSeal)
+        {
+            DrawJudicialSeal(hazard, bounds);
+            return;
+        }
+
+        if (hazard.VisualKind is RootHazardVisualKind.AbyssalPillar or
+            RootHazardVisualKind.DominionLane or
+            RootHazardVisualKind.EdictSeal)
+        {
+            DrawMalacharHazard(hazard, bounds);
+            return;
+        }
+
         if (hazard.VisualKind is RootHazardVisualKind.AshTrail or
             RootHazardVisualKind.CinderZone)
         {
@@ -5674,6 +6039,102 @@ public sealed class GameRenderer : IDisposable
         }
 
         DrawRectangleOutline(bounds, 2, new Color(143, 72, 67, 190));
+    }
+
+    private void DrawJudicialSeal(RootHazard hazard, Rectangle bounds)
+    {
+        float progress = hazard.PhaseProgress;
+        bool binding = hazard.VisualKind == RootHazardVisualKind.BindingWrit;
+        bool verdict = hazard.VisualKind == RootHazardVisualKind.FinalVerdictSeal;
+        Color violet = binding
+            ? new Color(107, 80, 151)
+            : new Color(130, 78, 153);
+        Color gold = verdict
+            ? new Color(226, 181, 103)
+            : new Color(184, 144, 86);
+        byte fillAlpha = hazard.State == RootHazardState.Telegraph
+            ? (byte)MathHelper.Lerp(28f, 92f, progress)
+            : (byte)118;
+        _spriteBatch.Draw(_pixel, bounds,
+            new Color(violet.R, violet.G, violet.B, fillAlpha));
+        DrawRectangleOutline(bounds, verdict ? 3 : 2,
+            new Color(gold, hazard.State == RootHazardState.Telegraph
+                ? (int)MathHelper.Lerp(110f, 230f, progress)
+                : 220));
+
+        int centerX = bounds.Center.X;
+        int centerY = bounds.Center.Y;
+        DrawWorldLine(new Vector2(bounds.Left + 8, centerY),
+            new Vector2(bounds.Right - 8, centerY), verdict ? 3f : 2f,
+            new Color(gold, 195));
+        DrawWorldLine(new Vector2(centerX, bounds.Top + 3),
+            new Vector2(centerX, bounds.Bottom - 3), 2f,
+            new Color(violet, 225));
+        if (binding)
+        {
+            DrawWorldLine(new Vector2(bounds.Left + 12, bounds.Top + 4),
+                new Vector2(bounds.Right - 12, bounds.Bottom - 4), 2f,
+                new Color(gold, 185));
+            DrawWorldLine(new Vector2(bounds.Left + 12, bounds.Bottom - 4),
+                new Vector2(bounds.Right - 12, bounds.Top + 4), 2f,
+                new Color(gold, 185));
+        }
+        else
+        {
+            int spacing = verdict ? 22 : 28;
+            for (int x = bounds.Left + 10; x < bounds.Right - 5; x += spacing)
+            {
+                DrawWorldLine(new Vector2(x, bounds.Top + 5),
+                    new Vector2(x + 8, bounds.Bottom - 5), 2f,
+                    new Color(gold, 170));
+            }
+        }
+    }
+
+    private void DrawMalacharHazard(RootHazard hazard, Rectangle bounds)
+    {
+        float progress = hazard.PhaseProgress;
+        bool pillar = hazard.VisualKind == RootHazardVisualKind.AbyssalPillar;
+        bool lane = hazard.VisualKind == RootHazardVisualKind.DominionLane;
+        Color violet = pillar
+            ? new Color(111, 57, 139)
+            : new Color(91, 50, 116);
+        Color gold = hazard.VisualKind == RootHazardVisualKind.EdictSeal
+            ? new Color(229, 187, 105)
+            : new Color(190, 139, 79);
+        byte alpha = hazard.State == RootHazardState.Telegraph
+            ? (byte)MathHelper.Lerp(32f, 102f, progress)
+            : (byte)145;
+        _spriteBatch.Draw(_pixel, bounds,
+            new Color(violet.R, violet.G, violet.B, alpha));
+        DrawRectangleOutline(bounds, lane ? 3 : 2,
+            new Color(gold, hazard.State == RootHazardState.Telegraph
+                ? (int)MathHelper.Lerp(130f, 235f, progress)
+                : 230));
+
+        if (pillar && hazard.State == RootHazardState.Active)
+        {
+            int center = bounds.Center.X;
+            DrawWorldLine(new Vector2(center - 12, bounds.Bottom),
+                new Vector2(center - 4, bounds.Top), 8f,
+                new Color(126, 73, 155, 220));
+            DrawWorldLine(new Vector2(center + 12, bounds.Bottom),
+                new Vector2(center + 4, bounds.Top), 6f,
+                new Color(220, 174, 100, 205));
+        }
+        else
+        {
+            DrawWorldLine(new Vector2(bounds.Left + 8, bounds.Center.Y),
+                new Vector2(bounds.Right - 8, bounds.Center.Y),
+                lane ? 4f : 2f, new Color(gold, 205));
+            int spacing = lane ? 38 : 22;
+            for (int x = bounds.Left + 10; x < bounds.Right - 5; x += spacing)
+            {
+                DrawWorldLine(new Vector2(x, bounds.Top + 4),
+                    new Vector2(x + 11, bounds.Bottom - 4), 2f,
+                    new Color(violet, 225));
+            }
+        }
     }
 
     private void DrawAshHazard(RootHazard hazard, Rectangle bounds)
@@ -5762,6 +6223,46 @@ public sealed class GameRenderer : IDisposable
             new Rectangle(bounds.X + 7, bounds.Center.Y - 1,
                 Math.Max(2, bounds.Width - 14), 3),
             new Color(198, 159, 91, 125));
+    }
+
+    private void DrawBindingSigil(RootHazard hazard, Rectangle bounds)
+    {
+        float progress = hazard.PhaseProgress;
+        bool active = hazard.State == RootHazardState.Active;
+        Color edge = active
+            ? new Color(181, 116, 199, 210)
+            : new Color(145, 91, 169,
+                (int)MathHelper.Lerp(80f, 195f, progress));
+        _spriteBatch.Draw(
+            _pixel,
+            bounds,
+            active
+                ? new Color(77, 43, 91, 92)
+                : new Color(65, 42, 76, 45));
+        DrawRectangleOutline(bounds, active ? 3 : 2, edge);
+        int inset = Math.Max(5, bounds.Height / 3);
+        DrawRectangleOutline(
+            new Rectangle(
+                bounds.X + inset,
+                bounds.Y + 3,
+                Math.Max(2, bounds.Width - inset * 2),
+                Math.Max(2, bounds.Height - 6)),
+            2,
+            new Color(205, 169, 117, active ? 190 : 125));
+        DrawWorldLine(
+            new Vector2(bounds.Left + 14f, bounds.Center.Y),
+            new Vector2(bounds.Center.X - 7f, bounds.Top + 2f),
+            2f, edge);
+        DrawWorldLine(
+            new Vector2(bounds.Center.X + 7f, bounds.Top + 2f),
+            new Vector2(bounds.Right - 14f, bounds.Center.Y),
+            2f, edge);
+        if (active)
+        {
+            _spriteBatch.Draw(_pixel,
+                new Rectangle(bounds.Center.X - 2, bounds.Top - 10, 4, 10),
+                new Color(171, 119, 194, 150));
+        }
     }
 
     private void DrawAncientTreantRootHazard(
@@ -7364,8 +7865,56 @@ public sealed class GameRenderer : IDisposable
             DemonLandsEnemy demon when
                 demon.Type == EnemyType.HornedGeneral =>
                 DemonLegionSpriteRenderer.GeneralVisualSize,
+            DemonCityEnemy demonCity when
+                demonCity.Type == EnemyType.DemonCityEnforcer =>
+                DemonCityEnemySpriteRenderer.EnforcerVisualSize,
+            DemonCityEnemy demonCity when
+                demonCity.Type == EnemyType.SoulLanternKeeper =>
+                DemonCityEnemySpriteRenderer.KeeperVisualSize,
+            DemonCityEnemy demonCity when
+                demonCity.Type == EnemyType.AshbladeStalker =>
+                DemonCityEnemySpriteRenderer.StalkerVisualSize,
+            DemonCityEnemy demonCity when
+                demonCity.Type == EnemyType.ChainCollector =>
+                DemonCityEnemySpriteRenderer.CollectorVisualSize,
+            DemonCityIndustrialEnemy industrial when
+                industrial.Type == EnemyType.BloodworksServitor =>
+                DemonCityIndustrialEnemySpriteRenderer.ServitorVisualSize,
+            DemonCityIndustrialEnemy industrial when
+                industrial.Type == EnemyType.SigilCantor =>
+                DemonCityIndustrialEnemySpriteRenderer.CantorVisualSize,
+            DemonCityEliteEnemy eliteCity when
+                eliteCity.Type == EnemyType.VeilWarden =>
+                DemonCityEliteEnemySpriteRenderer.WardenVisualSize,
+            DemonCityEliteEnemy eliteCity when
+                eliteCity.Type == EnemyType.GloomwingHarrier =>
+                DemonCityEliteEnemySpriteRenderer.HarrierVisualSize,
+            DemonCityBossEnemy cityBoss when
+                cityBoss.Type == EnemyType.CathedralButcher =>
+                DemonCityBossEnemySpriteRenderer.ButcherVisualSize,
+            DemonCityBossEnemy cityBoss when
+                cityBoss.Type == EnemyType.AbyssalMagistrate =>
+                DemonCityBossEnemySpriteRenderer.MagistrateVisualSize,
+            MalacharEnemy _ => MalacharEnemySpriteRenderer.VisualSize,
             _ => enemy.Size
         };
+        if (enemy is DemonCityEliteEnemy fallenHarrier &&
+            fallenHarrier.Type == EnemyType.GloomwingHarrier &&
+            !fallenHarrier.IsAlive &&
+            !float.IsNaN(fallenHarrier.DeathLandingCenterY))
+        {
+            int startBottom = enemy.Bounds.Bottom;
+            int landingBottom = (int)MathF.Ceiling(
+                fallenHarrier.DeathLandingCenterY + enemy.Size.Y / 2f);
+            int top = Math.Min(startBottom, landingBottom) -
+                (int)MathF.Ceiling(visualSize.Y);
+            int bottom = Math.Max(startBottom, landingBottom);
+            return new Rectangle(
+                (int)MathF.Round(enemy.Position.X - visualSize.X / 2f),
+                top,
+                (int)MathF.Ceiling(visualSize.X),
+                bottom - top);
+        }
         return new Rectangle(
             (int)MathF.Round(enemy.Position.X - visualSize.X / 2f),
             enemy.Bounds.Bottom - (int)MathF.Ceiling(visualSize.Y),

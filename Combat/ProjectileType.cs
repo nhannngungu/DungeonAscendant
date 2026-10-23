@@ -7,5 +7,8 @@ public enum ProjectileType
     PlagueFlask,
     ArcaneBolt,
     WebShot,
-    SoulBolt
+    SoulBolt,
+    SigilLance,
+    JudgmentBolt,
+    DominionArc
 }

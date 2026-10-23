@@ -250,7 +250,10 @@ public sealed class EnemyManager
             EnemyType.AshKnight or EnemyType.WarBishop or EnemyType.BrokenKing or
             EnemyType.RiftWarden or EnemyType.DemonLegionnaire or
             EnemyType.HornedGeneral or EnemyType.DemonOfficer or
-            EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner;
+            EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner or
+            EnemyType.VeilWarden or EnemyType.GloomwingHarrier or
+            EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
+            EnemyType.Malachar;
         var context = new EnemySpawnContext(
             socket.Position,
             enemyLevel,
@@ -480,7 +483,18 @@ public sealed class EnemyManager
                  enemy.Type == EnemyType.InfernalSmith ||
                  enemy.Type == EnemyType.DemonOfficer ||
                  enemy.Type == EnemyType.BallistaGunner ||
-                 enemy.Type == EnemyType.BlackGuardExecutioner)
+                 enemy.Type == EnemyType.BlackGuardExecutioner ||
+                 enemy.Type == EnemyType.DemonCityEnforcer ||
+                 enemy.Type == EnemyType.SoulLanternKeeper ||
+                 enemy.Type == EnemyType.AshbladeStalker ||
+                 enemy.Type == EnemyType.ChainCollector ||
+                 enemy.Type == EnemyType.BloodworksServitor ||
+                 enemy.Type == EnemyType.SigilCantor ||
+                 enemy.Type == EnemyType.VeilWarden ||
+                 enemy.Type == EnemyType.GloomwingHarrier ||
+                 enemy.Type == EnemyType.CathedralButcher ||
+                 enemy.Type == EnemyType.AbyssalMagistrate ||
+                 enemy.Type == EnemyType.Malachar)
             {
                 _defeatPresentations.Add(enemy);
             }

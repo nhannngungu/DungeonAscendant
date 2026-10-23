@@ -127,6 +127,13 @@ static bool RunRequestedValidation(string[] arguments, out string name)
         System.Console.WriteLine(
             "Demon Fortress foundation, traversal, sockets, and placeholders validation passed.");
     }
+    else if (Has("--validate-demon-city"))
+    {
+        DungeonAscendant.Dungeon.DemonCityMapValidation.ValidateOrThrow();
+        name = "demon-city";
+        System.Console.WriteLine(
+            "Demon City foundation, traversal, checkpoints, event spaces, and sockets validation passed.");
+    }
     else if (Has("--validate-last-dice"))
     {
         DungeonAscendant.Core.LastDiceTableValidation.ValidateOrThrow();

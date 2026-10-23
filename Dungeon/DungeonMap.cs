@@ -21,6 +21,7 @@ public sealed class DungeonMap
     public bool IsFallenCity { get; }
     public bool IsDemonLands { get; }
     public bool IsDemonFortress { get; }
+    public bool IsDemonCity { get; }
     public IReadOnlyList<WildForestSection> WildForestSections { get; }
     public IReadOnlyList<EncounterZone> EncounterZones { get; }
     public IReadOnlyList<SpawnSocket> SpawnSockets { get; }
@@ -43,6 +44,10 @@ public sealed class DungeonMap
     public IReadOnlyList<DemonFortressZoneDefinition> DemonFortressZones { get; }
     public IReadOnlyList<FortressPropDefinition> FortressProps { get; }
     public IReadOnlyList<FortressCheckpointDefinition> FortressCheckpoints { get; }
+    public IReadOnlyList<DemonCityZoneDefinition> DemonCityZones { get; }
+    public IReadOnlyList<DemonCityPropDefinition> DemonCityProps { get; }
+    public IReadOnlyList<DemonCityCheckpointDefinition> DemonCityCheckpoints { get; }
+    public IReadOnlyList<DemonCityEventSpaceDefinition> DemonCityEventSpaces { get; }
 
     public DungeonMap(
         IReadOnlyList<DungeonRoom> rooms,
@@ -53,6 +58,7 @@ public sealed class DungeonMap
         bool isFallenCity = false,
         bool isDemonLands = false,
         bool isDemonFortress = false,
+        bool isDemonCity = false,
         IReadOnlyList<WildForestSection> wildForestSections = null,
         IReadOnlyList<EncounterZone> encounterZones = null,
         IReadOnlyList<SpawnSocket> spawnSockets = null,
@@ -74,6 +80,10 @@ public sealed class DungeonMap
         IReadOnlyList<DemonFortressZoneDefinition> demonFortressZones = null,
         IReadOnlyList<FortressPropDefinition> fortressProps = null,
         IReadOnlyList<FortressCheckpointDefinition> fortressCheckpoints = null,
+        IReadOnlyList<DemonCityZoneDefinition> demonCityZones = null,
+        IReadOnlyList<DemonCityPropDefinition> demonCityProps = null,
+        IReadOnlyList<DemonCityCheckpointDefinition> demonCityCheckpoints = null,
+        IReadOnlyList<DemonCityEventSpaceDefinition> demonCityEventSpaces = null,
         DungeonRoom exitRoomOverride = null,
         Vector2? authoredExitPosition = null)
     {
@@ -85,6 +95,7 @@ public sealed class DungeonMap
         IsFallenCity = isFallenCity;
         IsDemonLands = isDemonLands;
         IsDemonFortress = isDemonFortress;
+        IsDemonCity = isDemonCity;
         WildForestSections = new List<WildForestSection>(
             wildForestSections ?? Array.Empty<WildForestSection>());
         EncounterZones = new List<EncounterZone>(
@@ -123,6 +134,14 @@ public sealed class DungeonMap
             fortressProps ?? Array.Empty<FortressPropDefinition>());
         FortressCheckpoints = new List<FortressCheckpointDefinition>(
             fortressCheckpoints ?? Array.Empty<FortressCheckpointDefinition>());
+        DemonCityZones = new List<DemonCityZoneDefinition>(
+            demonCityZones ?? Array.Empty<DemonCityZoneDefinition>());
+        DemonCityProps = new List<DemonCityPropDefinition>(
+            demonCityProps ?? Array.Empty<DemonCityPropDefinition>());
+        DemonCityCheckpoints = new List<DemonCityCheckpointDefinition>(
+            demonCityCheckpoints ?? Array.Empty<DemonCityCheckpointDefinition>());
+        DemonCityEventSpaces = new List<DemonCityEventSpaceDefinition>(
+            demonCityEventSpaces ?? Array.Empty<DemonCityEventSpaceDefinition>());
         AuthoredExitPosition = authoredExitPosition;
         var platforms = new List<Platform>();
 

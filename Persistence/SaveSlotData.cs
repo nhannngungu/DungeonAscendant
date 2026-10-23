@@ -49,6 +49,10 @@ public sealed class SaveSlotData
     public bool Map04Cleared { get; set; }
     public bool Map05BallistaDefeated { get; set; }
     public bool Map05ExecutionerDefeated { get; set; }
+    public bool Map06ButcherDefeated { get; set; }
+    public bool Map06MagistrateDefeated { get; set; }
+    public bool Map06Cleared { get; set; }
+    public bool Map06ExitPrepared { get; set; }
     public bool Map2PigPhotoCollected { get; set; }
     public bool BossDefeated { get; set; }
     public bool LastDiceStarted { get; set; }

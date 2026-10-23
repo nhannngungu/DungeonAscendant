@@ -50,6 +50,9 @@ public abstract class Enemy
     private float _reapMarkExitVisualRemaining;
     private int _reapMarkExitVisualCount;
     private bool _reapMarkExitWasConsumed;
+    private Rectangle? _authoredLeashBounds;
+    private Vector2 _authoredHomePosition;
+    private bool _returningToAuthoredHome;
 
     public EnemyType Type { get; }
     public Vector2 Position { get; protected set; }
@@ -70,6 +73,7 @@ public abstract class Enemy
         : 0f;
     public bool IsDeathPresentationComplete =>
         _deathPresentationTimeRemaining <= 0f;
+    public bool IsReturningToAuthoredHome => _returningToAuthoredHome;
     public float DeathPresentationProgress => Math.Clamp(
         1f - _deathPresentationTimeRemaining /
             MathF.Max(.01f, DeathPresentationDurationSeconds),
@@ -123,7 +127,9 @@ public abstract class Enemy
         EnemyType.RiftWarden or EnemyType.DemonLegionnaire or
         EnemyType.HornedGeneral or EnemyType.DemonShieldbearer or
         EnemyType.InfernalSmith or EnemyType.DemonOfficer or
-        EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner;
+        EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner or
+        EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
+        EnemyType.Malachar;
 
     public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
         MaxPoise,
@@ -228,7 +234,10 @@ public abstract class Enemy
 
         UpdateTimers(gameTime);
 
-        if (player.IsTargetable && !IsStaggered && !IsArcaneStunned)
+        bool leashOwnsMovement = UpdateAuthoredLeash(
+            gameTime, player.Position, dungeon);
+        if (!leashOwnsMovement && player.IsTargetable &&
+            !IsStaggered && !IsArcaneStunned)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -259,7 +268,10 @@ public abstract class Enemy
     {
         float startingX = Position.X;
 
-        if (IsAlive && player.IsTargetable && !IsStaggered && !IsArcaneStunned)
+        bool leashOwnsMovement = IsAlive && UpdateAuthoredLeash(
+            gameTime, player.Position, dungeon);
+        if (IsAlive && !leashOwnsMovement && player.IsTargetable &&
+            !IsStaggered && !IsArcaneStunned)
         {
             if (IsPlayerDetected(player.Position))
                 UpdateFacing(player.Position.X - Position.X, TargetFacingDeadzone);
@@ -940,6 +952,49 @@ public abstract class Enemy
         IsGrounded = !aerial;
     }
 
+    internal void ConfigureAuthoredLeash(Rectangle arenaBounds)
+    {
+        if (arenaBounds == Rectangle.Empty)
+            return;
+        if (!_authoredLeashBounds.HasValue)
+            _authoredHomePosition = Position;
+        _authoredLeashBounds = arenaBounds;
+    }
+
+    private bool UpdateAuthoredLeash(
+        GameTime gameTime,
+        Vector2 playerPosition,
+        DungeonMap dungeon)
+    {
+        if (!_authoredLeashBounds.HasValue ||
+            _authoredLeashBounds.Value.Contains(playerPosition.ToPoint()))
+        {
+            _returningToAuthoredHome = false;
+            return false;
+        }
+
+        if (!_returningToAuthoredHome)
+        {
+            _returningToAuthoredHome = true;
+            if (CanBeTargeted)
+            {
+                Attack.Cancel();
+                OnCombatInterrupted();
+            }
+        }
+
+        if (MathF.Abs(Position.X - _authoredHomePosition.X) > 8f)
+        {
+            MoveToward(
+                gameTime,
+                _authoredHomePosition,
+                6f,
+                dungeon,
+                .72f);
+        }
+        return true;
+    }
+
     internal void ConstrainToAuthoredArena(Rectangle arenaBounds)
     {
         if (!IsAlive)
@@ -1053,6 +1108,17 @@ public abstract class Enemy
             EnemyType.DemonOfficer => 160f,
             EnemyType.BallistaGunner => 260f,
             EnemyType.BlackGuardExecutioner => 340f,
+            EnemyType.DemonCityEnforcer => 74f,
+            EnemyType.SoulLanternKeeper => 52f,
+            EnemyType.AshbladeStalker => 48f,
+            EnemyType.ChainCollector => 72f,
+            EnemyType.BloodworksServitor => 118f,
+            EnemyType.SigilCantor => 46f,
+            EnemyType.VeilWarden => 112f,
+            EnemyType.GloomwingHarrier => 72f,
+            EnemyType.CathedralButcher => 190f,
+            EnemyType.AbyssalMagistrate => 220f,
+            EnemyType.Malachar => 310f,
             _ => 60f
         };
     }
@@ -1123,6 +1189,12 @@ public abstract class Enemy
             EnemyType.RiftWarden => 0.62f,
             EnemyType.DemonLegionnaire => 0.68f,
             EnemyType.HornedGeneral => 0.54f,
+            EnemyType.DemonCityEnforcer => .72f,
+            EnemyType.SoulLanternKeeper => .78f,
+            EnemyType.AshbladeStalker => .80f,
+            EnemyType.ChainCollector => .72f,
+            EnemyType.BloodworksServitor => .62f,
+            EnemyType.SigilCantor => .82f,
             _ => 0.68f
         };
     }

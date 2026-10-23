@@ -25,7 +25,10 @@ public enum WildForestEnemyIdentity
     BellWatcher, StreetExecutioner, RoyalGuard, AshKnight, WarBishop,
     BrokenKing, ImpRaider, HellArcher, SpineHound, RiftStalker,
     BoneHarvester, Hellbrute, CorruptionPriest, RiftWarden,
-    DemonLegionnaire, HornedGeneral, BallistaGunner, BlackGuardExecutioner
+    DemonLegionnaire, HornedGeneral, BallistaGunner, BlackGuardExecutioner,
+    DemonCityEnforcer, SoulLanternKeeper, AshbladeStalker, ChainCollector,
+    BloodworksServitor, SigilCantor, VeilWarden, GloomwingHarrier,
+    CathedralButcher, AbyssalMagistrate, Malachar
 }
 
 public sealed class EnemyIntroductionDefinition
@@ -83,6 +86,17 @@ public sealed class EnemyIntroductionDefinition
         WildForestEnemyIdentity.HornedGeneral => "horned_general",
         WildForestEnemyIdentity.BallistaGunner => "ballista_gunner",
         WildForestEnemyIdentity.BlackGuardExecutioner => "black_guard_executioner",
+        WildForestEnemyIdentity.DemonCityEnforcer => "demon_city_enforcer",
+        WildForestEnemyIdentity.SoulLanternKeeper => "soul_lantern_keeper",
+        WildForestEnemyIdentity.AshbladeStalker => "ashblade_stalker",
+        WildForestEnemyIdentity.ChainCollector => "chain_collector",
+        WildForestEnemyIdentity.BloodworksServitor => "bloodworks_servitor",
+        WildForestEnemyIdentity.SigilCantor => "sigil_cantor",
+        WildForestEnemyIdentity.VeilWarden => "veil_warden",
+        WildForestEnemyIdentity.GloomwingHarrier => "gloomwing_harrier",
+        WildForestEnemyIdentity.CathedralButcher => "cathedral_butcher",
+        WildForestEnemyIdentity.AbyssalMagistrate => "abyssal_magistrate",
+        WildForestEnemyIdentity.Malachar => "malachar",
         _ => "unknown"
     };
 
@@ -149,7 +163,18 @@ public sealed class EnemyIntroductionManager
         new(WildForestEnemyIdentity.DemonLegionnaire,"DEMON LEGIONNAIRE","SOLDIER OF THE INFERNAL LEGION","A disciplined shield bearer that commands the legion line.",2),
         new(WildForestEnemyIdentity.HornedGeneral,"THE HORNED GENERAL","WARLORD OF THE INFERNAL FRONTIER","The commander of the Demon Lands makes his final stand in the Infernal Heart.",3),
         new(WildForestEnemyIdentity.BallistaGunner,"BALLISTA GUNNER","SIEGE MASTER OF THE BASTION","Read the siege cycle, break the firing lane, and punish the reload.",2),
-        new(WildForestEnemyIdentity.BlackGuardExecutioner,"BLACK GUARD EXECUTIONER","CHAMPION OF THE BLACK GUARD TRIAL","The fortress champion measures every step before the sentence falls.",2)
+        new(WildForestEnemyIdentity.BlackGuardExecutioner,"BLACK GUARD EXECUTIONER","CHAMPION OF THE BLACK GUARD TRIAL","The fortress champion measures every step before the sentence falls.",2),
+        new(WildForestEnemyIdentity.DemonCityEnforcer,"DEMON CITY ENFORCER","CIVIC BLADE OF THE LOWER DISTRICTS","A brutal city official who answers disorder with cleaver and shield.",1),
+        new(WildForestEnemyIdentity.SoulLanternKeeper,"SOUL LANTERN KEEPER","ATTENDANT OF CAPTURED SOULS","A civic ritual keeper who turns a lantern of captive souls into ranged pressure.",1),
+        new(WildForestEnemyIdentity.AshbladeStalker,"ASHBLADE STALKER","STREET HUNTER OF THE LOWER DISTRICT","A predatory street fighter who commits twin curved blades, then disengages.",1),
+        new(WildForestEnemyIdentity.ChainCollector,"CHAIN COLLECTOR","KEEPER OF THE MARKET'S DEBTS","A sinister collector who controls the market lane with hooked chain and soul cages.",1),
+        new(WildForestEnemyIdentity.BloodworksServitor,"BLOODWORKS SERVITOR","BOUND LABORER OF THE RITUAL WORKS","A burdened demon whose living body drives the city's ritual industry.",1),
+        new(WildForestEnemyIdentity.SigilCantor,"SIGIL CANTOR","VOICE OF THE OCCULT MACHINERY","A ritual functionary who maintains and weaponizes the city's local sigil network.",1),
+        new(WildForestEnemyIdentity.VeilWarden,"VEIL WARDEN","OATHBLADE OF THE INNER CITY","A disciplined elite who turns a compact veil shield into a measured answer to reckless attacks.",2),
+        new(WildForestEnemyIdentity.GloomwingHarrier,"GLOOMWING HARRIER","HUNTER ABOVE THE ELITE DISTRICT","A winged humanoid that commits to steep passes, then lands within reach.",2),
+        new(WildForestEnemyIdentity.CathedralButcher,"CATHEDRAL BUTCHER","SACRISTAN OF THE BLACK ALTAR","A massive masked butcher who makes every committed cleaver stroke a sentence.",2),
+        new(WildForestEnemyIdentity.AbyssalMagistrate,"ABYSSAL MAGISTRATE","FINAL LAW BEFORE THE THRONE","The city's highest judge writes binding decrees into the palace floor.",2),
+        new(WildForestEnemyIdentity.Malachar,"MALACHAR","SOVEREIGN OF DEMON CITY","The unyielding sovereign answers every challenge with the measured edge of absolute dominion.",3)
     };
 
     private readonly HashSet<WildForestEnemyIdentity> _discovered = new();
@@ -297,6 +322,17 @@ public sealed class EnemyIntroductionManager
             EnemyType.HornedGeneral => WildForestEnemyIdentity.HornedGeneral,
             EnemyType.BallistaGunner => WildForestEnemyIdentity.BallistaGunner,
             EnemyType.BlackGuardExecutioner => WildForestEnemyIdentity.BlackGuardExecutioner,
+            EnemyType.DemonCityEnforcer => WildForestEnemyIdentity.DemonCityEnforcer,
+            EnemyType.SoulLanternKeeper => WildForestEnemyIdentity.SoulLanternKeeper,
+            EnemyType.AshbladeStalker => WildForestEnemyIdentity.AshbladeStalker,
+            EnemyType.ChainCollector => WildForestEnemyIdentity.ChainCollector,
+            EnemyType.BloodworksServitor => WildForestEnemyIdentity.BloodworksServitor,
+            EnemyType.SigilCantor => WildForestEnemyIdentity.SigilCantor,
+            EnemyType.VeilWarden => WildForestEnemyIdentity.VeilWarden,
+            EnemyType.GloomwingHarrier => WildForestEnemyIdentity.GloomwingHarrier,
+            EnemyType.CathedralButcher => WildForestEnemyIdentity.CathedralButcher,
+            EnemyType.AbyssalMagistrate => WildForestEnemyIdentity.AbyssalMagistrate,
+            EnemyType.Malachar => WildForestEnemyIdentity.Malachar,
             _ => default
         };
         return type is
@@ -319,6 +355,12 @@ public sealed class EnemyIntroductionManager
             EnemyType.BoneHarvester or EnemyType.Hellbrute or
             EnemyType.CorruptionPriest or EnemyType.RiftWarden or
             EnemyType.DemonLegionnaire or EnemyType.HornedGeneral or
-            EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner;
+            EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner or
+            EnemyType.DemonCityEnforcer or EnemyType.SoulLanternKeeper or
+            EnemyType.AshbladeStalker or EnemyType.ChainCollector or
+            EnemyType.BloodworksServitor or EnemyType.SigilCantor or
+            EnemyType.VeilWarden or EnemyType.GloomwingHarrier or
+            EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
+            EnemyType.Malachar;
     }
 }

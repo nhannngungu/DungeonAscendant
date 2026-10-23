@@ -29,7 +29,8 @@ public sealed class WildForestEncounterDirector
         ActiveZoneId = string.Empty;
         if (map == null || (!map.IsAuthoredWildForest &&
             !map.IsAncientCatacombs && !map.IsFallenCity &&
-            !map.IsDemonLands && !map.IsDemonFortress))
+            !map.IsDemonLands && !map.IsDemonFortress &&
+            !map.IsDemonCity))
             return;
         foreach (EncounterZone zone in map.EncounterZones)
             _states[zone.ZoneId] = new ZoneState(zone);
@@ -46,25 +47,14 @@ public sealed class WildForestEncounterDirector
     {
         if (map == null || (!map.IsAuthoredWildForest &&
             !map.IsAncientCatacombs && !map.IsFallenCity &&
-            !map.IsDemonLands && !map.IsDemonFortress))
+            !map.IsDemonLands && !map.IsDemonFortress &&
+            !map.IsDemonCity))
             return;
 
         WarningZoneId = string.Empty;
         ActiveZoneId = string.Empty;
         float elapsed = MathF.Min(
             (float)gameTime.ElapsedGameTime.TotalSeconds, .05f);
-        ZoneState activeFortressTrial = null;
-        foreach (ZoneState candidate in _states.Values)
-        {
-            if (candidate.Spawned && !candidate.Cleared &&
-                candidate.Zone.ZoneId is ("fortress-ballista-gunner" or
-                    "fortress-black-guard"))
-            {
-                activeFortressTrial = candidate;
-                break;
-            }
-        }
-
         foreach (ZoneState state in _states.Values)
         {
             if (state.Spawned && !state.Cleared)
@@ -75,8 +65,6 @@ public sealed class WildForestEncounterDirector
             }
 
             if (suppressActivation ||
-                (activeFortressTrial != null &&
-                    !ReferenceEquals(activeFortressTrial, state)) ||
                 (state.Zone.IsBossZone && map.IsAuthoredWildForest) || state.Spawned ||
                 !state.Zone.ActivationBounds.Contains(playerPosition.ToPoint()))
                 continue;
@@ -109,22 +97,6 @@ public sealed class WildForestEncounterDirector
 
     public bool IsCleared(string zoneId) =>
         _states.TryGetValue(zoneId, out ZoneState state) && state.Cleared;
-
-    public bool TryGetActiveFortressTrialBounds(out Rectangle bounds)
-    {
-        foreach (ZoneState state in _states.Values)
-        {
-            if (state.Spawned && !state.Cleared &&
-                state.Zone.ZoneId is ("fortress-ballista-gunner" or
-                    "fortress-black-guard"))
-            {
-                bounds = state.Zone.ActivationBounds;
-                return true;
-            }
-        }
-        bounds = Rectangle.Empty;
-        return false;
-    }
 
     public bool MarkCleared(string zoneId)
     {
@@ -164,10 +136,21 @@ public sealed class WildForestEncounterDirector
     {
         foreach (ZoneState state in _states.Values)
         {
-            if ((!state.Zone.IsEliteZone && !state.Zone.IsBossZone) || !state.Spawned || state.Cleared)
+            bool demonCityEncounter = state.Enemies.Exists(enemy =>
+                IsDemonCityRoster(enemy.Type));
+            if ((!state.Zone.IsEliteZone && !state.Zone.IsBossZone &&
+                    !demonCityEncounter) || !state.Spawned || state.Cleared)
                 continue;
             foreach (Enemy enemy in state.Enemies)
+            {
+                if (enemy is DemonCityEliteEnemy cityElite)
+                    cityElite.SetAuthoredArenaBounds(
+                        state.Zone.ActivationBounds);
+                if (enemy is MalacharEnemy malachar)
+                    malachar.SetAuthoredArenaBounds(
+                        state.Zone.ActivationBounds);
                 enemy.ConstrainToAuthoredArena(state.Zone.ActivationBounds);
+            }
         }
     }
 
@@ -185,20 +168,31 @@ public sealed class WildForestEncounterDirector
         float minimumDistanceSquared = minimumDistance * minimumDistance;
         foreach (SpawnSocket socket in map.SpawnSockets)
         {
-            if (socket.ZoneId != state.Zone.ZoneId ||
+            if ((socket.ZoneId != state.Zone.ZoneId &&
+                    socket.ZoneId != state.Zone.SectionId) ||
                 _spawned.Count >= state.Zone.MaxConcurrentEnemies)
                 continue;
             if (Vector2.DistanceSquared(playerPosition, socket.Position) <
                 minimumDistanceSquared)
                 continue;
             EnemyType? type = SelectSocketType(socket);
-            if (!type.HasValue)
+            if (!type.HasValue ||
+                !ContainsType(state.Zone.SuggestedEnemyTypes, type.Value))
                 continue;
             DungeonRoom room = map.FindRoomContaining(socket.Position);
             Enemy enemy = enemies.SpawnAuthoredEnemy(
                 type.Value, socket, room, map, enemyLevel, worldTier);
             if (enemy != null)
+            {
+                if (enemy is MalacharEnemy malachar)
+                    malachar.SetAuthoredArenaBounds(
+                        state.Zone.ActivationBounds);
+                else if (map.IsDemonCity &&
+                    enemy.Type != EnemyType.GloomwingHarrier)
+                    enemy.ConfigureAuthoredLeash(
+                        state.Zone.ActivationBounds);
                 _spawned.Add(enemy);
+            }
         }
         if (_spawned.Count == 0)
         {
@@ -226,6 +220,24 @@ public sealed class WildForestEncounterDirector
                 return type;
         return null;
     }
+
+    private static bool ContainsType(
+        IReadOnlyList<EnemyType> types,
+        EnemyType candidate)
+    {
+        foreach (EnemyType type in types)
+            if (type == candidate)
+                return true;
+        return false;
+    }
+
+    private static bool IsDemonCityRoster(EnemyType type) => type is
+        EnemyType.DemonCityEnforcer or EnemyType.SoulLanternKeeper or
+        EnemyType.AshbladeStalker or EnemyType.ChainCollector or
+        EnemyType.BloodworksServitor or EnemyType.SigilCantor or
+        EnemyType.VeilWarden or EnemyType.GloomwingHarrier or
+        EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
+        EnemyType.Malachar;
 
     private static bool AreAllDefeated(IReadOnlyList<Enemy> enemies)
     {

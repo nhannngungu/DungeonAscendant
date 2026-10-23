@@ -55,57 +55,7 @@ public sealed class DemonFortressEnvironmentRenderer
                 DrawPlatform(platform);
 
         DrawProps(map, camera, FortressLayer.Foreground, time);
-        DrawBossArenaGates(session, camera, time);
         DrawCheckpoints(map, camera, time);
-    }
-
-    private void DrawBossArenaGates(
-        GameSession session,
-        Rectangle camera,
-        float time)
-    {
-        string active = session.WildForestEncounters.ActiveZoneId;
-        if (active is not ("fortress-ballista-gunner" or
-            "fortress-black-guard"))
-            return;
-
-        EncounterZone arena = null;
-        foreach (EncounterZone zone in session.CurrentDungeon.EncounterZones)
-            if (zone.ZoneId == active)
-            {
-                arena = zone;
-                break;
-            }
-        if (arena == null)
-            return;
-
-        int pulse = (int)MathF.Round(18f +
-            MathF.Abs(MathF.Sin(time * 3.5f)) * 18f);
-        DrawPortcullis(arena.ActivationBounds.Left + 10,
-            arena.GroundBounds.Bottom, camera, pulse);
-        DrawPortcullis(arena.ActivationBounds.Right - 10,
-            arena.GroundBounds.Bottom, camera, pulse);
-    }
-
-    private void DrawPortcullis(int centerX, int groundY, Rectangle camera, int pulse)
-    {
-        var bounds = new Rectangle(centerX - 18, groundY - 150, 36, 150);
-        if (!bounds.Intersects(camera))
-            return;
-        _spriteBatch.Draw(_pixel,
-            new Rectangle(bounds.Left - 5, bounds.Top, bounds.Width + 10, 9),
-            new Color(37, 34, 37));
-        for (int x = bounds.Left; x <= bounds.Right; x += 9)
-        {
-            _spriteBatch.Draw(_pixel,
-                new Rectangle(x, bounds.Top + 5, 5, bounds.Height - 5), Iron);
-            _spriteBatch.Draw(_pixel,
-                new Rectangle(x, bounds.Bottom - 12, 5, 12),
-                new Color(112 + pulse, 54, 40));
-        }
-        for (int y = bounds.Top + 34; y < bounds.Bottom - 15; y += 38)
-            _spriteBatch.Draw(_pixel,
-                new Rectangle(bounds.Left, y, bounds.Width, 5), Steel);
     }
 
     private void DrawSky(Rectangle camera)
@@ -320,14 +270,14 @@ public sealed class DemonFortressEnvironmentRenderer
                     new Color(255, 192, 75));
                 break;
             case FortressPropKind.SealedGate:
-                _spriteBatch.Draw(_pixel, b, new Color(31, 31, 37));
                 DrawRectangleOutline(b, 12, Steel);
-                for (int x = b.Left + 28; x < b.Right; x += 44)
-                    _spriteBatch.Draw(_pixel, new Rectangle(x, b.Top + 20, 9, b.Height - 20), Iron);
+                int leafWidth = Math.Max(20, b.Width / 5);
                 _spriteBatch.Draw(_pixel,
-                    new Rectangle(b.Center.X - 28, b.Center.Y - 28, 56, 56), Crimson);
-                DrawRectangleOutline(new Rectangle(b.Center.X - 28, b.Center.Y - 28, 56, 56),
-                    5, Bronze);
+                    new Rectangle(b.Left + 12, b.Top + 12,
+                        leafWidth, b.Height - 12), Iron);
+                _spriteBatch.Draw(_pixel,
+                    new Rectangle(b.Right - leafWidth - 12, b.Top + 12,
+                        leafWidth, b.Height - 12), Iron);
                 break;
         }
     }

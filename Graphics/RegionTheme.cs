@@ -81,6 +81,14 @@ public readonly struct RegionTheme
                 new Color(120, 50, 42, 82),
                 new Color(70, 54, 45),
                 new Color(134, 42, 32, 105)),
+            RegionType.DemonCity => new RegionTheme(
+                new Color(7, 6, 12),
+                new Color(45, 40, 48),
+                new Color(112, 74, 82),
+                new Color(45, 40, 48),
+                new Color(146, 50, 58, 74),
+                new Color(68, 52, 54),
+                new Color(130, 25, 50, 112)),
             _ => new RegionTheme(
                 new Color(9, 11, 16),
                 new Color(48, 43, 46),

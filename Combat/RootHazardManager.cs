@@ -12,6 +12,9 @@ public sealed class RootHazardManager
     public const int MaximumHazards = 24;
     public const int MaximumEmberHazardsPerOwner = 3;
     public const int MaximumCommandSealsPerOwner = 2;
+    public const int MaximumBindingSigilsPerOwner = 1;
+    public const int MaximumJudicialSealsPerOwner = 4;
+    public const int MaximumMalacharHazardsPerOwner = 7;
 
     private const float ActiveInteractionDistance = 520f;
     private readonly List<RootHazard> _hazards = new(MaximumHazards);
@@ -136,6 +139,143 @@ public sealed class RootHazardManager
             isTerrainRoot: false,
             dungeon: dungeon,
             visualKind: RootHazardVisualKind.CommandSeal);
+    }
+
+    public bool TryAddBindingSigil(
+        Vector2 position,
+        Vector2 size,
+        float telegraphSeconds,
+        float activeSeconds,
+        float slowMultiplier,
+        float slowDurationSeconds,
+        int roomId,
+        object owner,
+        DungeonMap dungeon)
+    {
+        int ownerSigilCount = 0;
+        for (int index = 0; index < _hazards.Count; index++)
+        {
+            RootHazard existing = _hazards[index];
+            if (ReferenceEquals(existing.Owner, owner) &&
+                existing.VisualKind == RootHazardVisualKind.BindingSigil)
+            {
+                ownerSigilCount++;
+            }
+        }
+        if (ownerSigilCount >= MaximumBindingSigilsPerOwner)
+            return false;
+
+        return TryAdd(
+            position,
+            size,
+            telegraphSeconds,
+            activeSeconds,
+            damage: 0,
+            Math.Clamp(slowMultiplier, .68f, .88f),
+            Math.Clamp(slowDurationSeconds, .18f, .38f),
+            roomId,
+            owner,
+            isTerrainRoot: false,
+            dungeon,
+            visualKind: RootHazardVisualKind.BindingSigil);
+    }
+
+    public bool TryAddJudicialSeal(
+        Vector2 position,
+        Vector2 size,
+        float telegraphSeconds,
+        float activeSeconds,
+        int damage,
+        float slowMultiplier,
+        float slowDurationSeconds,
+        int roomId,
+        object owner,
+        RootHazardVisualKind visualKind,
+        DungeonMap dungeon)
+    {
+        if (visualKind is not (RootHazardVisualKind.DecreeZone or
+            RootHazardVisualKind.BindingWrit or
+            RootHazardVisualKind.FinalVerdictSeal))
+        {
+            return false;
+        }
+
+        int ownerSealCount = 0;
+        for (int index = 0; index < _hazards.Count; index++)
+        {
+            RootHazard existing = _hazards[index];
+            if (ReferenceEquals(existing.Owner, owner) &&
+                existing.VisualKind is (RootHazardVisualKind.DecreeZone or
+                    RootHazardVisualKind.BindingWrit or
+                    RootHazardVisualKind.FinalVerdictSeal))
+            {
+                ownerSealCount++;
+            }
+        }
+        if (ownerSealCount >= MaximumJudicialSealsPerOwner)
+            return false;
+
+        return TryAdd(
+            position,
+            size,
+            telegraphSeconds,
+            activeSeconds,
+            Math.Max(0, damage),
+            Math.Clamp(slowMultiplier, .55f, 1f),
+            Math.Clamp(slowDurationSeconds, 0f, .45f),
+            roomId,
+            owner,
+            isTerrainRoot: false,
+            dungeon,
+            visualKind);
+    }
+
+    public bool TryAddMalacharHazard(
+        Vector2 position,
+        Vector2 size,
+        float telegraphSeconds,
+        float activeSeconds,
+        int damage,
+        int roomId,
+        object owner,
+        RootHazardVisualKind visualKind,
+        DungeonMap dungeon)
+    {
+        if (visualKind is not (RootHazardVisualKind.AbyssalPillar or
+            RootHazardVisualKind.DominionLane or
+            RootHazardVisualKind.EdictSeal))
+        {
+            return false;
+        }
+
+        int ownedCount = 0;
+        for (int index = 0; index < _hazards.Count; index++)
+        {
+            RootHazard existing = _hazards[index];
+            if (ReferenceEquals(existing.Owner, owner) &&
+                existing.VisualKind is (RootHazardVisualKind.AbyssalPillar or
+                    RootHazardVisualKind.DominionLane or
+                    RootHazardVisualKind.EdictSeal))
+            {
+                ownedCount++;
+            }
+        }
+        if (ownedCount >= MaximumMalacharHazardsPerOwner)
+            return false;
+
+        return TryAdd(
+            position,
+            size,
+            telegraphSeconds,
+            activeSeconds,
+            Math.Max(0, damage),
+            1f,
+            0f,
+            roomId,
+            owner,
+            isTerrainRoot: false,
+            dungeon,
+            visualKind);
     }
 
     public void Update(

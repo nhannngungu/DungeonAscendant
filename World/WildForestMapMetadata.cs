@@ -66,6 +66,11 @@ public enum EnemyTheme
     ,FortressCommand
     ,FortressBallista
     ,FortressExecution
+    ,DemonCityEnforcement
+    ,DemonCityRitual
+    ,DemonCityStreet
+    ,DemonCityMarket
+    ,DemonCityElite
 }
 
 public enum EncounterDifficulty
@@ -79,6 +84,7 @@ public enum EncounterDifficulty
 
 public enum SpawnSocketRole
 {
+    Unassigned,
     GroundMelee,
     Ranged,
     Flying,

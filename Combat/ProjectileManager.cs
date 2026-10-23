@@ -256,7 +256,8 @@ public sealed class ProjectileManager
         Vector2 position,
         Vector2 direction,
         int damage,
-        int roomId)
+        int roomId,
+        float cursePressure = 7f)
     {
         _projectiles.Add(new Projectile(
             ProjectileType.SoulBolt,
@@ -270,7 +271,71 @@ public sealed class ProjectileManager
             slowDurationSeconds: 0f,
             slowMovementMultiplier: 1f,
             roomId,
-            cursePressure: 7f));
+            cursePressure: cursePressure));
+    }
+
+    public void SpawnSigilLance(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.SigilLance,
+            position,
+            NormalizeOrDefault(direction) * 285f,
+            new Vector2(24f, 9f),
+            lifetimeSeconds: 2.35f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId));
+    }
+
+    public void SpawnJudgmentBolt(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId,
+        bool empoweredVisual = false)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.JudgmentBolt,
+            position,
+            NormalizeOrDefault(direction) * (empoweredVisual ? 385f : 340f),
+            empoweredVisual ? new Vector2(28f, 12f) : new Vector2(22f, 10f),
+            lifetimeSeconds: 2.45f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            empoweredVisual: empoweredVisual));
+    }
+
+    public void SpawnDominionArc(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId,
+        bool empoweredVisual = false)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.DominionArc,
+            position,
+            NormalizeOrDefault(direction) * (empoweredVisual ? 430f : 390f),
+            empoweredVisual ? new Vector2(42f, 15f) : new Vector2(34f, 13f),
+            lifetimeSeconds: 2.25f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            empoweredVisual: empoweredVisual));
     }
 
     public float ConsumeEnemyCursePressure()
@@ -422,6 +487,12 @@ public sealed class ProjectileManager
                     projectile.SlowMovementMultiplier,
                     projectile.SlowDurationSeconds);
             }
+
+            if (projectile.Type is ProjectileType.SoulBolt or
+                ProjectileType.SigilLance or ProjectileType.JudgmentBolt or
+                ProjectileType.DominionArc)
+                _impacts.Add(new ProjectileImpact(
+                    projectile, projectile.Position));
 
             _projectiles.RemoveAt(index);
         }
@@ -623,7 +694,9 @@ public sealed class ProjectileManager
             if (projectile.ImpactRadius > 0f ||
                 (!projectile.IsPlayerOwned &&
                  projectile.Type is ProjectileType.Arrow or
-                     ProjectileType.CrossbowBolt))
+                     ProjectileType.CrossbowBolt or ProjectileType.SoulBolt or
+                     ProjectileType.SigilLance or ProjectileType.JudgmentBolt or
+                     ProjectileType.DominionArc))
                 _impacts.Add(new ProjectileImpact(projectile, projectile.Position));
             return false;
         }
