@@ -31,6 +31,8 @@ public sealed class AudioManager : IDisposable
     private float _clock;
 
     public IReadOnlyList<string> MissingAssets => _missingAssets;
+    internal MusicState CurrentMusicState => _musicState;
+    internal AmbienceState CurrentAmbienceState => _ambienceState;
 
     private AudioManager()
     {

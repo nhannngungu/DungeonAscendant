@@ -40,6 +40,12 @@ public sealed class RegionDefinition
         isImplemented: true,
         bossWeaponReward: null);
 
+    public static RegionDefinition DemonKingSanctum { get; } = new(
+        RegionType.DemonKingSanctuary,
+        RegionBossType.AncientTreant,
+        isImplemented: true,
+        bossWeaponReward: null);
+
     public RegionType Type { get; }
     public RegionBossType BossType { get; }
     public bool IsImplemented { get; }
@@ -67,6 +73,7 @@ public sealed class RegionDefinition
             RegionType.DemonLands => DemonLands,
             RegionType.DemonFortress => DemonFortress,
             RegionType.DemonCity => DemonCity,
+            RegionType.DemonKingSanctuary => DemonKingSanctum,
             _ => new RegionDefinition(
                 type,
                 RegionBossType.AncientTreant,

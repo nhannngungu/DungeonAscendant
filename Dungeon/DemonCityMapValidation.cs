@@ -798,9 +798,9 @@ public static class DemonCityMapValidation
         session.Player.MoveTo(session.ExitPosition);
         session.Update(Frame, new KeyboardState(), new MouseState());
         session.Update(Frame, new KeyboardState(Keys.E), new MouseState());
-        Need(session.Map06ExitPrepared && session.DungeonDepth == 6 &&
-            session.CurrentDungeon.IsDemonCity,
-            "The prepared Map 7 endpoint did not unlock without constructing Map 7.");
+        Need(session.Map06ExitPrepared && session.DungeonDepth == 7 &&
+            session.CurrentDungeon.IsDemonKingSanctum,
+            "The prepared Map 7 endpoint did not enter the Sanctum safely.");
     }
 
     private static void ValidateIndustrialRitualSystems(DungeonMap map)

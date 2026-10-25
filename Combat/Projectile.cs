@@ -9,6 +9,7 @@ namespace DungeonAscendant.Combat;
 public sealed class Projectile
 {
     public ProjectileType Type { get; }
+    public Enemy SourceEnemy { get; internal set; }
     public Vector2 SourcePosition { get; }
     public Vector2 Position { get; internal set; }
     public Vector2 Velocity { get; internal set; }

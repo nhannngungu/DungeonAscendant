@@ -24,7 +24,9 @@ public enum WorldSoundEvent
     Map4DemonCombat, Map4BossPhase, Map4LegionsEnd,
     Map4AshWind, Map4DistantDemonCry, Map4BoneCreak,
     Map4QuarryChains, Map4RitualChant, Map4Campfire,
-    Map4DistantWar, Map4GateChains, Map4InfernalHeart
+    Map4DistantWar, Map4GateChains, Map4InfernalHeart,
+    Map7StoneStep, Map7TempleResonance, Map7RitualHum,
+    Map7AbyssWind, Map7ThroneAmbience
 }
 public enum BossSoundEvent { Idle, Attack, Special, Death }
 
@@ -648,6 +650,130 @@ public static class AudioProfiles
                 A("World/Map2/shrine_01"))
         },
         AbyssalMagistrateSounds);
+    private static readonly EnemySoundProfile OathboundSentinelSounds = new(
+        "oathbound_sentinel", ImpactMaterial.MetalArmor,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("World/Map2/chain_rattle_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/CursedKnight/cursedknight_hum_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.Hit] = C(A("Enemies/Map2/UndeadGuard/undeadguard_shield_01")),
+            [EnemySoundEvent.Stagger] = C(A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/FallenKnight/fallenknight_death_01")),
+            [EnemySoundEvent.Special] = C(A("Enemies/Map2/FallenKnight/fallenknight_final_oath_01"))
+        }, CityArmorFallback);
+    private static readonly EnemySoundProfile VowshardAcolyteSounds = new(
+        "vowshard_acolyte", ImpactMaterial.Stone,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("World/Map2/tomb_rumble_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/SoulCollector/soulcollector_cast_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("World/Map2/shrine_01")),
+            [EnemySoundEvent.Hit] = C(A("World/Map3/rubble_01")),
+            [EnemySoundEvent.Stagger] = C(A("World/Map2/tomb_rumble_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/SoulCollector/soulcollector_death_01")),
+            [EnemySoundEvent.Special] = C(A("Enemies/Map2/Wraith/wraith_phase_01"))
+        }, SigilCantorSounds);
+    private static readonly EnemySoundProfile PenitentHuskSounds = new(
+        "penitent_husk", ImpactMaterial.Stone,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("World/Map2/chain_rattle_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/RottenCorpse/rottencorpse_groan_01"), A("World/Map2/chain_rattle_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Weapons/Breaker/breaker_mace_swing_01")),
+            [EnemySoundEvent.Hit] = C(A("Impacts/impact_stone_01")),
+            [EnemySoundEvent.Stagger] = C(A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/RottenCorpse/rottencorpse_death_01")),
+            [EnemySoundEvent.Special] = C(A("World/Map2/tomb_rumble_01"), A("World/Map2/chain_rattle_01"))
+        }, CityArmorFallback);
+    private static readonly EnemySoundProfile AbyssScribeSounds = new(
+        "abyss_scribe", ImpactMaterial.Spectral,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("Enemies/Map2/Wraith/wraith_whisper_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/SoulCollector/soulcollector_cast_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("World/Map2/shrine_01")),
+            [EnemySoundEvent.Hit] = C(A("Enemies/Map2/SoulCollector/soulcollector_whisper_01")),
+            [EnemySoundEvent.Stagger] = C(A("World/Map3/rubble_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/SoulCollector/soulcollector_death_01")),
+            [EnemySoundEvent.Special] = C(A("Enemies/Map2/Wraith/wraith_phase_01"), A("World/Map2/tomb_rumble_01"))
+        }, VowshardAcolyteSounds);
+    private static readonly EnemySoundProfile GraveReliquarySounds = new(
+        "grave_reliquary", ImpactMaterial.Bone,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("World/Map2/chain_rattle_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/CursedKnight/cursedknight_hum_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.Hit] = C(A("Impacts/impact_bone_01")),
+            [EnemySoundEvent.Stagger] = C(A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/FallenKnight/fallenknight_death_01")),
+            [EnemySoundEvent.Special] = C(A("World/Map2/tomb_rumble_01"), A("World/Map2/chain_rattle_01"))
+        }, PenitentHuskSounds);
+    private static readonly EnemySoundProfile CloisterWraithSounds = new(
+        "cloister_wraith", ImpactMaterial.Spectral,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("Enemies/Map2/Wraith/wraith_whisper_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/Wraith/wraith_phase_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Enemies/Map2/Wraith/wraith_attack_01")),
+            [EnemySoundEvent.Hit] = C(A("Enemies/Map2/SoulCollector/soulcollector_whisper_01")),
+            [EnemySoundEvent.Stagger] = C(A("World/Map2/tomb_rumble_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/Wraith/wraith_death_01")),
+            [EnemySoundEvent.Special] = C(A("Enemies/Map2/Wraith/wraith_phase_01"), A("World/Map2/shrine_01"))
+        }, AbyssScribeSounds);
+
+    private static readonly EnemySoundProfile RoyalSanctumKnightSounds = new(
+        "royal_sanctum_knight", ImpactMaterial.MetalArmor,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("Enemies/Map2/CursedKnight/cursedknight_hum_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.Hit] = C(A("Impacts/impact_metal_01")),
+            [EnemySoundEvent.Stagger] = C(A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/FallenKnight/fallenknight_death_01")),
+            [EnemySoundEvent.Special] = C(A("World/Map2/chain_rattle_01"))
+        }, GraveReliquarySounds);
+    private static readonly EnemySoundProfile AbyssOracleSounds = new(
+        "abyss_oracle", ImpactMaterial.Spectral,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("Enemies/Map2/SoulCollector/soulcollector_whisper_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/SoulCollector/soulcollector_cast_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("World/Map2/shrine_01")),
+            [EnemySoundEvent.Hit] = C(A("Enemies/Map2/SoulCollector/soulcollector_whisper_01")),
+            [EnemySoundEvent.Stagger] = C(A("World/Map2/tomb_rumble_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/Wraith/wraith_death_01")),
+            [EnemySoundEvent.Special] = C(A("Enemies/Map2/Wraith/wraith_phase_01"))
+        }, CloisterWraithSounds);
+
+    private static readonly EnemySoundProfile ThroneboundSeraphSounds = new(
+        "thronebound_seraph", ImpactMaterial.MetalArmor,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("World/Map2/chain_rattle_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/CursedKnight/cursedknight_hum_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.Hit] = C(A("Impacts/impact_metal_01")),
+            [EnemySoundEvent.Stagger] = C(A("World/Map2/tomb_rumble_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/FallenKnight/fallenknight_death_01")),
+            [EnemySoundEvent.Special] = C(A("World/Map2/chain_rattle_01"), A("World/Map2/shrine_01"))
+        }, RoyalSanctumKnightSounds);
+
+    private static readonly EnemySoundProfile VaeltharSounds = new(
+        "vaelthar", ImpactMaterial.MetalArmor,
+        new Dictionary<EnemySoundEvent, string[]>
+        {
+            [EnemySoundEvent.Idle] = C(A("Enemies/Map2/CursedKnight/cursedknight_hum_01")),
+            [EnemySoundEvent.AttackWindup] = C(A("Enemies/Map2/DeathKnight/deathknight_slam_01")),
+            [EnemySoundEvent.AttackRelease] = C(A("Enemies/Map2/FallenKnight/fallenknight_swing_01")),
+            [EnemySoundEvent.Hit] = C(A("Impacts/impact_metal_01")),
+            [EnemySoundEvent.Stagger] = C(A("World/Map2/tomb_rumble_01")),
+            [EnemySoundEvent.Death] = C(A("Enemies/Map2/FallenKnight/fallenknight_death_01")),
+            [EnemySoundEvent.Special] = C(A("World/Map2/shrine_01"), A("World/Map2/tomb_rumble_01"))
+        }, ThroneboundSeraphSounds);
+
     private static readonly IReadOnlyDictionary<EnemyType,EnemySoundProfile> Enemies = new Dictionary<EnemyType,EnemySoundProfile>
     {
         [EnemyType.DireWolf]=E("dire_wolf",ImpactMaterial.Flesh,"Map1/DireWolf","direwolf_idle_01","direwolf_idle_01","direwolf_attack_01","direwolf_hurt_01","direwolf_hurt_01","direwolf_death_01","direwolf_attack_01"),
@@ -712,7 +838,17 @@ public static class AudioProfiles
         [EnemyType.GloomwingHarrier]=GloomwingHarrierSounds,
         [EnemyType.CathedralButcher]=CathedralButcherSounds,
         [EnemyType.AbyssalMagistrate]=AbyssalMagistrateSounds,
-        [EnemyType.Malachar]=MalacharSounds
+        [EnemyType.Malachar]=MalacharSounds,
+        [EnemyType.OathboundSentinel]=OathboundSentinelSounds,
+        [EnemyType.VowshardAcolyte]=VowshardAcolyteSounds,
+        [EnemyType.PenitentHusk]=PenitentHuskSounds,
+        [EnemyType.AbyssScribe]=AbyssScribeSounds,
+        [EnemyType.GraveReliquary]=GraveReliquarySounds,
+        [EnemyType.CloisterWraith]=CloisterWraithSounds,
+        [EnemyType.RoyalSanctumKnight]=RoyalSanctumKnightSounds,
+        [EnemyType.AbyssOracle]=AbyssOracleSounds,
+        [EnemyType.ThroneboundSeraph]=ThroneboundSeraphSounds,
+        [EnemyType.Vaelthar]=VaeltharSounds
     };
 
     private static readonly IReadOnlyDictionary<ImpactMaterial,string[]> Impacts = new Dictionary<ImpactMaterial,string[]>
@@ -757,7 +893,14 @@ public static class AudioProfiles
         [WorldSoundEvent.Map4Campfire]=Array.Empty<string>(),
         [WorldSoundEvent.Map4DistantWar]=Array.Empty<string>(),
         [WorldSoundEvent.Map4GateChains]=Array.Empty<string>(),
-        [WorldSoundEvent.Map4InfernalHeart]=Array.Empty<string>()
+        [WorldSoundEvent.Map4InfernalHeart]=Array.Empty<string>(),
+        // Semantic Map 7 foundation hooks. They intentionally resolve to
+        // silence until the original Sanctum ambience pack is authored.
+        [WorldSoundEvent.Map7StoneStep]=Array.Empty<string>(),
+        [WorldSoundEvent.Map7TempleResonance]=Array.Empty<string>(),
+        [WorldSoundEvent.Map7RitualHum]=Array.Empty<string>(),
+        [WorldSoundEvent.Map7AbyssWind]=Array.Empty<string>(),
+        [WorldSoundEvent.Map7ThroneAmbience]=Array.Empty<string>()
     };
     private static readonly IReadOnlyDictionary<BossSoundEvent,string[]> Boss = new Dictionary<BossSoundEvent,string[]> { [BossSoundEvent.Idle]=C(A("Enemies/Map1/AncientTreant/ancienttreant_groan_01")),[BossSoundEvent.Attack]=C(A("Enemies/Map1/AncientTreant/ancienttreant_slam_01")),[BossSoundEvent.Special]=C(A("Enemies/Map1/AncientTreant/ancienttreant_roar_01")),[BossSoundEvent.Death]=C(A("Enemies/Map1/AncientTreant/ancienttreant_death_01")) };
 

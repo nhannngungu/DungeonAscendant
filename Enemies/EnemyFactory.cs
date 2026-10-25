@@ -127,7 +127,29 @@ public static class EnemyFactory
                 context.Position,
                 context.Level,
                 context.WorldTier,
-                context.RoomId)
+                context.RoomId),
+            [EnemyType.OathboundSentinel] = context => Sanctum(
+                context, EnemyType.OathboundSentinel),
+            [EnemyType.VowshardAcolyte] = context => Sanctum(
+                context, EnemyType.VowshardAcolyte),
+            [EnemyType.PenitentHusk] = context => SanctumPenitent(
+                context, EnemyType.PenitentHusk),
+            [EnemyType.AbyssScribe] = context => SanctumPenitent(
+                context, EnemyType.AbyssScribe),
+            [EnemyType.GraveReliquary] = context => SanctumReliquary(
+                context, EnemyType.GraveReliquary),
+            [EnemyType.CloisterWraith] = context => SanctumReliquary(
+                context, EnemyType.CloisterWraith),
+            [EnemyType.RoyalSanctumKnight] = context => new DemonKingSanctumEliteEnemy(
+                EnemyType.RoyalSanctumKnight, context.Position, context.Level,
+                context.WorldTier, context.RoomId),
+            [EnemyType.AbyssOracle] = context => new DemonKingSanctumEliteEnemy(
+                EnemyType.AbyssOracle, context.Position, context.Level,
+                context.WorldTier, context.RoomId),
+            [EnemyType.ThroneboundSeraph] = context => new ThroneboundSeraphEnemy(
+                context.Position, context.Level, context.WorldTier, context.RoomId),
+            [EnemyType.Vaelthar] = context => new VaeltharEnemy(
+                context.Position, context.Level, context.WorldTier, context.RoomId)
         };
 
     private static Enemy Catacomb(EnemySpawnContext context,EnemyType type)=>
@@ -198,6 +220,23 @@ public static class EnemyFactory
             context.Position,
             context.Level,
             context.WorldTier,
+            context.RoomId);
+
+    private static Enemy Sanctum(EnemySpawnContext context, EnemyType type) =>
+        new DemonKingSanctumEnemy(
+            type, context.Position, context.Level, context.WorldTier,
+            context.RoomId);
+
+    private static Enemy SanctumPenitent(
+        EnemySpawnContext context, EnemyType type) =>
+        new DemonKingSanctumPenitentEnemy(
+            type, context.Position, context.Level, context.WorldTier,
+            context.RoomId);
+
+    private static Enemy SanctumReliquary(
+        EnemySpawnContext context, EnemyType type) =>
+        new DemonKingSanctumReliquaryEnemy(
+            type, context.Position, context.Level, context.WorldTier,
             context.RoomId);
 
     public static Enemy Create(EnemyType type, EnemySpawnContext context)

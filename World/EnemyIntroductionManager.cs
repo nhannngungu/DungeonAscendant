@@ -28,7 +28,9 @@ public enum WildForestEnemyIdentity
     DemonLegionnaire, HornedGeneral, BallistaGunner, BlackGuardExecutioner,
     DemonCityEnforcer, SoulLanternKeeper, AshbladeStalker, ChainCollector,
     BloodworksServitor, SigilCantor, VeilWarden, GloomwingHarrier,
-    CathedralButcher, AbyssalMagistrate, Malachar
+    CathedralButcher, AbyssalMagistrate, Malachar,
+    OathboundSentinel, VowshardAcolyte, PenitentHusk, AbyssScribe,
+    GraveReliquary, CloisterWraith, RoyalSanctumKnight, AbyssOracle, ThroneboundSeraph, Vaelthar
 }
 
 public sealed class EnemyIntroductionDefinition
@@ -97,6 +99,16 @@ public sealed class EnemyIntroductionDefinition
         WildForestEnemyIdentity.CathedralButcher => "cathedral_butcher",
         WildForestEnemyIdentity.AbyssalMagistrate => "abyssal_magistrate",
         WildForestEnemyIdentity.Malachar => "malachar",
+        WildForestEnemyIdentity.OathboundSentinel => "oathbound_sentinel",
+        WildForestEnemyIdentity.VowshardAcolyte => "vowshard_acolyte",
+        WildForestEnemyIdentity.PenitentHusk => "penitent_husk",
+        WildForestEnemyIdentity.AbyssScribe => "abyss_scribe",
+        WildForestEnemyIdentity.GraveReliquary => "grave_reliquary",
+        WildForestEnemyIdentity.CloisterWraith => "cloister_wraith",
+        WildForestEnemyIdentity.RoyalSanctumKnight => "royal_sanctum_knight",
+        WildForestEnemyIdentity.AbyssOracle => "abyss_oracle",
+        WildForestEnemyIdentity.ThroneboundSeraph => "thronebound_seraph",
+        WildForestEnemyIdentity.Vaelthar => "vaelthar",
         _ => "unknown"
     };
 
@@ -174,7 +186,17 @@ public sealed class EnemyIntroductionManager
         new(WildForestEnemyIdentity.GloomwingHarrier,"GLOOMWING HARRIER","HUNTER ABOVE THE ELITE DISTRICT","A winged humanoid that commits to steep passes, then lands within reach.",2),
         new(WildForestEnemyIdentity.CathedralButcher,"CATHEDRAL BUTCHER","SACRISTAN OF THE BLACK ALTAR","A massive masked butcher who makes every committed cleaver stroke a sentence.",2),
         new(WildForestEnemyIdentity.AbyssalMagistrate,"ABYSSAL MAGISTRATE","FINAL LAW BEFORE THE THRONE","The city's highest judge writes binding decrees into the palace floor.",2),
-        new(WildForestEnemyIdentity.Malachar,"MALACHAR","SOVEREIGN OF DEMON CITY","The unyielding sovereign answers every challenge with the measured edge of absolute dominion.",3)
+        new(WildForestEnemyIdentity.Malachar,"MALACHAR","SOVEREIGN OF DEMON CITY","The unyielding sovereign answers every challenge with the measured edge of absolute dominion.",3),
+        new(WildForestEnemyIdentity.OathboundSentinel,"OATHBOUND SENTINEL","GUARDIAN OF THE UNBROKEN OATH","An ancient warrior still physically bound to the Sanctum by its vow.",1),
+        new(WildForestEnemyIdentity.VowshardAcolyte,"VOWSHARD ACOLYTE","BEARER OF SHATTERED PROMISES","A ritual attendant armed with fragments of broken demonic contracts.",1),
+        new(WildForestEnemyIdentity.PenitentHusk,"PENITENT HUSK","BURDEN OF ENDLESS PENANCE","A condemned pilgrim twisted beneath its ritual burden.",1),
+        new(WildForestEnemyIdentity.AbyssScribe,"ABYSS SCRIBE","KEEPER OF FORBIDDEN RECORDS","An ancient record-keeper that writes punishment into air and stone.",1),
+        new(WildForestEnemyIdentity.GraveReliquary,"GRAVE RELIQUARY","OSSUARY OF THE ANCIENT KINGS","A dead sanctum guardian fused to the sacred dead it still protects.",1),
+        new(WildForestEnemyIdentity.CloisterWraith,"CLOISTER WRAITH","SPIRIT OF THE BOUND CLOISTER","An ancient spirit that moves only where the cloister permits.",1),
+        new(WildForestEnemyIdentity.RoyalSanctumKnight,"ROYAL SANCTUM KNIGHT","BLADE OF THE INNER THRONE","A personal guardian whose measured weapon guard can earn a delayed counter.",2),
+        new(WildForestEnemyIdentity.AbyssOracle,"ABYSS ORACLE","SEER OF THE FRACTURED FUTURE","Read the omens in order. The crowned double ring is real; the broken ring fades harmlessly.",2),
+        new(WildForestEnemyIdentity.ThroneboundSeraph,"THRONEBOUND SERAPH","RUINED GUARDIAN OF THE INNER THRONE","Once bound to sacred authority, now chained to the Demon King's throne.",1),
+        new(WildForestEnemyIdentity.Vaelthar,"VAELTHAR, DEMON KING","THE LAST SOVEREIGN OF THE ABYSS","Read the King's Ruin, leave the marked lanes, and punish the end of each royal commitment.",2)
     };
 
     private readonly HashSet<WildForestEnemyIdentity> _discovered = new();
@@ -250,6 +272,8 @@ public sealed class EnemyIntroductionManager
 
     public bool HasDiscovered(WildForestEnemyIdentity identity) =>
         _discovered.Contains(identity);
+    public void DismissPresentation()
+    { Active = null; TimeRemaining = 0; JustTriggered = false; }
 
     private void Begin(WildForestEnemyIdentity identity)
     {
@@ -333,6 +357,16 @@ public sealed class EnemyIntroductionManager
             EnemyType.CathedralButcher => WildForestEnemyIdentity.CathedralButcher,
             EnemyType.AbyssalMagistrate => WildForestEnemyIdentity.AbyssalMagistrate,
             EnemyType.Malachar => WildForestEnemyIdentity.Malachar,
+            EnemyType.OathboundSentinel => WildForestEnemyIdentity.OathboundSentinel,
+            EnemyType.VowshardAcolyte => WildForestEnemyIdentity.VowshardAcolyte,
+            EnemyType.PenitentHusk => WildForestEnemyIdentity.PenitentHusk,
+            EnemyType.AbyssScribe => WildForestEnemyIdentity.AbyssScribe,
+            EnemyType.GraveReliquary => WildForestEnemyIdentity.GraveReliquary,
+            EnemyType.CloisterWraith => WildForestEnemyIdentity.CloisterWraith,
+            EnemyType.RoyalSanctumKnight => WildForestEnemyIdentity.RoyalSanctumKnight,
+            EnemyType.AbyssOracle => WildForestEnemyIdentity.AbyssOracle,
+            EnemyType.ThroneboundSeraph => WildForestEnemyIdentity.ThroneboundSeraph,
+            EnemyType.Vaelthar => WildForestEnemyIdentity.Vaelthar,
             _ => default
         };
         return type is
@@ -361,6 +395,10 @@ public sealed class EnemyIntroductionManager
             EnemyType.BloodworksServitor or EnemyType.SigilCantor or
             EnemyType.VeilWarden or EnemyType.GloomwingHarrier or
             EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
-            EnemyType.Malachar;
+            EnemyType.Malachar or EnemyType.OathboundSentinel or
+            EnemyType.VowshardAcolyte or EnemyType.PenitentHusk or
+            EnemyType.AbyssScribe or EnemyType.GraveReliquary or
+            EnemyType.CloisterWraith or EnemyType.RoyalSanctumKnight or EnemyType.AbyssOracle or
+            EnemyType.ThroneboundSeraph or EnemyType.Vaelthar;
     }
 }

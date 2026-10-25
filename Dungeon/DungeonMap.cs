@@ -22,6 +22,7 @@ public sealed class DungeonMap
     public bool IsDemonLands { get; }
     public bool IsDemonFortress { get; }
     public bool IsDemonCity { get; }
+    public bool IsDemonKingSanctum { get; }
     public IReadOnlyList<WildForestSection> WildForestSections { get; }
     public IReadOnlyList<EncounterZone> EncounterZones { get; }
     public IReadOnlyList<SpawnSocket> SpawnSockets { get; }
@@ -48,6 +49,9 @@ public sealed class DungeonMap
     public IReadOnlyList<DemonCityPropDefinition> DemonCityProps { get; }
     public IReadOnlyList<DemonCityCheckpointDefinition> DemonCityCheckpoints { get; }
     public IReadOnlyList<DemonCityEventSpaceDefinition> DemonCityEventSpaces { get; }
+    public IReadOnlyList<DemonKingSanctumZoneDefinition> DemonKingSanctumZones { get; }
+    public IReadOnlyList<SanctumPropDefinition> SanctumProps { get; }
+    public IReadOnlyList<SanctumCheckpointDefinition> SanctumCheckpoints { get; }
 
     public DungeonMap(
         IReadOnlyList<DungeonRoom> rooms,
@@ -59,6 +63,7 @@ public sealed class DungeonMap
         bool isDemonLands = false,
         bool isDemonFortress = false,
         bool isDemonCity = false,
+        bool isDemonKingSanctum = false,
         IReadOnlyList<WildForestSection> wildForestSections = null,
         IReadOnlyList<EncounterZone> encounterZones = null,
         IReadOnlyList<SpawnSocket> spawnSockets = null,
@@ -84,6 +89,9 @@ public sealed class DungeonMap
         IReadOnlyList<DemonCityPropDefinition> demonCityProps = null,
         IReadOnlyList<DemonCityCheckpointDefinition> demonCityCheckpoints = null,
         IReadOnlyList<DemonCityEventSpaceDefinition> demonCityEventSpaces = null,
+        IReadOnlyList<DemonKingSanctumZoneDefinition> demonKingSanctumZones = null,
+        IReadOnlyList<SanctumPropDefinition> sanctumProps = null,
+        IReadOnlyList<SanctumCheckpointDefinition> sanctumCheckpoints = null,
         DungeonRoom exitRoomOverride = null,
         Vector2? authoredExitPosition = null)
     {
@@ -96,6 +104,7 @@ public sealed class DungeonMap
         IsDemonLands = isDemonLands;
         IsDemonFortress = isDemonFortress;
         IsDemonCity = isDemonCity;
+        IsDemonKingSanctum = isDemonKingSanctum;
         WildForestSections = new List<WildForestSection>(
             wildForestSections ?? Array.Empty<WildForestSection>());
         EncounterZones = new List<EncounterZone>(
@@ -142,6 +151,12 @@ public sealed class DungeonMap
             demonCityCheckpoints ?? Array.Empty<DemonCityCheckpointDefinition>());
         DemonCityEventSpaces = new List<DemonCityEventSpaceDefinition>(
             demonCityEventSpaces ?? Array.Empty<DemonCityEventSpaceDefinition>());
+        DemonKingSanctumZones = new List<DemonKingSanctumZoneDefinition>(
+            demonKingSanctumZones ?? Array.Empty<DemonKingSanctumZoneDefinition>());
+        SanctumProps = new List<SanctumPropDefinition>(
+            sanctumProps ?? Array.Empty<SanctumPropDefinition>());
+        SanctumCheckpoints = new List<SanctumCheckpointDefinition>(
+            sanctumCheckpoints ?? Array.Empty<SanctumCheckpointDefinition>());
         AuthoredExitPosition = authoredExitPosition;
         var platforms = new List<Platform>();
 

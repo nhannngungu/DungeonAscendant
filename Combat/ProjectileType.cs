@@ -10,5 +10,7 @@ public enum ProjectileType
     SoulBolt,
     SigilLance,
     JudgmentBolt,
-    DominionArc
+    DominionArc,
+    Vowshard,
+    AbyssScript
 }

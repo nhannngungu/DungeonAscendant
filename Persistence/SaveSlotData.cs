@@ -53,6 +53,11 @@ public sealed class SaveSlotData
     public bool Map06MagistrateDefeated { get; set; }
     public bool Map06Cleared { get; set; }
     public bool Map06ExitPrepared { get; set; }
+    public bool Map07VaeltharDefeated { get; set; }
+    public bool Map07EndpointPrepared { get; set; }
+    public bool Map07SeraphDefeated { get; set; }
+    public bool Map07Cleared { get; set; }
+    public bool Map07EndingSeen { get; set; }
     public bool Map2PigPhotoCollected { get; set; }
     public bool BossDefeated { get; set; }
     public bool LastDiceStarted { get; set; }
@@ -146,6 +151,11 @@ public sealed class SaveSlotData
         if (LastDiceCompleted)
             LastDiceCompletionReached = true;
         PlayTimeSeconds = Math.Max(0d, PlayTimeSeconds);
+        // Defeat is authoritative; legacy generic BossDefeated must never
+        // unlock Map 7 or suppress its final boss on its own.
+        Map07EndpointPrepared = Map07VaeltharDefeated;
+        Map07Cleared = Map07VaeltharDefeated;
+        Map07EndingSeen &= Map07VaeltharDefeated;
 
         if (!Occupied)
         {

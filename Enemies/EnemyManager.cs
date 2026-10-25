@@ -253,7 +253,8 @@ public sealed class EnemyManager
             EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner or
             EnemyType.VeilWarden or EnemyType.GloomwingHarrier or
             EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
-            EnemyType.Malachar;
+              EnemyType.Malachar or EnemyType.RoyalSanctumKnight or
+              EnemyType.AbyssOracle or EnemyType.ThroneboundSeraph or EnemyType.Vaelthar;
         var context = new EnemySpawnContext(
             socket.Position,
             enemyLevel,
@@ -449,7 +450,7 @@ public sealed class EnemyManager
 
             _enemies.RemoveAt(index);
 
-            if (enemy.Type == EnemyType.Goblin ||
+            if (enemy.IsSanctumEnemy || enemy.Type == EnemyType.Goblin ||
                 enemy.Type == EnemyType.GoblinHunter ||
                 enemy.Type == EnemyType.DireWolf ||
                 enemy.Type == EnemyType.GiantSpider ||
@@ -494,7 +495,8 @@ public sealed class EnemyManager
                  enemy.Type == EnemyType.GloomwingHarrier ||
                  enemy.Type == EnemyType.CathedralButcher ||
                  enemy.Type == EnemyType.AbyssalMagistrate ||
-                 enemy.Type == EnemyType.Malachar)
+                 enemy.Type == EnemyType.Malachar ||
+                 enemy.Type == EnemyType.ThroneboundSeraph || enemy.Type == EnemyType.Vaelthar)
             {
                 _defeatPresentations.Add(enemy);
             }
@@ -539,6 +541,8 @@ public sealed class EnemyManager
         RemoveOrphanedSpiderlings();
     }
 
+    internal void UpdateDeathPresentationsForEnding(GameTime gameTime) => UpdateDeathPresentations(gameTime);
+
     private void UpdateDeathPresentations(GameTime gameTime)
     {
         for (int index = _defeatPresentations.Count - 1;
@@ -576,6 +580,9 @@ public sealed class EnemyManager
         Vector2 playerPosition,
         DungeonMap dungeon)
     {
+        // Authored maps also use the procedural-spawn suppression shortcut
+        // below. Every Map 7 owner must tick its leash/cleanup before that filter.
+        if (enemy.IsSanctumEnemy) return true;
         if (_wildForestShowcaseMode)
         {
             return Vector2.DistanceSquared(playerPosition, enemy.Position) <=

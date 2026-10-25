@@ -7,5 +7,6 @@ public enum GameState
     CharacterCreation,
     Playing,
     Paused,
-    GameOver
+    GameOver,
+    Ending
 }

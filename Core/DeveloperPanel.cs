@@ -78,7 +78,8 @@ public sealed class DeveloperPanel
         "MAP 3 - FALLEN CITY",
         "MAP 4 - DEMON LANDS",
         "MAP 5 - DEMON FORTRESS",
-        "MAP 6 - MA THANH / DEMON CITY"
+        "MAP 6 - MA THANH / DEMON CITY",
+        "MAP 7 - THANH DIEN MA VUONG / DEMON KING'S SANCTUM"
     };
 
     private static readonly string[][] ZoneNames =
@@ -129,6 +130,15 @@ public sealed class DeveloperPanel
             "demon_city.zone.high_city", "demon_city.zone.elite_district",
             "demon_city.zone.palace_approach", "demon_city.zone.main_arena",
             "demon_city.zone.map_seven_exit"
+        },
+        new[]
+        {
+            "sanctum.zone.approach", "sanctum.zone.broken_vows",
+            "sanctum.zone.pilgrims_descent",
+            "sanctum.zone.altar_of_sacrifice",
+            "sanctum.zone.ancient_kings", "sanctum.zone.abyssal_cloister",
+            "sanctum.zone.throne_ascent", "sanctum.zone.royal_antechamber",
+            "sanctum.zone.throne_sanctum", "sanctum.zone.final_endpoint"
         }
     };
 
@@ -149,7 +159,7 @@ public sealed class DeveloperPanel
             if (toggle && session.State == GameState.Playing)
             {
                 IsOpen = true;
-                TargetMap = Math.Clamp(session.DungeonDepth, 1, 6);
+                TargetMap = Math.Clamp(session.DungeonDepth, 1, 7);
                 TargetZone = Math.Max(0, session.GetCurrentZoneIndex());
                 Feedback = "GAMEPLAY PAUSED";
                 session.Player.Combat.CancelActions(restoreStamina: false);
@@ -287,7 +297,7 @@ public sealed class DeveloperPanel
         Feedback = GetLabel(SelectedCommand) + " COMPLETE";
         if (SelectedCommand is DeveloperCommand.TeleportMap or DeveloperCommand.TeleportZone)
         {
-            TargetMap = Math.Clamp(session.DungeonDepth, 1, 6);
+            TargetMap = Math.Clamp(session.DungeonDepth, 1, 7);
             TargetZone = Math.Max(0, session.GetCurrentZoneIndex());
         }
     }

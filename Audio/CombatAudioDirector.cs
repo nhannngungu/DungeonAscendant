@@ -32,6 +32,12 @@ public sealed class CombatAudioDirector
         public DemonCityEliteState? DemonCityEliteState;
         public DemonCityBossState? DemonCityBossState;
         public MalacharState? MalacharState;
+        public ReliquaryCombatState? SanctumReliquaryState;
+        public SanctumEliteState? SanctumEliteState;
+        public int SanctumProphecyActivations;
+        public SeraphState? SeraphState;
+        public VaeltharState? VaeltharState;
+        public int VaeltharLaneActivations;
         public bool FortressBlockReacting;
     }
 
@@ -102,7 +108,7 @@ public sealed class CombatAudioDirector
 
     private void UpdateScene(GameSession session)
     {
-        if (session?.CurrentDungeon == null || session.State is GameState.Start or GameState.CharacterSelect or GameState.CharacterCreation)
+        if (session?.CurrentDungeon == null || session.State is GameState.Start or GameState.CharacterSelect or GameState.CharacterCreation or GameState.Ending)
         {
             _audio.SetMusic(MusicState.None);
             _audio.SetAmbience(AmbienceState.None);
@@ -111,7 +117,8 @@ public sealed class CombatAudioDirector
         if (session.State != GameState.Playing && session.State != GameState.Paused) return;
         if (session.CurrentDungeon.IsFallenCity ||
             session.CurrentDungeon.IsDemonLands ||
-            session.CurrentDungeon.IsDemonCity)
+            session.CurrentDungeon.IsDemonCity ||
+            session.CurrentDungeon.IsDemonKingSanctum)
         {
             // These maps have semantic combat/world hooks but no dedicated
             // music pack yet. Silence avoids borrowing Map 1's identity and
@@ -165,6 +172,11 @@ public sealed class CombatAudioDirector
 
     private void ObserveWorld(GameSession session, GameTime gameTime)
     {
+        if (session.CurrentDungeon.IsDemonKingSanctum)
+        {
+            ObserveDemonKingSanctumWorld(session, gameTime);
+            return;
+        }
         if (session.CurrentDungeon.IsDemonLands)
         {
             ObserveDemonLandsWorld(session, gameTime);
@@ -207,6 +219,63 @@ public sealed class CombatAudioDirector
         if (session.ScholarTomb.State==AncientScholarTombState.Opening && _lastScholarState!=AncientScholarTombState.Opening)
             _audio.PlayWorld(WorldSoundEvent.Map2ScholarCoffin,session.ScholarTomb.Position,session.Player.Position);
         _lastScholarState=session.ScholarTomb.State;
+    }
+
+    private void ObserveDemonKingSanctumWorld(
+        GameSession session,
+        GameTime gameTime)
+    {
+        float elapsed = MathF.Min(
+            (float)gameTime.ElapsedGameTime.TotalSeconds, .1f);
+        _footstepClock -= elapsed;
+        _worldOneShotClock -= elapsed;
+
+        if (session.Player.IsGrounded &&
+            MathF.Abs(session.Player.Velocity.X) > 30f &&
+            _footstepClock <= 0f)
+        {
+            _audio.PlayWorld(
+                WorldSoundEvent.Map7StoneStep,
+                session.Player.Position,
+                session.Player.Position);
+            _footstepClock = .38f;
+        }
+
+        if (_worldOneShotClock > 0f)
+            return;
+
+        DemonKingSanctumZoneKind kind =
+            DemonKingSanctumZoneKind.SanctumApproach;
+        foreach (DemonKingSanctumZoneDefinition zone in
+            session.CurrentDungeon.DemonKingSanctumZones)
+        {
+            if (!zone.Bounds.Contains(session.Player.Position.ToPoint()))
+                continue;
+            kind = zone.Kind;
+            break;
+        }
+        WorldSoundEvent ambient = kind switch
+        {
+            DemonKingSanctumZoneKind.AltarOfSacrifice =>
+                WorldSoundEvent.Map7RitualHum,
+            DemonKingSanctumZoneKind.AbyssalCloister =>
+                WorldSoundEvent.Map7AbyssWind,
+            DemonKingSanctumZoneKind.ThroneAscent or
+                DemonKingSanctumZoneKind.RoyalAntechamber or
+                DemonKingSanctumZoneKind.ThroneSanctum =>
+                WorldSoundEvent.Map7ThroneAmbience,
+            _ => WorldSoundEvent.Map7TempleResonance
+        };
+        float direction = session.Player.Facing == FacingDirection.Left
+            ? -1f
+            : 1f;
+        _audio.PlayWorld(
+            ambient,
+            session.Player.Position + new Vector2(direction * 260f, -85f),
+            session.Player.Position);
+        _worldOneShotClock = kind == DemonKingSanctumZoneKind.RoyalAntechamber
+            ? 13f
+            : 9f;
     }
 
     private void ObserveDemonLandsWorld(GameSession session, GameTime gameTime)
@@ -494,7 +563,8 @@ public sealed class CombatAudioDirector
         {
             if (impact.Projectile.Type is ProjectileType.SoulBolt or
                 ProjectileType.SigilLance or ProjectileType.JudgmentBolt or
-                ProjectileType.DominionArc)
+                ProjectileType.DominionArc or ProjectileType.Vowshard or
+                ProjectileType.AbyssScript)
             {
                 _audio.PlayImpact(
                     ImpactMaterial.Spectral,
@@ -601,6 +671,34 @@ public sealed class CombatAudioDirector
                 ObserveDemonCityBossAttack(cityBoss, previous, listener);
             else if (enemy is MalacharEnemy malachar)
                 ObserveMalacharAttack(malachar, previous, listener);
+            else if (enemy is DemonKingSanctumReliquaryEnemy reliquary)
+                ObserveSanctumReliquaryAttack(reliquary, previous, listener);
+            else if (enemy is DemonKingSanctumEliteEnemy sanctumElite)
+            {
+                ObserveStandardAttack(sanctumElite, previous, listener);
+                if (sanctumElite.ProphecyActivationCount > previous.SanctumProphecyActivations)
+                    _audio.PlayEnemy(enemy.Type, EnemySoundEvent.AttackRelease, enemy.Position, listener);
+                if (sanctumElite.CombatState == SanctumEliteState.Active &&
+                    previous.SanctumEliteState != SanctumEliteState.Active &&
+                    sanctumElite.AttackKind is SanctumEliteAttack.SovereignGuard or SanctumEliteAttack.VeilShift)
+                    _audio.PlayEnemy(enemy.Type, EnemySoundEvent.Special, enemy.Position, listener);
+            }
+            else if (enemy is ThroneboundSeraphEnemy seraph)
+            {
+                ObserveStandardAttack(seraph, previous, listener);
+                if (previous.SeraphState != seraph.CombatState && seraph.CombatState is
+                    SeraphState.PhaseShift or SeraphState.ChainRetract or SeraphState.AscentRise)
+                    _audio.PlayEnemy(enemy.Type, EnemySoundEvent.Special, enemy.Position, listener);
+            }
+            else if (enemy is VaeltharEnemy king)
+            {
+                ObserveStandardAttack(king, previous, listener);
+                if (king.LaneActivationCount > previous.VaeltharLaneActivations)
+                    _audio.PlayEnemy(enemy.Type, EnemySoundEvent.AttackRelease, enemy.Position, listener);
+                if (previous.VaeltharState != king.CombatState && king.CombatState is
+                    VaeltharState.PhaseTransition or VaeltharState.UltimateRaise or VaeltharState.GuardActive)
+                    _audio.PlayEnemy(enemy.Type, EnemySoundEvent.Special, enemy.Position, listener);
+            }
             else
                 ObserveStandardAttack(enemy, previous, listener);
 
@@ -637,6 +735,28 @@ public sealed class CombatAudioDirector
         if (enemy is DemonLandsEnemy demon &&
             previous.DemonState != demon.FrontierCombatState &&
             IsDemonSpecialState(demon.FrontierCombatState))
+        {
+            _audio.PlayEnemy(
+                enemy.Type,
+                EnemySoundEvent.Special,
+                enemy.Position,
+                listener);
+        }
+    }
+
+    private void ObserveSanctumReliquaryAttack(
+        DemonKingSanctumReliquaryEnemy enemy,
+        EnemySnapshot previous,
+        Vector2 listener)
+    {
+        ObserveStandardAttack(enemy, previous, listener);
+        if (previous.SanctumReliquaryState == enemy.CombatState)
+            return;
+        if (enemy.CombatState is ReliquaryCombatState.ReliquaryBurstActive or
+            ReliquaryCombatState.OssuaryGuardActive or
+            ReliquaryCombatState.VeilPassMove or
+            ReliquaryCombatState.CloisterGraspRecovery or
+            ReliquaryCombatState.EchoStrikeRecovery)
         {
             _audio.PlayEnemy(
                 enemy.Type,
@@ -1050,6 +1170,16 @@ public sealed class CombatAudioDirector
         MalacharState = enemy is MalacharEnemy malachar
             ? malachar.CombatState
             : null,
+        SanctumReliquaryState = enemy is DemonKingSanctumReliquaryEnemy reliquary
+            ? reliquary.CombatState
+            : null,
+        SanctumEliteState = enemy is DemonKingSanctumEliteEnemy sanctumElite
+            ? sanctumElite.CombatState : null,
+        SanctumProphecyActivations = enemy is DemonKingSanctumEliteEnemy oracle
+            ? oracle.ProphecyActivationCount : 0,
+        SeraphState = enemy is ThroneboundSeraphEnemy seraph ? seraph.CombatState : null,
+        VaeltharState = enemy is VaeltharEnemy king ? king.CombatState : null,
+        VaeltharLaneActivations = enemy is VaeltharEnemy finalKing ? finalKing.LaneActivationCount : 0,
         FortressBlockReacting = enemy is DemonFortressEnemy fortressBlock &&
             (fortressBlock.IsLegionBlockReacting ||
                 fortressBlock.IsShieldbearerBlockReacting)

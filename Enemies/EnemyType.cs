@@ -62,5 +62,15 @@ public enum EnemyType
     GloomwingHarrier,
     CathedralButcher,
     AbyssalMagistrate,
-    Malachar
+    Malachar,
+    OathboundSentinel,
+    VowshardAcolyte,
+    PenitentHusk,
+    AbyssScribe,
+    GraveReliquary,
+    CloisterWraith,
+    RoyalSanctumKnight,
+    AbyssOracle,
+    ThroneboundSeraph,
+    Vaelthar
 }

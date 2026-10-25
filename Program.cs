@@ -134,6 +134,38 @@ static bool RunRequestedValidation(string[] arguments, out string name)
         System.Console.WriteLine(
             "Demon City foundation, traversal, checkpoints, event spaces, and sockets validation passed.");
     }
+    else if (Has("--validate-vaelthar"))
+    {
+        DungeonAscendant.Dungeon.VaeltharValidation.ValidateOrThrow();
+        name = "vaelthar";
+        System.Console.WriteLine("Vaelthar combat, phases, ultimate, JKL immunity, traversal, defeat/save and endpoint validation passed.");
+    }
+    else if (Has("--validate-thronebound-seraph"))
+    {
+        DungeonAscendant.Dungeon.ThroneboundSeraphValidation.ValidateOrThrow();
+        name = "thronebound-seraph";
+        System.Console.WriteLine("Enemy 70 phase, attacks, chains, ascent, halo gaps, cleanup, UI, spawning and free traversal validation passed.");
+    }
+    else if (Has("--validate-sanctum-elites"))
+    {
+        DungeonAscendant.Dungeon.DemonKingSanctumEliteValidation.ValidateOrThrow();
+        name = "sanctum-elites";
+        System.Console.WriteLine("Map 7 enemies 68/69 combat, prophecy, spawning, leashes and traversal validation passed.");
+    }
+    else if (Has("--validate-map7-final"))
+    {
+        DungeonAscendant.Dungeon.DemonKingSanctumMapValidation.ValidateOrThrow();
+        DungeonAscendant.Dungeon.DemonKingSanctumIntegrationValidation.ValidateOrThrow();
+        name = "map7-final";
+        System.Console.WriteLine("Map 7 complete roster, combat, traversal, leashes, boss UI, cleanup, ending and save/reload validation passed.");
+    }
+    else if (Has("--validate-demon-king-sanctum"))
+    {
+        DungeonAscendant.Dungeon.DemonKingSanctumMapValidation.ValidateOrThrow();
+        name = "demon-king-sanctum";
+        System.Console.WriteLine(
+            "Demon King's Sanctum foundation, traversal, sockets, transition, and save validation passed.");
+    }
     else if (Has("--validate-last-dice"))
     {
         DungeonAscendant.Core.LastDiceTableValidation.ValidateOrThrow();

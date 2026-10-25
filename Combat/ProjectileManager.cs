@@ -1,4 +1,5 @@
 using System;
+using DungeonAscendant.Enemies;
 using System.Collections.Generic;
 using DungeonAscendant.Dungeon;
 using DungeonAscendant.World;
@@ -338,6 +339,50 @@ public sealed class ProjectileManager
             empoweredVisual: empoweredVisual));
     }
 
+    public void SpawnVowshard(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId,
+        bool small = false,
+        Enemy owner = null)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.Vowshard,
+            position,
+            NormalizeOrDefault(direction) * (small ? 275f : 250f),
+            small ? new Vector2(12f, 9f) : new Vector2(17f, 12f),
+            lifetimeSeconds: small ? 1.9f : 2.35f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId,
+            empoweredVisual: !small) { SourceEnemy = owner });
+    }
+
+    public void SpawnAbyssScript(
+        Vector2 position,
+        Vector2 direction,
+        int damage,
+        int roomId,
+        Enemy owner = null)
+    {
+        _projectiles.Add(new Projectile(
+            ProjectileType.AbyssScript,
+            position,
+            NormalizeOrDefault(direction) * 205f,
+            new Vector2(19f, 15f),
+            lifetimeSeconds: 2.7f,
+            damage,
+            blockable: true,
+            unblockable: false,
+            slowDurationSeconds: 0f,
+            slowMovementMultiplier: 1f,
+            roomId) { SourceEnemy = owner });
+    }
+
     public float ConsumeEnemyCursePressure()
     {
         float pressure = _pendingCursePressure;
@@ -490,7 +535,8 @@ public sealed class ProjectileManager
 
             if (projectile.Type is ProjectileType.SoulBolt or
                 ProjectileType.SigilLance or ProjectileType.JudgmentBolt or
-                ProjectileType.DominionArc)
+                ProjectileType.DominionArc or ProjectileType.Vowshard or
+                ProjectileType.AbyssScript)
                 _impacts.Add(new ProjectileImpact(
                     projectile, projectile.Position));
 
@@ -592,6 +638,15 @@ public sealed class ProjectileManager
         _plagueClouds.Clear();
         _pendingCursePressure = 0f;
         _plagueDamageCooldownRemaining = 0f;
+    }
+
+    public void RemoveOwnedBy(Enemy owner)
+    {
+        if (owner == null) return;
+        for (int i = _projectiles.Count - 1; i >= 0; i--)
+            if (ReferenceEquals(_projectiles[i].SourceEnemy, owner)) _projectiles.RemoveAt(i);
+        for (int i = _impacts.Count - 1; i >= 0; i--)
+            if (ReferenceEquals(_impacts[i].Projectile.SourceEnemy, owner)) _impacts.RemoveAt(i);
     }
 
     public void ClearEnemyProjectilesInRoom(int roomId)
@@ -696,7 +751,8 @@ public sealed class ProjectileManager
                  projectile.Type is ProjectileType.Arrow or
                      ProjectileType.CrossbowBolt or ProjectileType.SoulBolt or
                      ProjectileType.SigilLance or ProjectileType.JudgmentBolt or
-                     ProjectileType.DominionArc))
+                     ProjectileType.DominionArc or ProjectileType.Vowshard or
+                     ProjectileType.AbyssScript))
                 _impacts.Add(new ProjectileImpact(projectile, projectile.Position));
             return false;
         }

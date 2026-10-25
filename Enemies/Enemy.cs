@@ -129,11 +129,22 @@ public abstract class Enemy
         EnemyType.InfernalSmith or EnemyType.DemonOfficer or
         EnemyType.BallistaGunner or EnemyType.BlackGuardExecutioner or
         EnemyType.CathedralButcher or EnemyType.AbyssalMagistrate or
-        EnemyType.Malachar;
+        EnemyType.Malachar or EnemyType.PenitentHusk or
+        EnemyType.GraveReliquary or EnemyType.ThroneboundSeraph or EnemyType.Vaelthar;
 
     public EnemyWeightClass WeightClass => RaiderTuning.ClassifyWeight(
         MaxPoise,
         IsFlying);
+    public bool IsSanctumEnemy => Type is EnemyType.OathboundSentinel or EnemyType.VowshardAcolyte or
+        EnemyType.PenitentHusk or EnemyType.AbyssScribe or EnemyType.GraveReliquary or
+        EnemyType.CloisterWraith or EnemyType.RoyalSanctumKnight or EnemyType.AbyssOracle or
+        EnemyType.ThroneboundSeraph or EnemyType.Vaelthar;
+    internal void CancelSanctumEffects()
+    {
+        if (!IsSanctumEnemy) return;
+        Attack.Cancel();
+        OnCombatInterrupted();
+    }
     public float PhysicalDamageTakenMultiplier => HasBrokenArmor
         ? _physicalDamageTakenMultiplier
         : 1f;
@@ -1119,6 +1130,16 @@ public abstract class Enemy
             EnemyType.CathedralButcher => 190f,
             EnemyType.AbyssalMagistrate => 220f,
             EnemyType.Malachar => 310f,
+            EnemyType.OathboundSentinel => 96f,
+            EnemyType.VowshardAcolyte => 48f,
+            EnemyType.PenitentHusk => 138f,
+            EnemyType.AbyssScribe => 54f,
+            EnemyType.GraveReliquary => 126f,
+            EnemyType.CloisterWraith => 58f,
+            EnemyType.RoyalSanctumKnight => 118f,
+            EnemyType.AbyssOracle => 76f,
+            EnemyType.ThroneboundSeraph => 158f,
+            EnemyType.Vaelthar => 340f,
             _ => 60f
         };
     }
@@ -1195,6 +1216,16 @@ public abstract class Enemy
             EnemyType.ChainCollector => .72f,
             EnemyType.BloodworksServitor => .62f,
             EnemyType.SigilCantor => .82f,
+            EnemyType.OathboundSentinel => .70f,
+            EnemyType.VowshardAcolyte => .84f,
+            EnemyType.PenitentHusk => .64f,
+            EnemyType.AbyssScribe => .82f,
+            EnemyType.GraveReliquary => .68f,
+            EnemyType.CloisterWraith => .78f,
+            EnemyType.RoyalSanctumKnight => .72f,
+            EnemyType.AbyssOracle => .90f,
+            EnemyType.ThroneboundSeraph => .72f,
+            EnemyType.Vaelthar => .78f,
             _ => 0.68f
         };
     }

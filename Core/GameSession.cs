@@ -99,6 +99,7 @@ public sealed class GameSession
     private readonly DemonLandsMapGenerator _demonLandsGenerator;
     private readonly DemonFortressMapGenerator _demonFortressGenerator;
     private readonly DemonCityMapGenerator _demonCityGenerator;
+    private readonly DemonKingSanctumMapGenerator _demonKingSanctumGenerator;
     private readonly List<Enemy> _defeatedEnemies = new();
     private readonly List<RottenCorpseBurst> _rottenCorpseBursts = new();
     private readonly HashSet<Enemy> _playerAttackHits = new();
@@ -242,6 +243,13 @@ public sealed class GameSession
     public bool Map06MagistrateDefeated { get; private set; }
     public bool Map06Cleared { get; private set; }
     public bool Map06ExitPrepared { get; private set; }
+    public bool Map07VaeltharDefeated { get; private set; }
+    public bool Map07EndpointPrepared { get; private set; }
+    public bool Map07SeraphDefeated { get; private set; }
+    public bool Map07Cleared => Map07VaeltharDefeated;
+    public bool Map07EndingUnlocked => Map07VaeltharDefeated && Map07EndpointPrepared;
+    public bool Map07EndingSeen { get; private set; }
+    public SanctumEndingFlow SanctumEnding { get; } = new();
     public bool Map2PigPhotoCollected { get; private set; }
     public bool IsPigPhotoPopupOpen { get; private set; }
     public CityAlarmSystem CityAlarm { get; }
@@ -265,6 +273,7 @@ public sealed class GameSession
     public RegionType CurrentRegion => Region.Type;
     public bool BossDefeated { get; private set; }
     public bool IsExitUnlocked =>
+        CurrentDungeon?.IsDemonKingSanctum == true ? Map07EndpointPrepared :
         CurrentDungeon?.IsDemonFortress == true ||
         (CurrentDungeon?.IsDemonCity == true
             ? Map06Cleared
@@ -472,6 +481,8 @@ public sealed class GameSession
     public int PlayerHitTechniqueStage { get; private set; } = -1;
     public string CurrentMapName => CurrentDungeon?.IsDemonCity == true
         ? Loc.Get("hud.map_demon_city")
+        : CurrentDungeon?.IsDemonKingSanctum == true
+            ? Loc.Get("hud.map_demon_king_sanctum")
         : CurrentDungeon?.IsDemonFortress == true
             ? Loc.Get("hud.map_demon_fortress")
         : CurrentDungeon?.IsDemonLands == true
@@ -486,7 +497,7 @@ public sealed class GameSession
     public bool ShouldRenderBoss => CurrentDungeon != null &&
         !CurrentDungeon.IsAncientCatacombs && !CurrentDungeon.IsFallenCity &&
         !CurrentDungeon.IsDemonLands && !CurrentDungeon.IsDemonFortress &&
-        !CurrentDungeon.IsDemonCity;
+        !CurrentDungeon.IsDemonCity && !CurrentDungeon.IsDemonKingSanctum;
     public IReadOnlyList<Enemy> WildForestShowcaseEnemies =>
         _wildForestShowcaseEnemies;
     public bool IsSequentialEnemyTestComplete => _sequentialTestComplete;
@@ -540,6 +551,7 @@ public sealed class GameSession
         _demonLandsGenerator = new DemonLandsMapGenerator();
         _demonFortressGenerator = new DemonFortressMapGenerator();
         _demonCityGenerator = new DemonCityMapGenerator();
+        _demonKingSanctumGenerator = new DemonKingSanctumMapGenerator();
         Enemies = new EnemyManager(randomSeed);
         WildForestEncounters = new WildForestEncounterDirector();
         EnemyIntroductions = new EnemyIntroductionManager();
@@ -594,6 +606,12 @@ public sealed class GameSession
         bool fusePressed = WasKeyPressed(keyboardState, Keys.F);
         bool previousTabPressed = WasKeyPressed(keyboardState, Keys.Q);
         bool nextTabPressed = WasKeyPressed(keyboardState, Keys.E);
+        if (State == GameState.Ending)
+        {
+            UpdateSanctumEnding(gameTime);
+            StoreInputStates(keyboardState, mouseState);
+            return;
+        }
         bool deletePressed = WasKeyPressed(keyboardState, Keys.Delete);
         bool createPressed = WasKeyPressed(keyboardState, Keys.C);
         _fusionFeedbackTimeRemaining = System.MathF.Max(
@@ -1027,7 +1045,7 @@ public sealed class GameSession
         if (CurrentDungeon.IsAuthoredWildForest ||
             CurrentDungeon.IsAncientCatacombs || CurrentDungeon.IsFallenCity ||
             CurrentDungeon.IsDemonLands || CurrentDungeon.IsDemonFortress ||
-            CurrentDungeon.IsDemonCity)
+            CurrentDungeon.IsDemonCity || CurrentDungeon.IsDemonKingSanctum)
         {
             EnemyIntroductions.Update(
                 gameTime,
@@ -1191,6 +1209,7 @@ public sealed class GameSession
 
     private void ProcessDefeatedEnemies()
     {
+        bool saveFinalBossDefeat = false;
         int defeatedCount = Enemies.RemoveDefeated(
             _defeatedEnemies,
             out int experienceReward);
@@ -1315,6 +1334,31 @@ public sealed class GameSession
                 SaveActiveSlot();
             }
 
+            if (CurrentDungeon.IsDemonKingSanctum && enemy is ThroneboundSeraphEnemy seraph &&
+                seraph.CompletionCount == 1 && !Map07SeraphDefeated)
+            {
+                Map07SeraphDefeated = true;
+                WildForestEncounters.MarkCleared("sanctum-thronebound-seraph");
+                saveFinalBossDefeat = true;
+            }
+
+            if (CurrentDungeon.IsDemonKingSanctum && enemy is VaeltharEnemy finalKing &&
+                finalKing.CompletionCount == 1 && !Map07VaeltharDefeated)
+            {
+                Map07VaeltharDefeated = true;
+                Map07EndpointPrepared = true;
+                BossDefeated = true;
+                WildForestEncounters.MarkCleared(VaeltharEnemy.EncounterId);
+                saveFinalBossDefeat = true;
+            }
+
+            if (CurrentDungeon.IsDemonKingSanctum &&
+                enemy.Type is EnemyType.VowshardAcolyte or
+                    EnemyType.AbyssScribe)
+            {
+                Projectiles.RemoveOwnedBy(enemy);
+            }
+
             if (enemy.CanDropLoot)
             {
                 Loot.TryCreateDrop(
@@ -1331,6 +1375,7 @@ public sealed class GameSession
         }
 
         KillCount += defeatedCount;
+        if (saveFinalBossDefeat) SaveActiveSlot();
     }
 
     internal bool TrySpawnFallenKnightPigPhotoDrop(Enemy enemy)
@@ -1745,6 +1790,11 @@ public sealed class GameSession
         Map06MagistrateDefeated = false;
         Map06Cleared = false;
         Map06ExitPrepared = false;
+        Map07VaeltharDefeated = false;
+        Map07EndpointPrepared = false;
+        Map07SeraphDefeated = false;
+        Map07EndingSeen = false;
+        SanctumEnding.Reset();
         IsPigPhotoPopupOpen = false;
         WorldTier = 1;
         Region = RegionDefinition.WildForest;
@@ -1889,7 +1939,7 @@ public sealed class GameSession
 
         ScholarTomb.ResetForNewRun();
         LastDiceTable.ResetForNewRun();
-        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 6);
+        DungeonDepth = Math.Clamp(slot.DungeonDepth, 1, 7);
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
         _worldTierTransitionTimeRemaining = 0f;
@@ -1900,6 +1950,7 @@ public sealed class GameSession
             4 => _demonLandsGenerator.Generate(),
             5 => _demonFortressGenerator.Generate(),
             6 => _demonCityGenerator.Generate(),
+            7 => _demonKingSanctumGenerator.Generate(),
             _ => _dungeonGenerator.GenerateWildForest()
         };
         Player = new PlayerCharacter(
@@ -1955,6 +2006,11 @@ public sealed class GameSession
         Map06MagistrateDefeated = slot.Map06MagistrateDefeated;
         Map06Cleared = slot.Map06Cleared;
         Map06ExitPrepared = slot.Map06ExitPrepared;
+        Map07VaeltharDefeated = slot.Map07VaeltharDefeated;
+        Map07EndpointPrepared = slot.Map07VaeltharDefeated;
+        Map07SeraphDefeated = slot.Map07SeraphDefeated;
+        Map07EndingSeen = slot.Map07EndingSeen && slot.Map07VaeltharDefeated;
+        SanctumEnding.Reset();
         IsInventoryOpen = false;
         ShowCombatDebug = DebugCombatHitboxes;
         ShowMapDebug = false;
@@ -1997,6 +2053,8 @@ public sealed class GameSession
         Map06MagistrateDefeated = slot.Map06MagistrateDefeated;
         Map06Cleared = slot.Map06Cleared;
         Map06ExitPrepared = slot.Map06ExitPrepared;
+        Map07VaeltharDefeated = slot.Map07VaeltharDefeated;
+        Map07EndpointPrepared = slot.Map07VaeltharDefeated;
         if (CurrentDungeon.IsAncientCatacombs && Map02Cleared)
             WildForestEncounters.MarkCleared("fallen-knight");
         if (CurrentDungeon.IsFallenCity && Map03Cleared)
@@ -2016,7 +2074,11 @@ public sealed class GameSession
             WildForestEncounters.MarkCleared("demon-city-abyssal-magistrate");
         if (CurrentDungeon.IsDemonCity && Map06Cleared)
             WildForestEncounters.MarkCleared("demon-city-malachar");
-        if (slot.BossDefeated)
+        if (CurrentDungeon.IsDemonKingSanctum && Map07VaeltharDefeated)
+            WildForestEncounters.MarkCleared(VaeltharEnemy.EncounterId);
+        if (CurrentDungeon.IsDemonKingSanctum && Map07SeraphDefeated)
+            WildForestEncounters.MarkCleared("sanctum-thronebound-seraph");
+        if (slot.BossDefeated && !CurrentDungeon.IsDemonKingSanctum)
         {
             BossDefeated = true;
             if (ShouldRenderBoss && Boss?.IsAlive == true)
@@ -2096,6 +2158,11 @@ public sealed class GameSession
             Map06MagistrateDefeated = Map06MagistrateDefeated,
             Map06Cleared = Map06Cleared,
             Map06ExitPrepared = Map06ExitPrepared,
+            Map07VaeltharDefeated = Map07VaeltharDefeated,
+            Map07EndpointPrepared = Map07EndpointPrepared,
+            Map07SeraphDefeated = Map07SeraphDefeated,
+            Map07Cleared = Map07Cleared,
+            Map07EndingSeen = Map07EndingSeen,
             Map2PigPhotoCollected = Map2PigPhotoCollected,
             BossDefeated = BossDefeated,
             LastDiceStarted = LastDiceTable.Started,
@@ -2166,6 +2233,7 @@ public sealed class GameSession
             4 => _demonLandsGenerator.Generate(),
             5 => _demonFortressGenerator.Generate(),
             6 => _demonCityGenerator.Generate(),
+            7 => _demonKingSanctumGenerator.Generate(),
             _ => throw new InvalidOperationException(
                 $"Map {DungeonDepth} is not implemented.")
         };
@@ -2219,7 +2287,8 @@ public sealed class GameSession
                 CurrentDungeon.IsFallenCity ||
                 CurrentDungeon.IsDemonLands ||
                 CurrentDungeon.IsDemonFortress ||
-                CurrentDungeon.IsDemonCity);
+                CurrentDungeon.IsDemonCity ||
+                CurrentDungeon.IsDemonKingSanctum);
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom, avoidEnemies: true);
         WildForestEncounters.Reset(CurrentDungeon);
         if (CurrentDungeon.IsDemonFortress && Map05BallistaDefeated)
@@ -2232,6 +2301,10 @@ public sealed class GameSession
             WildForestEncounters.MarkCleared("demon-city-abyssal-magistrate");
         if (CurrentDungeon.IsDemonCity && Map06Cleared)
             WildForestEncounters.MarkCleared("demon-city-malachar");
+        if (CurrentDungeon.IsDemonKingSanctum && Map07VaeltharDefeated)
+            WildForestEncounters.MarkCleared(VaeltharEnemy.EncounterId);
+        if (CurrentDungeon.IsDemonKingSanctum && Map07SeraphDefeated)
+            WildForestEncounters.MarkCleared("sanctum-thronebound-seraph");
         EnemyIntroductions.Reset();
         Curse.Reset();
         Tombs.Reset(CurrentDungeon);
@@ -2253,7 +2326,8 @@ public sealed class GameSession
         Boss = CreateRegionBoss();
         BossDefeated = (CurrentDungeon.IsDemonFortress &&
                 Map05ExecutionerDefeated) ||
-            (CurrentDungeon.IsDemonCity && Map06Cleared);
+            (CurrentDungeon.IsDemonCity && Map06Cleared) ||
+            (CurrentDungeon.IsDemonKingSanctum && Map07VaeltharDefeated);
 
         if (IsWildForestShowcaseMode)
             RestartWildForestShowcase();
@@ -2460,10 +2534,24 @@ public sealed class GameSession
 
         if (IsExitUnlocked && IsPlayerNearExit())
         {
+            if (CurrentDungeon.IsDemonKingSanctum)
+            {
+                if (SanctumEnding.TryBegin(Map07EndingUnlocked, Map07EndingSeen))
+                {
+                    ClearDeveloperTransientState();
+                    _defeatedEnemies.Clear(); // Do not replay a stale death audio event on return.
+                    Camera.ResetCinematicZoom();
+                    foreach (Enemy enemy in Enemies.Enemies) enemy.CancelSanctumEffects();
+                    EnemyIntroductions.DismissPresentation();
+                    State = GameState.Ending;
+                    SaveActiveSlot();
+                }
+                return true;
+            }
             if (CurrentDungeon.IsDemonCity)
             {
                 Map06ExitPrepared = true;
-                SaveActiveSlot();
+                CompleteDungeon();
                 return true;
             }
             if (CurrentDungeon.IsDemonLands)
@@ -2484,6 +2572,22 @@ public sealed class GameSession
 
         Loot.TryCollectNearest(Player.Position, Player.Inventory);
         return false;
+    }
+
+    private void UpdateSanctumEnding(GameTime time)
+    {
+        float seconds = MathF.Min((float)time.ElapsedGameTime.TotalSeconds, .1f);
+        // Two quiet views: the ruined throne, then the unchanged Player at the
+        // endpoint. Only the camera moves; there is no scripted Player motion.
+        Vector2 focus = SanctumEnding.FocusThrone ?
+            new Vector2(CurrentDungeon.BossRoom.Bounds.Left + 1150, CurrentDungeon.BossRoom.GroundY - 90) :
+            Player.Position;
+        Camera.Follow(focus, Player.Facing, CurrentDungeon.WorldBounds, seconds, .50f);
+        Enemies.UpdateDeathPresentationsForEnding(time);
+        if (!SanctumEnding.Update(seconds)) return;
+        Map07EndingSeen = true;
+        State = GameState.Playing;
+        SaveActiveSlot();
     }
 
     private void OpenPigPhoto(LoreNote note)
@@ -2643,7 +2747,7 @@ public sealed class GameSession
                 : Loc.Format("scholar.reward.inventory_full", reward.Name));
     }
 
-    private bool IsPlayerNearExit()
+    internal bool IsPlayerNearExit()
     {
         return Vector2.DistanceSquared(
             Player.Position,
@@ -3225,6 +3329,19 @@ public sealed class GameSession
             return FindNearestDemonCityZone();
         }
 
+        if (CurrentDungeon.IsDemonKingSanctum)
+        {
+            for (int index = 0;
+                index < CurrentDungeon.DemonKingSanctumZones.Count;
+                index++)
+            {
+                if (CurrentDungeon.DemonKingSanctumZones[index].Bounds.Contains(
+                    Player.Position.ToPoint()))
+                    return index;
+            }
+            return FindNearestDemonKingSanctumZone();
+        }
+
         for (int index = 0; index < CurrentDungeon.WildForestSections.Count; index++)
             if (CurrentDungeon.WildForestSections[index].Bounds.Contains(Player.Position.ToPoint()))
                 return index;
@@ -3233,7 +3350,7 @@ public sealed class GameSession
 
     private void DeveloperLoadMap(int mapNumber)
     {
-        mapNumber = System.Math.Clamp(mapNumber, 1, 6);
+        mapNumber = System.Math.Clamp(mapNumber, 1, 7);
         DungeonDepth = mapNumber;
         WorldTier = WorldProgression.GetWorldTier(DungeonDepth);
         Region = GetRegionForDepth(DungeonDepth);
@@ -3245,6 +3362,7 @@ public sealed class GameSession
             4 => _demonLandsGenerator.Generate(),
             5 => _demonFortressGenerator.Generate(),
             6 => _demonCityGenerator.Generate(),
+            7 => _demonKingSanctumGenerator.Generate(),
             _ => _dungeonGenerator.GenerateWildForest()
         };
         PlacePlayerAtMapEntry(CurrentDungeon.StartRoom);
@@ -3280,7 +3398,9 @@ public sealed class GameSession
             return;
         }
 
-        int count = CurrentDungeon.IsDemonCity
+        int count = CurrentDungeon.IsDemonKingSanctum
+            ? CurrentDungeon.DemonKingSanctumZones.Count
+            : CurrentDungeon.IsDemonCity
             ? CurrentDungeon.DemonCityZones.Count
             : CurrentDungeon.IsDemonFortress
                 ? CurrentDungeon.DemonFortressZones.Count
@@ -3295,7 +3415,9 @@ public sealed class GameSession
             return;
 
         zoneIndex = System.Math.Clamp(zoneIndex, 0, count - 1);
-        Rectangle bounds = CurrentDungeon.IsDemonCity
+        Rectangle bounds = CurrentDungeon.IsDemonKingSanctum
+            ? CurrentDungeon.DemonKingSanctumZones[zoneIndex].Bounds
+            : CurrentDungeon.IsDemonCity
             ? CurrentDungeon.DemonCityZones[zoneIndex].Bounds
             : CurrentDungeon.IsDemonFortress
                 ? CurrentDungeon.DemonFortressZones[zoneIndex].Bounds
@@ -3333,6 +3455,20 @@ public sealed class GameSession
         if (string.IsNullOrEmpty(zoneId))
             return;
         WildForestEncounters.ResetZone(zoneId, Enemies);
+        if (CurrentDungeon.IsDemonKingSanctum && zoneId == "sanctum-thronebound-seraph")
+        {
+            Map07SeraphDefeated = false;
+            SaveActiveSlot();
+        }
+        if (zoneId == VaeltharEnemy.EncounterId)
+        {
+            Map07VaeltharDefeated = false;
+            Map07EndpointPrepared = false;
+            Map07EndingSeen = false;
+            SanctumEnding.Reset();
+            BossDefeated = false;
+            SaveActiveSlot();
+        }
         ClearDeveloperTransientState();
     }
 
@@ -3458,6 +3594,20 @@ public sealed class GameSession
             Map06ExitPrepared = false;
             BossDefeated = false;
         }
+        else if (CurrentDungeon.IsDemonKingSanctum && zoneId == "sanctum-thronebound-seraph")
+        {
+            Map07SeraphDefeated = false;
+            SaveActiveSlot();
+        }
+        else if (zoneId == VaeltharEnemy.EncounterId)
+        {
+            Map07VaeltharDefeated = false;
+            Map07EndpointPrepared = false;
+            Map07EndingSeen = false;
+            SanctumEnding.Reset();
+            BossDefeated = false;
+            SaveActiveSlot();
+        }
         ClearDeveloperTransientState();
     }
 
@@ -3479,7 +3629,9 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return string.Empty;
-        string sectionId = CurrentDungeon.IsDemonCity
+        string sectionId = CurrentDungeon.IsDemonKingSanctum
+            ? CurrentDungeon.DemonKingSanctumZones[index].ZoneId
+            : CurrentDungeon.IsDemonCity
             ? CurrentDungeon.DemonCityZones[index].ZoneId
             : CurrentDungeon.IsDemonFortress
                 ? CurrentDungeon.DemonFortressZones[index].ZoneId
@@ -3543,7 +3695,9 @@ public sealed class GameSession
         int index = GetCurrentZoneIndex();
         if (index < 0)
             return "UNKNOWN";
-        return CurrentDungeon.IsDemonCity
+        return CurrentDungeon.IsDemonKingSanctum
+            ? Loc.Get(CurrentDungeon.DemonKingSanctumZones[index].NameKey)
+            : CurrentDungeon.IsDemonCity
             ? Loc.Get(CurrentDungeon.DemonCityZones[index].NameKey)
             : CurrentDungeon.IsDemonFortress
                 ? Loc.Get(CurrentDungeon.DemonFortressZones[index].NameKey)
@@ -3667,6 +3821,26 @@ public sealed class GameSession
         return result;
     }
 
+    private int FindNearestDemonKingSanctumZone()
+    {
+        int result = 0;
+        float distance = float.MaxValue;
+        for (int index = 0;
+            index < CurrentDungeon.DemonKingSanctumZones.Count;
+            index++)
+        {
+            float candidate = MathF.Abs(
+                CurrentDungeon.DemonKingSanctumZones[index].Bounds.Center.X -
+                Player.Position.X);
+            if (candidate < distance)
+            {
+                distance = candidate;
+                result = index;
+            }
+        }
+        return result;
+    }
+
     private static RegionDefinition GetRegionForDepth(int dungeonDepth) =>
         dungeonDepth switch
         {
@@ -3674,7 +3848,8 @@ public sealed class GameSession
             3 => RegionDefinition.FallenCity,
             4 => RegionDefinition.DemonLands,
             5 => RegionDefinition.DemonFortress,
-            >= 6 => RegionDefinition.DemonCity,
+            6 => RegionDefinition.DemonCity,
+            >= 7 => RegionDefinition.DemonKingSanctum,
             _ => RegionDefinition.WildForest
         };
 

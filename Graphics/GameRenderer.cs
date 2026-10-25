@@ -23,6 +23,7 @@ namespace DungeonAscendant.Graphics;
 /// </summary>
 public sealed class GameRenderer : IDisposable
 {
+    private static readonly float[] VaeltharPhaseThresholds = { .70f, .35f };
     private static readonly string[] ScholarQuestionLabels =
     {
         "QUESTION 1 / 3",
@@ -178,12 +179,24 @@ public sealed class GameRenderer : IDisposable
     private readonly DemonCityBossEnemySpriteRenderer
         _demonCityBossEnemySpriteRenderer;
     private readonly MalacharEnemySpriteRenderer _malacharEnemySpriteRenderer;
+    private readonly DemonKingSanctumEnemySpriteRenderer
+        _demonKingSanctumEnemySpriteRenderer;
+    private readonly DemonKingSanctumPenitentSpriteRenderer
+        _demonKingSanctumPenitentSpriteRenderer;
+    private readonly DemonKingSanctumReliquarySpriteRenderer
+        _demonKingSanctumReliquarySpriteRenderer;
+    private readonly DemonKingSanctumEliteSpriteRenderer
+        _demonKingSanctumEliteSpriteRenderer;
+    private readonly ThroneboundSeraphSpriteRenderer _throneboundSeraphSpriteRenderer;
+    private readonly VaeltharSpriteRenderer _vaeltharSpriteRenderer;
     private readonly CatacombEnvironmentRenderer _catacombEnvironmentRenderer;
     private readonly AncientScholarTombRenderer _ancientScholarTombRenderer;
     private readonly FallenCityEnvironmentRenderer _fallenCityEnvironmentRenderer;
     private readonly DemonLandsEnvironmentRenderer _demonLandsEnvironmentRenderer;
     private readonly DemonFortressEnvironmentRenderer _demonFortressEnvironmentRenderer;
     private readonly DemonCityEnvironmentRenderer _demonCityEnvironmentRenderer;
+    private readonly DemonKingSanctumEnvironmentRenderer
+        _demonKingSanctumEnvironmentRenderer;
     private int _observedElderSigils;
     private float _elderSigilPulseRemaining;
     private int _observedDuelistMomentumTier = -1;
@@ -278,6 +291,16 @@ public sealed class GameRenderer : IDisposable
             new DemonCityBossEnemySpriteRenderer(_spriteBatch, _pixel);
         _malacharEnemySpriteRenderer =
             new MalacharEnemySpriteRenderer(_spriteBatch, _pixel);
+        _demonKingSanctumEnemySpriteRenderer =
+            new DemonKingSanctumEnemySpriteRenderer(_spriteBatch, _pixel);
+        _demonKingSanctumPenitentSpriteRenderer =
+            new DemonKingSanctumPenitentSpriteRenderer(_spriteBatch, _pixel);
+        _demonKingSanctumReliquarySpriteRenderer =
+            new DemonKingSanctumReliquarySpriteRenderer(_spriteBatch, _pixel);
+        _demonKingSanctumEliteSpriteRenderer =
+            new DemonKingSanctumEliteSpriteRenderer(_spriteBatch, _pixel);
+        _throneboundSeraphSpriteRenderer = new ThroneboundSeraphSpriteRenderer(_spriteBatch, _pixel);
+        _vaeltharSpriteRenderer = new VaeltharSpriteRenderer(_spriteBatch, _pixel);
         _catacombEnvironmentRenderer = new CatacombEnvironmentRenderer(
             _spriteBatch,
             _pixel);
@@ -296,6 +319,8 @@ public sealed class GameRenderer : IDisposable
         _demonCityEnvironmentRenderer = new DemonCityEnvironmentRenderer(
             _spriteBatch,
             _pixel);
+        _demonKingSanctumEnvironmentRenderer =
+            new DemonKingSanctumEnvironmentRenderer(_spriteBatch, _pixel);
     }
 
     private void UpdateDuelistUltimateVisualMemory(
@@ -628,6 +653,14 @@ public sealed class GameRenderer : IDisposable
             {
                 DrawDominionArcImpact(impact);
             }
+            else if (impact.Projectile.Type == ProjectileType.Vowshard)
+            {
+                DrawVowshardImpact(impact);
+            }
+            else if (impact.Projectile.Type == ProjectileType.AbyssScript)
+            {
+                DrawAbyssScriptImpact(impact);
+            }
             else
             {
                 DrawRangerImpact(impact);
@@ -691,6 +724,10 @@ public sealed class GameRenderer : IDisposable
             gameSession,
             gameSession.Camera.ViewBounds,
             gameTime);
+        _demonKingSanctumEnvironmentRenderer.DrawForeground(
+            gameSession,
+            gameSession.Camera.ViewBounds,
+            gameTime);
 
         if (gameSession.ShowMapDebug)
             DrawWildForestMapDebug(gameSession);
@@ -701,6 +738,12 @@ public sealed class GameRenderer : IDisposable
         _spriteBatch.End();
 
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
+        if (gameSession.State == GameState.Ending)
+        {
+            DrawSanctumEnding(gameSession);
+            _spriteBatch.End();
+            return;
+        }
         _demonLandsEnvironmentRenderer.DrawCorruptionOverlay(
             gameSession,
             new Rectangle(0, 0,
@@ -725,6 +768,9 @@ public sealed class GameRenderer : IDisposable
             gameSession.IsDuelistUltimateActive;
         if (!hideSovereignHud)
         {
+            Enemy sanctumBoss = gameSession.CurrentDungeon.IsDemonKingSanctum ?
+                SelectSanctumBossBarTarget(gameSession.Enemies.Enemies, gameSession.Player.Position) : null;
+            DrawVaeltharArenaDim(sanctumBoss as VaeltharEnemy);
             DrawHudPanel();
             DrawPlayerHealth(gameSession.Player);
             DrawPlayerStamina(gameSession.Player);
@@ -735,6 +781,8 @@ public sealed class GameRenderer : IDisposable
             DrawHornedGeneralBossBar(gameSession);
             DrawDemonFortressBossBar(gameSession);
             DrawDemonCityBossBar(gameSession);
+            DrawSeraphSubBossBar(sanctumBoss as ThroneboundSeraphEnemy);
+            DrawVaeltharBossBar(sanctumBoss as VaeltharEnemy);
             DrawPlayerProgression(gameSession.Player, gameSession.KillCount);
             DrawWeaponResource(gameSession.Player, gameTime);
             DrawTechniqueFeedback(gameSession.Player);
@@ -1840,6 +1888,116 @@ public sealed class GameRenderer : IDisposable
             new Color(220, 183, 120, 205));
     }
 
+    private void DrawSanctumEnding(GameSession session)
+    {
+        int width = _graphicsDevice.Viewport.Width, height = _graphicsDevice.Viewport.Height;
+        float fade = session.SanctumEnding.FadeRatio;
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, height), new Color(5, 3, 12, (int)(72 * fade)));
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, width, 72), new Color(5, 3, 9, (int)(220 * fade)));
+        _spriteBatch.Draw(_pixel, new Rectangle(0, height - 150, width, 150), new Color(5, 3, 9, (int)(230 * fade)));
+        DrawCenteredDebugText(Loc.Get("sanctum.ending.title"), width / 2, 28,
+            new Color(226, 199, 150) * fade, 2);
+        string line = Loc.Get(session.SanctumEnding.TextKey);
+        DrawCenteredDebugText(line, width / 2, height - 110, new Color(229, 217, 235) * fade,
+            FitDebugTextScale(line, width - 60, 2));
+        string returnText = Loc.Get("sanctum.ending.return");
+        DrawCenteredDebugText(returnText, width / 2, height - 52, new Color(157, 146, 164) * fade,
+            FitDebugTextScale(returnText, width - 60, 1));
+    }
+
+    internal static ThroneboundSeraphEnemy SelectSeraphSubBossBarTarget(
+        IReadOnlyList<Enemy> enemies, Vector2 playerPosition)
+    {
+        ThroneboundSeraphEnemy selected = null;
+        float nearest = 650f * 650f;
+        foreach (Enemy enemy in enemies)
+        {
+            if (enemy is not ThroneboundSeraphEnemy seraph || !seraph.IsAlive ||
+                seraph.IntroCompletionCount == 0 || seraph.IsReturningToAuthoredHome)
+                continue;
+            float distance = Vector2.DistanceSquared(seraph.Position, playerPosition);
+            if (distance >= nearest) continue;
+            nearest = distance; selected = seraph;
+        }
+        return selected;
+    }
+
+    internal static Enemy SelectSanctumBossBarTarget(IReadOnlyList<Enemy> enemies, Vector2 player) =>
+        (Enemy)SelectVaeltharBossBarTarget(enemies, player) ?? SelectSeraphSubBossBarTarget(enemies, player);
+
+    private void DrawSeraphSubBossBar(ThroneboundSeraphEnemy target)
+    {
+        if (target == null) return;
+        int viewportWidth = _graphicsDevice.Viewport.Width;
+        int width = Math.Clamp(viewportWidth * 6 / 16, 370, 640);
+        int x = (viewportWidth - width) / 2;
+        int y = _graphicsDevice.Viewport.Height - 108;
+        DrawCenteredDebugText(Loc.Get("enemy.thronebound_seraph.name"), viewportWidth / 2,
+            y - 30, new Color(218, 205, 178), 1);
+        DrawCenteredDebugText(Loc.Get("enemy.thronebound_seraph.title"), viewportWidth / 2,
+            y - 17, new Color(154, 100, 158), 1);
+        var frame = new Rectangle(x, y + 4, width, 16);
+        _spriteBatch.Draw(_pixel, frame, new Color(16, 11, 18, 242));
+        DrawRectangleOutline(frame, 2, new Color(145, 109, 72, 240));
+        var track = new Rectangle(x + 3, y + 7, width - 6, 10);
+        _spriteBatch.Draw(_pixel, track, new Color(48, 20, 35, 245));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(
+            target.CurrentHealth / (float)target.MaxHealth, 0f, 1f));
+        if (fill > 0) _spriteBatch.Draw(_pixel,
+            new Rectangle(track.X, track.Y, fill, track.Height), target.CombatPhase == 2 ?
+                new Color(166, 66, 151) : new Color(124, 78, 111));
+        _spriteBatch.Draw(_pixel, new Rectangle(track.X + (int)(track.Width * .55f),
+            track.Y - 2, 2, track.Height + 4), new Color(201, 168, 110, 190));
+    }
+
+    internal static VaeltharEnemy SelectVaeltharBossBarTarget(IReadOnlyList<Enemy> enemies, Vector2 player)
+    {
+        VaeltharEnemy target = null;
+        float nearest = 760f * 760f;
+        foreach (Enemy enemy in enemies)
+        {
+            if (enemy is not VaeltharEnemy king || !king.IsAlive || king.IntroCompletionCount == 0 ||
+                king.IsReturningToAuthoredHome) continue;
+            float distance = Vector2.DistanceSquared(king.Position, player);
+            if (distance >= nearest) continue;
+            nearest = distance; target = king;
+        }
+        return target;
+    }
+    private void DrawVaeltharArenaDim(VaeltharEnemy king)
+    {
+        if (king == null || king.UltimateDimRatio <= 0) return;
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, _graphicsDevice.Viewport.Width, _graphicsDevice.Viewport.Height),
+            new Color(7, 2, 15, (int)(36 * king.UltimateDimRatio)));
+    }
+    private void DrawVaeltharBossBar(VaeltharEnemy king)
+    {
+        if (king == null) return;
+        int screen = _graphicsDevice.Viewport.Width;
+        int width = Math.Clamp(screen * 3 / 5, 540, 900);
+        int x = (screen - width) / 2, y = _graphicsDevice.Viewport.Height - 122;
+        DrawCenteredDebugText(Loc.Get("enemy.vaelthar.name"), screen / 2, y - 38,
+            new Color(236, 211, 165), 2);
+        DrawCenteredDebugText(Loc.Get("enemy.vaelthar.title"), screen / 2, y - 17,
+            new Color(170, 106, 193), 1);
+        var frame = new Rectangle(x, y + 4, width, 24);
+        _spriteBatch.Draw(_pixel, frame, new Color(10, 7, 16, 245));
+        DrawRectangleOutline(frame, 3, new Color(170, 121, 64, 240));
+        var track = new Rectangle(x + 4, y + 8, width - 8, 16);
+        _spriteBatch.Draw(_pixel, track, new Color(43, 17, 38, 245));
+        int fill = (int)MathF.Round(track.Width * Math.Clamp(king.CurrentHealth / (float)king.MaxHealth, 0, 1));
+        if (fill > 0)
+        {
+            Color health = king.CombatPhase == 3 ? new Color(180, 61, 151) :
+                king.CombatPhase == 2 ? new Color(126, 60, 149) : new Color(117, 42, 65);
+            _spriteBatch.Draw(_pixel, new Rectangle(track.X, track.Y, fill, track.Height), health);
+            _spriteBatch.Draw(_pixel, new Rectangle(track.X, track.Y, fill, 2), new Color(222, 172, 95));
+        }
+        foreach (float threshold in VaeltharPhaseThresholds)
+            _spriteBatch.Draw(_pixel, new Rectangle(track.X + (int)(track.Width * threshold),
+                track.Y - 2, 2, track.Height + 4), new Color(208, 174, 122, 180));
+    }
+
     private void DrawDemonCityBossBar(GameSession session)
     {
         if (session.CurrentDungeon?.IsDemonCity != true)
@@ -2022,6 +2180,18 @@ public sealed class GameRenderer : IDisposable
                 gameSession, visibleBounds, gameTime);
             DrawExitMarker(gameSession.ExitPosition,
                 gameSession.IsExitUnlocked);
+            return;
+        }
+
+        if (dungeon.IsDemonKingSanctum)
+        {
+            _demonKingSanctumEnvironmentRenderer.DrawWorld(
+                gameSession, visibleBounds, gameTime);
+            DrawExitMarker(gameSession.ExitPosition, gameSession.Map07EndpointPrepared);
+            if (gameSession.Map07EndpointPrepared && visibleBounds.Contains(gameSession.ExitPosition.ToPoint()))
+                DrawDebugLabel(Loc.Get(gameSession.Map07EndingSeen ? "sanctum.ending.seen" :
+                    gameSession.IsPlayerNearExit() ? "sanctum.ending.interact" : "sanctum.endpoint.prepared"), (int)gameSession.ExitPosition.X - 90,
+                    (int)gameSession.ExitPosition.Y - 90, new Color(202, 178, 222));
             return;
         }
 
@@ -2864,6 +3034,27 @@ public sealed class GameRenderer : IDisposable
             case MalacharEnemy malachar:
                 _malacharEnemySpriteRenderer.Draw(malachar, gameTime);
                 break;
+            case DemonKingSanctumEnemy sanctumEnemy:
+                _demonKingSanctumEnemySpriteRenderer.Draw(
+                    sanctumEnemy, gameTime);
+                break;
+            case DemonKingSanctumPenitentEnemy penitentEnemy:
+                _demonKingSanctumPenitentSpriteRenderer.Draw(
+                    penitentEnemy, gameTime);
+                break;
+            case DemonKingSanctumReliquaryEnemy reliquaryEnemy:
+                _demonKingSanctumReliquarySpriteRenderer.Draw(
+                    reliquaryEnemy, gameTime);
+                break;
+            case DemonKingSanctumEliteEnemy sanctumElite:
+                _demonKingSanctumEliteSpriteRenderer.Draw(sanctumElite, gameTime);
+                break;
+            case ThroneboundSeraphEnemy seraph:
+                _throneboundSeraphSpriteRenderer.Draw(seraph, gameTime);
+                break;
+            case VaeltharEnemy king:
+                _vaeltharSpriteRenderer.Draw(king, gameTime);
+                break;
         }
 
         if (enemy.IsBuffed)
@@ -3261,6 +3452,8 @@ public sealed class GameRenderer : IDisposable
             enemy.Type == EnemyType.BlackGuardExecutioner ||
             enemy.Type == EnemyType.CathedralButcher ||
             enemy.Type == EnemyType.AbyssalMagistrate ||
+            enemy.Type == EnemyType.ThroneboundSeraph ||
+            enemy.Type == EnemyType.Vaelthar ||
             enemy.Type == EnemyType.Malachar ||
             enemy.MaxHealth <= 0)
         {
@@ -3411,6 +3604,47 @@ public sealed class GameRenderer : IDisposable
                     1f,
                     new Color(158, 147, 93, 125));
             }
+            return;
+        }
+
+        if (projectile.Type == ProjectileType.Vowshard)
+        {
+            Vector2 shardDirection = projectile.Velocity;
+            if (shardDirection.LengthSquared() > .01f) shardDirection.Normalize();
+            else shardDirection = Vector2.UnitX;
+            Vector2 shardNormal = new(-shardDirection.Y, shardDirection.X);
+            DrawWorldLine(projectile.PreviousPosition, projectile.Position,
+                2f, new Color(101, 72, 119, 105));
+            DrawWorldLine(projectile.Position - shardDirection * 8f,
+                projectile.Position + shardDirection * 9f, 6f,
+                new Color(91, 86, 82));
+            DrawWorldLine(projectile.Position - shardNormal * 5f,
+                projectile.Position + shardDirection * 4f, 2f,
+                new Color(184, 137, 198));
+            return;
+        }
+
+        if (projectile.Type == ProjectileType.AbyssScript)
+        {
+            Vector2 scriptDirection = projectile.Velocity;
+            if (scriptDirection.LengthSquared() > .01f)
+                scriptDirection.Normalize();
+            else
+                scriptDirection = Vector2.UnitX;
+            Vector2 scriptNormal = new(-scriptDirection.Y, scriptDirection.X);
+            DrawWorldLine(projectile.PreviousPosition, projectile.Position,
+                2f, new Color(103, 70, 120, 105));
+            DrawWorldLine(projectile.Position - scriptDirection * 10f,
+                projectile.Position + scriptDirection * 10f, 3f,
+                new Color(179, 130, 194, 225));
+            DrawWorldLine(projectile.Position - scriptNormal * 8f,
+                projectile.Position + scriptNormal * 8f, 2f,
+                new Color(119, 88, 134, 215));
+            DrawWorldLine(projectile.Position - scriptDirection * 5f -
+                    scriptNormal * 5f,
+                projectile.Position + scriptDirection * 5f +
+                    scriptNormal * 5f, 2f,
+                new Color(201, 158, 208, 205));
             return;
         }
 
@@ -5792,6 +6026,34 @@ public sealed class GameRenderer : IDisposable
             center + new Vector2(0f, radius * .7f), 2f, violet);
     }
 
+    private void DrawVowshardImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        Color stone = new(112, 105, 96, 210);
+        Color mark = new(170, 123, 186, 195);
+        for (int index = 0; index < 5; index++)
+        {
+            float angle = index * MathHelper.TwoPi / 5f;
+            Vector2 direction = new(MathF.Cos(angle), MathF.Sin(angle));
+            DrawWorldLine(center + direction * 3f,
+                center + direction * (9f + index * 1.5f),
+                index % 2 == 0 ? 3f : 2f,
+                index == 2 ? mark : stone);
+        }
+    }
+
+    private void DrawAbyssScriptImpact(ProjectileImpact impact)
+    {
+        Vector2 center = impact.Position;
+        Color glyph = new(178, 127, 194, 200);
+        DrawWorldLine(center + new Vector2(-13, -9),
+            center + new Vector2(12, -9), 2f, glyph);
+        DrawWorldLine(center + new Vector2(12, -9),
+            center + new Vector2(-9, 9), 2f, glyph);
+        DrawWorldLine(center + new Vector2(-9, 9),
+            center + new Vector2(14, 9), 2f, glyph);
+    }
+
     private void DrawEnemyArrowImpact(ProjectileImpact impact)
     {
         Vector2 center = impact.Position;
@@ -7896,6 +8158,28 @@ public sealed class GameRenderer : IDisposable
                 cityBoss.Type == EnemyType.AbyssalMagistrate =>
                 DemonCityBossEnemySpriteRenderer.MagistrateVisualSize,
             MalacharEnemy _ => MalacharEnemySpriteRenderer.VisualSize,
+            DemonKingSanctumEnemy sanctum when
+                sanctum.Type == EnemyType.OathboundSentinel =>
+                DemonKingSanctumEnemySpriteRenderer.SentinelVisualSize,
+            DemonKingSanctumEnemy _ =>
+                DemonKingSanctumEnemySpriteRenderer.AcolyteVisualSize,
+            DemonKingSanctumPenitentEnemy penitent when
+                penitent.Type == EnemyType.PenitentHusk =>
+                DemonKingSanctumPenitentSpriteRenderer.HuskVisualSize,
+            DemonKingSanctumPenitentEnemy _ =>
+                DemonKingSanctumPenitentSpriteRenderer.ScribeVisualSize,
+            DemonKingSanctumReliquaryEnemy reliquary when
+                reliquary.Type == EnemyType.GraveReliquary =>
+                DemonKingSanctumReliquarySpriteRenderer.ReliquaryVisualSize,
+            DemonKingSanctumReliquaryEnemy _ =>
+                DemonKingSanctumReliquarySpriteRenderer.WraithVisualSize,
+            DemonKingSanctumEliteEnemy sanctumElite when
+                sanctumElite.Type == EnemyType.RoyalSanctumKnight =>
+                DemonKingSanctumEliteSpriteRenderer.KnightVisualSize,
+            DemonKingSanctumEliteEnemy _ =>
+                DemonKingSanctumEliteSpriteRenderer.OracleVisualSize,
+            ThroneboundSeraphEnemy _ => ThroneboundSeraphSpriteRenderer.VisualSize,
+            VaeltharEnemy _ => VaeltharSpriteRenderer.VisualSize,
             _ => enemy.Size
         };
         if (enemy is DemonCityEliteEnemy fallenHarrier &&

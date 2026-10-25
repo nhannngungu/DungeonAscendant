@@ -30,10 +30,10 @@ public sealed class WildForestEncounterDirector
         if (map == null || (!map.IsAuthoredWildForest &&
             !map.IsAncientCatacombs && !map.IsFallenCity &&
             !map.IsDemonLands && !map.IsDemonFortress &&
-            !map.IsDemonCity))
+            !map.IsDemonCity && !map.IsDemonKingSanctum))
             return;
         foreach (EncounterZone zone in map.EncounterZones)
-            _states[zone.ZoneId] = new ZoneState(zone);
+            _states[zone.ZoneId] = new ZoneState(zone, map.IsDemonKingSanctum);
     }
 
     public void Update(
@@ -48,7 +48,7 @@ public sealed class WildForestEncounterDirector
         if (map == null || (!map.IsAuthoredWildForest &&
             !map.IsAncientCatacombs && !map.IsFallenCity &&
             !map.IsDemonLands && !map.IsDemonFortress &&
-            !map.IsDemonCity))
+            !map.IsDemonCity && !map.IsDemonKingSanctum))
             return;
 
         WarningZoneId = string.Empty;
@@ -136,10 +136,11 @@ public sealed class WildForestEncounterDirector
     {
         foreach (ZoneState state in _states.Values)
         {
-            bool demonCityEncounter = state.Enemies.Exists(enemy =>
+            bool demonCityEncounter = !state.IsSanctum && state.Enemies.Exists(enemy =>
                 IsDemonCityRoster(enemy.Type));
             if ((!state.Zone.IsEliteZone && !state.Zone.IsBossZone &&
-                    !demonCityEncounter) || !state.Spawned || state.Cleared)
+                    !demonCityEncounter && !state.IsSanctum) ||
+                !state.Spawned || state.Cleared)
                 continue;
             foreach (Enemy enemy in state.Enemies)
             {
@@ -149,7 +150,8 @@ public sealed class WildForestEncounterDirector
                 if (enemy is MalacharEnemy malachar)
                     malachar.SetAuthoredArenaBounds(
                         state.Zone.ActivationBounds);
-                enemy.ConstrainToAuthoredArena(state.Zone.ActivationBounds);
+                enemy.ConstrainToAuthoredArena(enemy is VaeltharEnemy king ?
+                    king.AuthoredArenaBounds : state.Zone.ActivationBounds);
             }
         }
     }
@@ -191,6 +193,20 @@ public sealed class WildForestEncounterDirector
                     enemy.Type != EnemyType.GloomwingHarrier)
                     enemy.ConfigureAuthoredLeash(
                         state.Zone.ActivationBounds);
+                else if (map.IsDemonKingSanctum)
+                {
+                    if (enemy is VaeltharEnemy king)
+                        king.ConfigureArena(map);
+                    else enemy.ConfigureAuthoredLeash(state.Zone.ActivationBounds);
+                    if (enemy is DemonKingSanctumReliquaryEnemy sanctumReliquary)
+                        sanctumReliquary.SetAuthoredEncounterBounds(
+                            state.Zone.ActivationBounds);
+                    if (enemy is DemonKingSanctumEliteEnemy sanctumElite)
+                        sanctumElite.SetAuthoredEncounterBounds(
+                            state.Zone.ActivationBounds);
+                    if (enemy is ThroneboundSeraphEnemy seraph)
+                        seraph.SetAuthoredEncounterBounds(state.Zone.ActivationBounds);
+                }
                 _spawned.Add(enemy);
             }
         }
@@ -257,10 +273,12 @@ public sealed class WildForestEncounterDirector
         public float WarningRemaining { get; set; }
         public bool Spawned { get; set; }
         public bool Cleared { get; set; }
+        public bool IsSanctum { get; }
 
-        public ZoneState(EncounterZone zone)
+        public ZoneState(EncounterZone zone, bool isSanctum)
         {
             Zone = zone;
+            IsSanctum = isSanctum;
         }
     }
 }
